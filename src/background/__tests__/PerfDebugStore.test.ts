@@ -272,10 +272,10 @@ describe('PerfDebugStore', () => {
     expect(snapshot.summary.totalEvents).toBe(0);
   });
 
-  it('keeps the full active-session event history until explicitly cleared', () => {
+  it('keeps rare signal events in the raw log until explicitly cleared', () => {
     const store = new PerfDebugStore(normalizePerfSettings({ debugMode: true }));
-    store.record(event('runtime', 'sample', { phase: 'recording' }));
-    store.record(event('runtime', 'sample', { phase: 'stopping' }));
+    store.record(event('lifecycle', 'start_requested', { phase: 'recording' }));
+    store.record(event('lifecycle', 'stop_requested', { phase: 'stopping' }));
     const snapshot = store.getSnapshot();
 
     expect(snapshot.entries).toHaveLength(2);
@@ -297,6 +297,24 @@ describe('PerfDebugStore', () => {
     expect(snapshot.droppedEvents).toBe(overflow);
     // ...but the incremental aggregates still count every event, even evicted ones.
     expect(snapshot.summary.runtime.sampleCount).toBe(total);
+  });
+
+  it('evicts high-frequency samples first, preserving rare signal events on overflow', () => {
+    const store = new PerfDebugStore(normalizePerfSettings({ debugMode: true }));
+    // One rare signal event, then a flood of high-frequency samples past the cap.
+    store.record(event('lifecycle', 'failure', { reason: 'boom' }));
+    const overflow = 50;
+    for (let i = 0; i < PERF_EVENT_BUFFER_LIMIT + overflow; i += 1) {
+      store.record(event('runtime', 'sample', { phase: 'recording' }));
+    }
+
+    const snapshot = store.getSnapshot();
+    expect(snapshot.entries.length).toBe(PERF_EVENT_BUFFER_LIMIT);
+    // The failure is never evicted (only the oldest samples are)...
+    expect(snapshot.entries[0]).toMatchObject({ scope: 'lifecycle', event: 'failure' });
+    // ...every flooded sample still counts in the aggregate, and only samples were dropped.
+    expect(snapshot.summary.runtime.sampleCount).toBe(PERF_EVENT_BUFFER_LIMIT + overflow);
+    expect(snapshot.droppedEvents).toBe(overflow + 1);
   });
 
   it('persists a summary-only snapshot when a full write is rejected (quota safety net)', async () => {

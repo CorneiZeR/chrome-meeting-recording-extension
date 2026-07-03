@@ -6,6 +6,7 @@
  */
 
 import {
+  HIGH_FREQUENCY_PERF_EVENTS,
   PERF_DEBUG_SNAPSHOT_STORAGE_KEY,
   PERF_EVENT_BUFFER_LIMIT,
   type PerfDebugSnapshot,
@@ -84,20 +85,23 @@ export class PerfDebugStore {
 
   record(entry: PerfEventEntry): void {
     if (!this.snapshot.enabled) return;
-    this.snapshot.entries.push(entry);
-    // Bound the raw event log so the persisted snapshot can't outgrow the
-    // chrome.storage.session quota and silently freeze mid-run (losing the tail
-    // of a long recording + the entire uploading phase). Whole-session aggregates
-    // in `summary` are maintained incrementally and are unaffected; only the
-    // windowed percentiles (recomputed from `entries`) reflect the retained
-    // window. `droppedEvents` records what was evicted.
-    if (this.snapshot.entries.length > PERF_EVENT_BUFFER_LIMIT) {
-      const overflow = this.snapshot.entries.length - PERF_EVENT_BUFFER_LIMIT;
-      this.snapshot.entries.splice(0, overflow);
-      this.snapshot.droppedEvents += overflow;
-    }
+
+    // Append to the raw log FIRST — several summary reducers recompute their
+    // windowed percentiles by scanning `entries`, so the current event must be in
+    // the buffer before they run. Retention is priority-tiered: on overflow the
+    // oldest high-frequency *sample* is evicted, never a rare signal event, so a
+    // multi-hour recording still keeps its failures/warnings/phase transitions.
+    this.appendRawEntry(entry);
     this.snapshot.updatedAt = entry.ts;
 
+    // Then update the whole-session aggregates (count/avg/max are incremental and
+    // full-run accurate; percentiles reflect the retained window in `entries`).
+    this.aggregate(entry);
+    this.persist();
+  }
+
+  /** Updates the whole-session aggregates for a single event. */
+  private aggregate(entry: PerfEventEntry): void {
     const summary = this.snapshot.summary;
     summary.totalEvents += 1;
     summary.countsByScope[entry.scope] = (summary.countsByScope[entry.scope] ?? 0) + 1;
@@ -173,8 +177,24 @@ export class PerfDebugStore {
         applyCpuSample(this.snapshot, entry);
         break;
     }
+  }
 
-    this.persist();
+  /**
+   * Appends an event to the raw log, bounding it to PERF_EVENT_BUFFER_LIMIT. On
+   * overflow it evicts the oldest *high-frequency sample*, never a rare signal
+   * event (lifecycle, failures, warnings, opens/closes/finalize), so those survive
+   * a multi-hour recording for attribution. `droppedEvents` records evictions.
+   */
+  private appendRawEntry(entry: PerfEventEntry): void {
+    this.snapshot.entries.push(entry);
+    if (this.snapshot.entries.length <= PERF_EVENT_BUFFER_LIMIT) return;
+
+    let idx = this.snapshot.entries.findIndex(
+      (e) => HIGH_FREQUENCY_PERF_EVENTS.has(`${e.scope}:${e.event}`)
+    );
+    if (idx === -1) idx = 0; // buffer is all signal (pathological): evict the oldest
+    this.snapshot.entries.splice(idx, 1);
+    this.snapshot.droppedEvents += 1;
   }
 
   getSnapshot(): PerfDebugSnapshot {
