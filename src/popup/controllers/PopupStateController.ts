@@ -13,7 +13,9 @@ import {
 } from '../popupStatus';
 import {
   buildDefaultRunConfigFromSettings,
+  getSelfVideoProfileSettings,
   loadExtensionSettingsFromStorage,
+  type SelfVideoProfileSettings,
 } from '../../shared/settings';
 import {
   createDefaultRunConfig,
@@ -42,17 +44,22 @@ export class PopupStateController {
   private activeRunConfig: RecordingRunConfig | null = createDefaultRunConfig();
   private activeWarnings: string[] = [];
   private idleDefaultRunConfig: RecordingRunConfig = createDefaultRunConfig();
+  private selfVideoProfile: SelfVideoProfileSettings = getSelfVideoProfileSettings();
   private shownUploadSummary = '';
 
-  constructor(private readonly el: PopupElements, private readonly callbacks: PopupStateCallbacks) {}
+  constructor(private readonly el: PopupElements, private readonly callbacks: PopupStateCallbacks) {
+    this.el.recordSelfVideoCheckbox?.addEventListener('change', () => this.updateCameraResolutionWarning());
+  }
 
   /** Loads settings-derived defaults and hydrates the live background session state. */
   async refreshInitialState() {
     try {
       const settings = await loadExtensionSettingsFromStorage();
       this.idleDefaultRunConfig = buildDefaultRunConfigFromSettings(settings);
+      this.selfVideoProfile = getSelfVideoProfileSettings(settings);
     } catch {
       this.idleDefaultRunConfig = createDefaultRunConfig();
+      this.selfVideoProfile = getSelfVideoProfileSettings();
     }
 
     this.setActiveRunConfig({ ...this.idleDefaultRunConfig });
@@ -110,6 +117,17 @@ export class PopupStateController {
   private setActiveRunConfig(config: RecordingRunConfig | null) {
     this.activeRunConfig = config;
     applyRunConfigToForm(this.el, config);
+    this.updateCameraResolutionWarning(config?.recordSelfVideo);
+  }
+
+  private updateCameraResolutionWarning(recordSelfVideo = this.el.recordSelfVideoCheckbox?.checked ?? false) {
+    const warning = this.el.cameraWarning;
+    const text = this.el.cameraWarningText;
+    if (!warning || !text) return;
+    const height = this.selfVideoProfile.height;
+    const show = recordSelfVideo && height < 1080;
+    warning.hidden = !show;
+    text.textContent = show ? `Camera delivering ${height}p · raise in settings` : '';
   }
 
   private setActiveWarnings(warnings?: string[]) {

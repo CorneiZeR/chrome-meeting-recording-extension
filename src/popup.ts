@@ -83,6 +83,8 @@ const controller = new PopupController({
   uploadJobFiles: byId('upload-job-files'),
   uploadJobOpenDrive: byId<HTMLButtonElement>('upload-job-open-drive'),
   uploadJobRetry: byId<HTMLButtonElement>('upload-job-retry'),
+  cameraWarning: byId('camera-warning'),
+  cameraWarningText: byId('camera-warning-text'),
 
   // Shared status / toast line
   recordingStatusEl: byId('recording-status'),

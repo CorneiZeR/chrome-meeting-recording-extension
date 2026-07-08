@@ -2,6 +2,7 @@ import { CameraPermissionService } from '../CameraPermissionService';
 import { MicPermissionService } from '../MicPermissionService';
 import { PopupController } from '../PopupController';
 import { POPUP_TOAST_DURATION_MS } from '../popupMessages';
+import { DEFAULT_EXTENSION_SETTINGS } from '../../shared/settings';
 import type { RecordingRunConfig } from '../../shared/recording';
 
 jest.mock('../../popup/MicPermissionService');
@@ -51,6 +52,8 @@ describe('PopupController', () => {
       recordSelfVideoCheckbox: document.createElement('input'),
       openSettingsBtn: document.createElement('button'),
       openDiagnosticsBtn: document.createElement('button'),
+      cameraWarning: document.createElement('div'),
+      cameraWarningText: document.createElement('span'),
 
       // View containers
       viewConfig: document.createElement('section'),
@@ -174,6 +177,33 @@ describe('PopupController', () => {
     controller.init(); // no localStorage cache → idle → config
     expect(elements.viewConfig.hidden).toBe(false);
     expect(elements.viewRecording.hidden).toBe(true);
+  });
+
+  it('shows the camera resolution warning when separate camera capture uses a sub-1080p preset', async () => {
+    (chrome.storage.local.get as jest.Mock).mockResolvedValueOnce({
+      extensionSettings: {
+        ...DEFAULT_EXTENSION_SETTINGS,
+        basic: {
+          ...DEFAULT_EXTENSION_SETTINGS.basic,
+          separateCameraCapture: true,
+          selfVideoResolutionPreset: '1280x720',
+        },
+      },
+    });
+    mockSendMessage.mockResolvedValueOnce({
+      session: { phase: 'idle', runConfig: null, updatedAt: Date.now() },
+    });
+
+    controller.init();
+    await new Promise(process.nextTick);
+
+    expect(elements.recordSelfVideoCheckbox.checked).toBe(true);
+    expect(elements.cameraWarning.hidden).toBe(false);
+    expect(elements.cameraWarningText.textContent).toBe('Camera delivering 720p · raise in settings');
+
+    elements.recordSelfVideoCheckbox.checked = false;
+    elements.recordSelfVideoCheckbox.dispatchEvent(new Event('change'));
+    expect(elements.cameraWarning.hidden).toBe(true);
   });
 
   it('initializes UI correctly from an existing stopping state', async () => {
@@ -647,6 +677,33 @@ describe('PopupController', () => {
     expect(elements.recordingStatusEl.textContent).toContain(
       'Warning: Tab recording requested 640x360@24fps'
     );
+  });
+
+  it('renders the real tab capture resolution when the session provides it', async () => {
+    controller.init();
+    await new Promise(process.nextTick);
+
+    (controller as any).state.applySession({
+      phase: 'recording',
+      runConfig: (global as any).__TEST_RUN_CONFIG__({ tabContentType: 'video' }),
+      tabResolution: { width: 1920, height: 1080 },
+      updatedAt: Date.now(),
+    });
+
+    expect(elements.tabSourceSub.textContent).toBe('Video · 1080p');
+  });
+
+  it('keeps the tab source label content-only when real height is unavailable', async () => {
+    controller.init();
+    await new Promise(process.nextTick);
+
+    (controller as any).state.applySession({
+      phase: 'recording',
+      runConfig: (global as any).__TEST_RUN_CONFIG__({ tabContentType: 'screen' }),
+      updatedAt: Date.now(),
+    });
+
+    expect(elements.tabSourceSub.textContent).toBe('Screen');
   });
 
   it('handles STOP_RECORDING click', async () => {
