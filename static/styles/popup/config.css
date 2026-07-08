@@ -1,0 +1,385 @@
+/* ── Ready line (idle) ── */
+.ready {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.ready-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ready);
+  box-shadow: 0 0 0 3px rgba(63, 185, 80, 0.16);
+  flex-shrink: 0;
+}
+
+.ready-text {
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+
+/* ── Grouped list (the design's core section shell) ── */
+.glist {
+  border: 1px solid var(--list-border);
+  border-radius: 13px;
+  overflow: hidden;
+  background: linear-gradient(180deg, var(--list-top) 0%, var(--list-bottom) 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.grow {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 12px;
+  gap: 10px;
+}
+
+.grow-label {
+  flex: 1;
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+
+.grow-div {
+  height: 1px;
+  background: var(--divider);
+  margin: 0 12px;
+}
+
+.grow-tall {
+  min-height: 52px;
+}
+
+.perm-ico {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.perm-ico svg {
+  width: 14px;
+  height: 14px;
+}
+
+.perm-ico.ready {
+  color: var(--ready);
+  background: rgba(63, 185, 80, 0.14);
+}
+
+.perm-ico.warn {
+  color: var(--warn);
+  background: rgba(198, 154, 90, 0.14);
+}
+
+.perm-state {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.perm-state.ready {
+  color: var(--ready);
+}
+
+.perm-state.warn {
+  color: var(--warn);
+}
+
+.permission-copy {
+  margin: 11px 2px 12px;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--ink-3);
+}
+
+#permission-continue {
+  height: 38px;
+  margin-top: 8px;
+  font-size: 12.5px;
+}
+
+/* Native selects styled as each row's right-aligned "value ⌄". */
+.grow-select {
+  appearance: none;
+  -webkit-appearance: none;
+  border: 0;
+  background: transparent;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+  text-align: right;
+  text-align-last: right;
+  padding: 6px 16px 6px 8px;
+  max-width: 156px;
+  cursor: pointer;
+  border-radius: 7px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%235c6070' d='M0 0l5 6 5-6z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 2px center;
+}
+
+.grow-select:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(76, 127, 227, 0.35);
+}
+
+.grow-select option {
+  background: var(--list-top);
+  color: var(--ink);
+}
+
+/* Camera row toggle (a styled checkbox): filled accent pill when on. */
+.cam-toggle {
+  cursor: pointer;
+  display: inline-flex;
+}
+
+.cam-toggle input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.cam-pill {
+  height: 32px;
+  border-radius: 9px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 5px 0 12px;
+  background: #22252c;
+  transition: background 0.15s;
+}
+
+.cam-pill-text {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #9aa0ab;
+  white-space: nowrap;
+}
+
+.cam-pill-knob {
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  background: #363a42;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+
+.cam-pill-knob svg {
+  width: 14px;
+  height: 14px;
+}
+
+.cam-pill-knob .on-check {
+  display: none;
+}
+
+.cam-toggle input:checked ~ .cam-pill {
+  background: var(--accent);
+}
+
+.cam-toggle input:checked ~ .cam-pill .cam-pill-text {
+  color: #fff;
+}
+
+.cam-toggle input:checked ~ .cam-pill .cam-pill-knob {
+  background: #fff;
+}
+
+.cam-toggle input:checked ~ .cam-pill .cam-pill-knob .on-check {
+  display: block;
+}
+
+.cam-toggle input:checked ~ .cam-pill .cam-pill-knob .off-x {
+  display: none;
+}
+
+.cam-toggle input:focus-visible ~ .cam-pill {
+  box-shadow: 0 0 0 2px rgba(76, 127, 227, 0.4);
+}
+
+/* ── Segmented control (tab quality) ── */
+.segmented {
+  display: flex;
+  width: 108px;
+  background: var(--surface);
+  border: 1px solid #2b2f37;
+  border-radius: 8px;
+  padding: 2px;
+}
+
+.seg {
+  position: relative;
+  flex: 1;
+  cursor: pointer;
+}
+
+.seg input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.seg span {
+  display: block;
+  text-align: center;
+  padding: 4px 0;
+  border-radius: 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ink-3);
+  transition: background 0.15s, color 0.15s;
+}
+
+.seg input:checked + span {
+  background: var(--accent);
+  color: #fff;
+  font-weight: 700;
+}
+
+.seg input:focus-visible + span {
+  box-shadow: 0 0 0 2px rgba(76, 127, 227, 0.35);
+}
+
+/* ── Camera resolution warning ── */
+.cam-warn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 9px 2px 0;
+}
+
+.cam-warn svg {
+  width: 11px;
+  height: 11px;
+  flex-shrink: 0;
+}
+
+.cam-warn-text {
+  font-size: 10.5px;
+  color: #9a8460;
+}
+
+.cam-warn-text b {
+  color: var(--warn);
+}
+
+/* ── Buttons ── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 44px;
+  border: 0;
+  border-radius: 12px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  white-space: nowrap;
+  line-height: 1;
+  transition: background 0.15s, box-shadow 0.15s, opacity 0.15s;
+}
+
+.btn svg {
+  flex-shrink: 0;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 8px 20px -8px rgba(76, 127, 227, 0.7);
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: #3a6fd4;
+}
+
+.btn-danger {
+  background: var(--rec);
+  color: #fff;
+  box-shadow: 0 8px 20px -8px rgba(229, 72, 77, 0.7);
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: #d23b40;
+}
+
+.btn-secondary {
+  background: #1a1c21;
+  color: #dfe2e8;
+  border: 1px solid #2b2f37;
+  font-weight: 700;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: #21242a;
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.btn-full {
+  width: 100%;
+}
+
+.start-cta {
+  width: 100%;
+  margin-top: 14px;
+}
+
+/* ── Idle footer actions ── */
+.foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 11px;
+}
+
+.link-btn {
+  border: 0;
+  background: transparent;
+  color: #9aa0ab;
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+}
+
+.link-btn:hover {
+  color: var(--ink);
+}
+
+.link-btn.dim {
+  color: var(--ink-4);
+}
+
+.link-btn svg {
+  width: 12px;
+  height: 12px;
+}
+

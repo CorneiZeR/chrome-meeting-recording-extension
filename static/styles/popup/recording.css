@@ -1,0 +1,206 @@
+/* ── Recording status row (mirrors the design's REC / timer line) ── */
+.rec-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+  padding-right: 4px;
+}
+
+.rec-left {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.rec-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--rec);
+  box-shadow: 0 0 0 4px rgba(229, 72, 77, 0.18);
+  flex-shrink: 0;
+  animation: mrPulse 1.6s ease-in-out infinite;
+}
+
+.rec-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: #f0b6b8;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.rec-timer {
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--ink);
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Paused: amber dot (no pulse), dimmed timer, and a faded source list. */
+.rec-status.paused .rec-dot {
+  background: var(--warn);
+  box-shadow: none;
+  animation: none;
+}
+
+.rec-status.paused .rec-label {
+  color: #d6bd94;
+}
+
+.rec-status.paused .rec-timer {
+  color: var(--ink-3);
+}
+
+#rec-banner.paused ~ .glist {
+  opacity: 0.72;
+}
+
+/* ── Live source rows (recording view) ── */
+.srow {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-height: 48px;
+  padding: 0 12px;
+  border-top: 1px solid var(--divider);
+}
+
+/* Meeting-tab row is always first + visible, so the top border falls only
+   between rows; a hidden mic/camera row leaves no orphaned divider. */
+.src-list .srow:first-child {
+  border-top: 0;
+}
+
+.srow-ico {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: #22252c;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: #9aa0ab;
+}
+
+.srow-ico svg {
+  width: 14px;
+  height: 14px;
+}
+
+.srow-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.srow-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #e8eaed;
+}
+
+.srow-mode {
+  font-weight: 400;
+  color: #7a7f8c;
+}
+
+.srow-sub {
+  font-size: 10.5px;
+  color: #7a7f8c;
+}
+
+.srow-recdot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--rec);
+  flex-shrink: 0;
+  animation: mrPulse 1.6s ease-in-out infinite;
+}
+
+/* Static mic level meter (representative until live levels are wired). */
+.meter {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-top: 4px;
+  height: 11px;
+}
+
+.meter span {
+  width: 3px;
+  border-radius: 1px;
+  background: #2f5f3a;
+}
+
+.meter span.lit {
+  background: var(--ready);
+}
+
+/* ── Toggle switch (mic-mute / camera-hide) ──
+   PopupController.renderTogglePill toggles `.on`/`.off` on the button and
+   writes "on"/"off" into the [data-*-label] span (kept for a11y, visually
+   hidden). The visual state is the track colour + knob position. */
+.switch {
+  width: 34px;
+  height: 20px;
+  border-radius: 999px;
+  background: #3a3d44;
+  position: relative;
+  border: 0;
+  padding: 0;
+  flex-shrink: 0;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.switch .knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.15s;
+}
+
+.switch.on {
+  background: var(--ready);
+}
+
+.switch.on .knob {
+  transform: translateX(14px);
+}
+
+.switch:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.switch:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ── Recording controls (pause + stop) ── */
+.controls {
+  display: flex;
+  gap: 9px;
+  margin-top: 13px;
+}
+
+.controls .btn {
+  flex: 1;
+  font-size: 13px;
+}
+
+/* Hidden legacy status chips — kept so CaptionPoller / updateChips keep a
+   valid target; the redesign surfaces this info in the source rows instead. */
+.chips {
+  display: none;
+}
+

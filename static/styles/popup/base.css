@@ -1,0 +1,126 @@
+/*
+  Meet Recorder popup — "Meet Recorder Design System" restyle.
+
+  The popup body *is* the design's 288px card: a single dark surface with a
+  persistent wordmark header, a grouped-list section per state, and one accent
+  set (blue action / green ready / red recording / amber warning). Every state
+  the PopupController drives (config / recording / finalizing / per-job upload)
+  keeps its original element ids and toggle classes — this file only restyles.
+*/
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --accent: #4c7fe3;
+  --accent-hi: #7da4f5;
+  --ready: #3fb950;
+  --rec: #e5484d;
+  --warn: #c69a5a;
+  --surface: #131417;
+  --list-border: #262a31;
+  --list-top: #1b1d23;
+  --list-bottom: #17181d;
+  --divider: #23262c;
+  --ink: #eef0f3;
+  --ink-2: #c4c9d2;
+  --ink-3: #8b909c;
+  --ink-4: #6b7080;
+}
+
+/* The `hidden` attribute must win over component display rules (.btn, .srow,
+   .chip all set `display`, which would otherwise override the UA [hidden]
+   style and leave hidden controls/rows visible). */
+[hidden] {
+  display: none !important;
+}
+
+body {
+  width: 288px;
+  font-family: 'Manrope', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+  font-size: 13px;
+  color: var(--ink-2);
+  background: var(--surface);
+  padding: 14px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ── Persistent wordmark header ── */
+.pp-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.brand-mark {
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  background: var(--accent);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.brand-name {
+  font-size: 15.5px;
+  font-weight: 800;
+  color: var(--ink);
+  letter-spacing: -0.015em;
+  white-space: nowrap;
+}
+
+.icon-button {
+  width: 26px;
+  height: 26px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-4);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s;
+}
+
+.icon-button:hover {
+  background: #1e2126;
+  color: #9aa0ab;
+}
+
+.icon-button svg {
+  display: block;
+  width: 16px;
+  height: 16px;
+}
+
+/* ── State views ── */
+.view[hidden] {
+  display: none;
+}
+

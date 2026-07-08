@@ -1,0 +1,298 @@
+/* ── Finalizing / per-job upload (spinner + grouped meta list) ── */
+.center {
+  text-align: center;
+  padding: 6px 0 4px;
+}
+
+/* Progress ring (indeterminate while finalizing, determinate per upload job).
+   PopupController / SessionTabsView drive `data-mode`, the arc's
+   stroke-dashoffset, and the centre label. */
+.upload-ring {
+  position: relative;
+  width: 46px;
+  height: 46px;
+  margin: 6px auto 0;
+}
+
+.upload-ring-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.upload-ring-track {
+  fill: none;
+  stroke: #22252c;
+  stroke-width: 3;
+}
+
+.upload-ring-arc {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-dasharray: 100;
+  stroke-dashoffset: 100;
+  transform: rotate(-90deg);
+  transform-origin: 50% 50%;
+  transition: stroke-dashoffset 0.3s ease;
+}
+
+.upload-ring-label {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.upload-ring[data-mode='indeterminate'] .upload-ring-svg {
+  animation: spin 0.85s linear infinite;
+}
+
+.upload-ring[data-mode='indeterminate'] .upload-ring-arc {
+  stroke-dasharray: 25 100;
+  stroke-dashoffset: 0;
+  transform: none;
+  transition: none;
+}
+
+.upload-ring[data-mode='indeterminate'] .upload-ring-label {
+  display: none;
+}
+
+.upload-ring[data-mode='done'] {
+  width: 48px;
+  height: 48px;
+  margin-top: 4px;
+  border-radius: 50%;
+  background: rgba(63, 185, 80, 0.14);
+}
+
+.upload-ring[data-mode='done'] .upload-ring-svg {
+  display: none;
+}
+
+.upload-ring[data-mode='done'] .upload-ring-label {
+  font-size: 25px;
+  font-weight: 800;
+  color: var(--ready);
+}
+
+.finalizing-label {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+  text-align: center;
+  margin: 12px 0 14px;
+}
+
+.upload-job-sub {
+  margin: -8px 0 13px;
+  font-size: 11.5px;
+  color: var(--ink-3);
+  text-align: center;
+}
+
+/* Grouped file/meta list rendered by SessionTabsView + updateFinalizingView. */
+.meta-list {
+  list-style: none;
+  border: 1px solid var(--list-border);
+  border-radius: 13px;
+  overflow: hidden;
+  background: linear-gradient(180deg, var(--list-top) 0%, var(--list-bottom) 100%);
+}
+
+.meta-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 13px;
+  font-size: 12px;
+  border-bottom: 1px solid var(--divider);
+}
+
+.meta-list li:last-child {
+  border-bottom: 0;
+}
+
+.meta-list li span:first-child {
+  color: var(--ink-3);
+}
+
+.meta-list li span:last-child {
+  color: var(--ink-2);
+  font-weight: 600;
+}
+
+.file-list li {
+  justify-content: flex-start;
+  min-height: 46px;
+  gap: 10px;
+}
+
+.file-ico {
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  background: #22252c;
+  color: #9aa0ab;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.file-ico svg {
+  width: 14px;
+  height: 14px;
+}
+
+.file-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.file-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink-2);
+}
+
+.file-sub {
+  margin-top: 2px;
+  font-size: 10.5px;
+  color: var(--ink-3);
+}
+
+.file-open {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+/* ── Session tabs (live session + background uploads, ADR-0004) ── */
+.session-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.session-tab {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.45;
+  color: #9aa0ab;
+  background: #1a1c21;
+  border: 1px solid #2c2e33;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.session-tab[aria-selected='true'] {
+  color: #e8eaed;
+  border-color: var(--accent);
+  background: #25304a;
+}
+
+.session-tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.session-tab--new {
+  border-style: dashed;
+  color: #8fb0f0;
+}
+
+.session-tab--new[aria-selected='true'] {
+  border-style: solid;
+}
+
+.session-tab-close {
+  margin-left: 1px;
+  margin-right: -3px;
+  padding: 0 3px;
+  border-radius: 50%;
+  color: #6c7180;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.session-tab-close:hover {
+  color: #e8eaed;
+  background: #3a3d44;
+}
+
+.session-tab--fading {
+  opacity: 0;
+  transition: opacity 0.28s ease;
+}
+
+.session-tab-label {
+  min-width: 0;
+  max-width: 92px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-tab-pct {
+  flex: 0 0 auto;
+  color: #6f9bef;
+}
+
+.session-tab[data-status='completed'] .session-tab-pct {
+  color: #3fae6b;
+}
+
+.session-tab[data-status='failed'] .session-tab-pct,
+.session-tab[data-status='partial'] .session-tab-pct {
+  color: #e0a23a;
+}
+
+/* ── Retry CTA (failed / partial upload job) ── */
+#upload-job-retry {
+  width: 100%;
+  margin-top: 14px;
+}
+
+/* ── Shared status / toast line ── */
+#recording-status {
+  min-height: 16px;
+  font-size: 11px;
+  color: var(--warn);
+  font-weight: 500;
+  text-align: center;
+  padding: 8px 0 0;
+}
+
+#recording-status:empty {
+  display: none;
+}
+
+@keyframes mrPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.35; transform: scale(0.82); }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}

@@ -1,0 +1,204 @@
+:root {
+  color-scheme: light;
+  --page-bg: #f7f4ee;
+  --panel-bg: #fffdf8;
+  --panel-border: #d8d1c2;
+  --text: #221f1a;
+  --muted: #655f54;
+  --accent: #8b4b24;
+  --accent-soft: #f4ddcf;
+  --tooltip-bg: #221f1a;
+  --tooltip-text: #fffaf2;
+  --success: #145a00;
+  --error: #8b0000;
+  --control-border: #bcb3a0;
+  --shadow: 0 10px 24px rgba(34, 31, 26, 0.08);
+}
+
+body {
+  font-family: "Avenir Next", "Segoe UI", sans-serif;
+  margin: 0;
+  background:
+    radial-gradient(circle at top right, rgba(139, 75, 36, 0.08), transparent 26%),
+    linear-gradient(180deg, #fcfaf5 0%, var(--page-bg) 100%);
+  color: var(--text);
+}
+
+main {
+  margin: 0 auto;
+  max-width: 920px;
+  padding: 24px 18px 40px;
+}
+
+h1 {
+  margin: 0 0 8px;
+  font-size: 28px;
+  letter-spacing: 0.01em;
+}
+
+.intro {
+  margin: 0 0 18px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.section {
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
+  padding: 16px;
+  margin-bottom: 14px;
+  background: var(--panel-bg);
+  box-shadow: var(--shadow);
+}
+
+.section h2 {
+  margin: 0 0 14px;
+  font-size: 16px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.field-grid {
+  display: grid;
+  grid-template-columns: minmax(240px, 320px) minmax(0, 1fr);
+  gap: 12px 16px;
+  align-items: center;
+}
+
+.field-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  position: relative;
+  min-width: 0;
+}
+
+label {
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.tooltip-shell {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+
+.tooltip-toggle {
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--control-border);
+  border-radius: 999px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.tooltip-toggle:hover,
+.tooltip-toggle[aria-expanded="true"] {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.tooltip-bubble {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: -8px;
+  width: 240px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--tooltip-bg);
+  color: var(--tooltip-text);
+  box-shadow: 0 12px 30px rgba(17, 14, 11, 0.24);
+  font-size: 12px;
+  line-height: 1.45;
+  z-index: 10;
+}
+
+.tooltip-bubble::before {
+  content: "";
+  position: absolute;
+  top: -6px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  background: var(--tooltip-bg);
+  transform: rotate(45deg);
+}
+
+input[type="number"],
+select {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: 1px solid var(--control-border);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--text);
+  font-size: 13px;
+}
+
+input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  justify-self: start;
+  accent-color: var(--accent);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin-top: 8px;
+}
+
+button {
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 9px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+#save-settings {
+  background: var(--accent);
+  color: #fff;
+}
+
+#reset-settings {
+  background: transparent;
+  border-color: var(--control-border);
+  color: var(--text);
+}
+
+#status {
+  min-height: 1.2em;
+  font-size: 12px;
+  color: var(--success);
+}
+
+@media (max-width: 720px) {
+  main {
+    padding: 18px 14px 32px;
+  }
+
+  .field-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .tooltip-bubble {
+    left: 0;
+    width: min(240px, calc(100vw - 56px));
+  }
+}
