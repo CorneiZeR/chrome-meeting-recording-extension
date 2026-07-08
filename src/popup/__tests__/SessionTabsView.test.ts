@@ -18,6 +18,7 @@ const makeEl = (): PopupElements => ({
   uploadJobLabel: document.createElement('div'),
   uploadJobSub: document.createElement('div'),
   uploadJobFiles: document.createElement('ul'),
+  uploadJobOpenDrive: document.createElement('button'),
   uploadJobRetry: document.createElement('button'),
 } as unknown as PopupElements);
 
@@ -41,6 +42,7 @@ describe('SessionTabsView', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    (chrome.tabs.create as jest.Mock).mockClear();
     el = makeEl();
     callbacks = { rerender: jest.fn(), applySession: jest.fn(), toast: jest.fn() };
     view = new SessionTabsView(el, callbacks as unknown as SessionTabsCallbacks);
@@ -88,13 +90,15 @@ describe('SessionTabsView', () => {
   });
 
   it('renders a completed job as the saved recording view with real filenames', () => {
+    view.wireEvents();
     view.renderJobView(job({
       status: 'completed',
       progress: 1,
+      folderWebViewLink: 'https://drive.google.com/drive/folders/folder-1',
       files: [
-        { stream: 'tab', filename: 'meet-tab.webm', status: 'uploaded' },
-        { stream: 'mic', filename: 'meet-mic.webm', status: 'uploaded' },
-        { stream: 'self-video', filename: 'meet-camera.webm', status: 'uploaded' },
+        { stream: 'tab', filename: 'meet-tab.webm', status: 'uploaded', bytes: 92 * 1024 * 1024, webViewLink: 'https://drive.google.com/file/d/tab/view' },
+        { stream: 'mic', filename: 'meet-mic.webm', status: 'uploaded', bytes: 12 * 1024 * 1024, webViewLink: 'https://drive.google.com/file/d/mic/view' },
+        { stream: 'self-video', filename: 'meet-camera.webm', status: 'uploaded', bytes: 34 * 1024 * 1024, webViewLink: 'https://drive.google.com/file/d/camera/view' },
       ],
     }));
 
@@ -107,8 +111,15 @@ describe('SessionTabsView', () => {
     expect(el.uploadJobFiles!.textContent).toContain('meet-tab.webm');
     expect(el.uploadJobFiles!.textContent).toContain('meet-mic.webm');
     expect(el.uploadJobFiles!.textContent).toContain('meet-camera.webm');
-    expect(el.uploadJobFiles!.querySelector('.file-open')).toBeNull();
+    expect(el.uploadJobFiles!.textContent).toContain('92 MB');
+    expect(el.uploadJobFiles!.querySelectorAll('.file-open')).toHaveLength(3);
+    expect(el.uploadJobOpenDrive!.hidden).toBe(false);
     expect(el.uploadJobRetry!.hidden).toBe(true);
+
+    (el.uploadJobFiles!.querySelector('.file-open') as HTMLButtonElement).click();
+    expect(chrome.tabs.create).toHaveBeenCalledWith({ url: 'https://drive.google.com/file/d/tab/view' });
+    el.uploadJobOpenDrive!.click();
+    expect(chrome.tabs.create).toHaveBeenCalledWith({ url: 'https://drive.google.com/drive/folders/folder-1' });
   });
 
   it('dismissing a finished tab via its × sends DISMISS and applies the new session', async () => {

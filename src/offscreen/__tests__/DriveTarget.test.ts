@@ -55,7 +55,7 @@ describe('DriveTarget', () => {
     expect(mockFetch).toHaveBeenCalledTimes(2);
     expect(mockGetToken).toHaveBeenCalledTimes(1);
     expect(mockFetch.mock.calls[0][0]).toBe(
-      'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&supportsAllDrives=true'
+      'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&supportsAllDrives=true&fields=id,name,webViewLink'
     );
     expect(mockFetch.mock.calls[1][1].headers['Content-Range']).toBe('bytes 0-3/4');
     expect(mockOnDone).toHaveBeenCalledWith('test.webm');

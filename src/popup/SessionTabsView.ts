@@ -10,6 +10,8 @@
  */
 
 import { sendToBackground } from '../shared/messages';
+import { formatBytes } from '../shared/format';
+import { createExternalTab } from '../platform/chrome/tabs';
 import type { PopupElements } from './popupView';
 import type {
   RecordingPhase,
@@ -66,6 +68,11 @@ function fileCountText(count: number): string {
   return `${count} ${count === 1 ? 'file' : 'files'}`;
 }
 
+function driveFileUrl(file: UploadJobFile): string | undefined {
+  if (file.webViewLink) return file.webViewLink;
+  return file.driveFileId ? `https://drive.google.com/file/d/${encodeURIComponent(file.driveFileId)}/view` : undefined;
+}
+
 function svgPathForStream(stream: RecordingStream): string {
   if (stream === 'mic') {
     return 'M8 10a2 2 0 002-2V4a2 2 0 00-4 0v4a2 2 0 002 2zM4.5 8a.5.5 0 00-1 0 4.5 4.5 0 009 0 .5.5 0 00-1 0 3.5 3.5 0 01-7 0zM7.5 13.5v1.5h1v-1.5a.5.5 0 00-1 0z';
@@ -119,6 +126,7 @@ export class SessionTabsView {
   /** Wires the retry button + roving-tabindex keyboard nav. Call once from init. */
   wireEvents(): void {
     this.el.uploadJobRetry?.addEventListener('click', () => void this.retryUploadJob());
+    this.el.uploadJobOpenDrive?.addEventListener('click', () => void this.openUploadJobFolder());
     this.wireKeyboard();
   }
 
@@ -330,9 +338,20 @@ export class SessionTabsView {
         name.textContent = file.filename;
         const status = document.createElement('div');
         status.className = 'file-sub';
-        status.textContent = `${streamLabel(file.stream)} · ${uploadFileStatusText(file.status)}`;
+        const parts = [streamLabel(file.stream), uploadFileStatusText(file.status)];
+        if (typeof file.bytes === 'number') parts.push(formatBytes(file.bytes));
+        status.textContent = parts.join(' · ');
         main.append(name, status);
         li.appendChild(main);
+        const openUrl = driveFileUrl(file);
+        if (openUrl && file.status === 'uploaded') {
+          const open = document.createElement('button');
+          open.type = 'button';
+          open.className = 'file-open';
+          open.textContent = 'Open';
+          open.addEventListener('click', () => void createExternalTab(openUrl));
+          li.appendChild(open);
+        }
         frag.appendChild(li);
       }
       this.el.uploadJobFiles.replaceChildren(frag);
@@ -342,6 +361,16 @@ export class SessionTabsView {
       this.el.uploadJobRetry.hidden = !(job.status === 'failed' || job.status === 'partial');
       this.el.uploadJobRetry.dataset.jobId = job.id;
     }
+    if (this.el.uploadJobOpenDrive) {
+      this.el.uploadJobOpenDrive.hidden = !(completed && job.folderWebViewLink);
+      this.el.uploadJobOpenDrive.dataset.folderUrl = completed ? job.folderWebViewLink ?? '' : '';
+    }
+  }
+
+  private async openUploadJobFolder(): Promise<void> {
+    const url = this.el.uploadJobOpenDrive?.dataset.folderUrl;
+    if (!url) return;
+    await createExternalTab(url);
   }
 
   /** Re-uploads the shown failed/partial job; the offscreen flips its tab to uploading. */

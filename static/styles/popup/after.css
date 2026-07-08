@@ -173,10 +173,20 @@
 }
 
 .file-open {
+  border: 0;
+  background: transparent;
+  padding: 0 0 0 8px;
+  cursor: pointer;
+  font-family: inherit;
   color: var(--accent);
   font-size: 12px;
   font-weight: 700;
-  text-decoration: none;
+}
+
+#upload-job-open-drive {
+  margin-top: 12px;
+  height: 40px;
+  font-size: 12.5px;
 }
 
 /* ── Session tabs (live session + background uploads, ADR-0004) ── */

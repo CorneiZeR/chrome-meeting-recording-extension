@@ -24,7 +24,17 @@ describe('UploadManager (ADR-0004)', () => {
   it('reports an immediate uploading state, forwards progress, then settles completed', async () => {
     const finalize = jest.fn(async (opts: any) => {
       opts.onUploadProgress?.(0.5);
-      return { uploaded: [{ stream: 'tab', filename: 'tab.webm' }], localFallbacks: [] } as UploadSummary;
+      return {
+        uploaded: [{
+          stream: 'tab',
+          filename: 'tab.webm',
+          bytes: 1,
+          driveFileId: 'drive-file-1',
+          webViewLink: 'https://drive.google.com/file/d/drive-file-1/view',
+        }],
+        localFallbacks: [],
+        folderWebViewLink: 'https://drive.google.com/drive/folders/folder-1',
+      } as UploadSummary;
     });
     const { manager, reports } = setup(finalize);
 
@@ -37,6 +47,7 @@ describe('UploadManager (ADR-0004)', () => {
       progress: 0,
       files: [{ stream: 'tab', filename: 'tab.webm', status: 'uploading' }],
     });
+    expect(reports[0].files[0].bytes).toBe(1);
     expect(typeof reports[0].label).toBe('string');
 
     await flush();
@@ -47,6 +58,12 @@ describe('UploadManager (ADR-0004)', () => {
       progress: 1,
       files: [{ stream: 'tab', status: 'uploaded' }],
       finishedAt: 1000,
+    });
+    expect(last.folderWebViewLink).toBe('https://drive.google.com/drive/folders/folder-1');
+    expect(last.files[0]).toMatchObject({
+      bytes: 1,
+      driveFileId: 'drive-file-1',
+      webViewLink: 'https://drive.google.com/file/d/drive-file-1/view',
     });
   });
 
@@ -60,8 +77,8 @@ describe('UploadManager (ADR-0004)', () => {
     const partialFinal = partial.reports[partial.reports.length - 1];
     expect(partialFinal.status).toBe('partial');
     expect(partialFinal.files).toEqual([
-      { stream: 'tab', filename: 'tab.webm', status: 'uploaded' },
-      { stream: 'mic', filename: 'mic.webm', status: 'fallback' },
+      expect.objectContaining({ stream: 'tab', filename: 'tab.webm', status: 'uploaded', bytes: 1 }),
+      expect.objectContaining({ stream: 'mic', filename: 'mic.webm', status: 'fallback', bytes: 1 }),
     ]);
 
     const failed = setup(async () => ({

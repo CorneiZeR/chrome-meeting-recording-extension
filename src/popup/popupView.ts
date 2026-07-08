@@ -45,6 +45,7 @@ export type PopupElements = {
   chipStorageLabel: HTMLElement | null;
   micRow: HTMLElement | null;
   micModeLabel: HTMLElement | null;
+  micMeterBars: HTMLElement[];
   muteMicBtn: HTMLButtonElement | null;
   cameraRow: HTMLElement | null;
   hideCameraBtn: HTMLButtonElement | null;
@@ -74,6 +75,8 @@ export type PopupElements = {
   uploadJobLabel: HTMLElement | null;
   uploadJobSub: HTMLElement | null;
   uploadJobFiles: HTMLElement | null;
+  /** Opens the completed job's Google Drive folder when Drive returned one. */
+  uploadJobOpenDrive: HTMLButtonElement | null;
   /** "Retry upload" CTA, shown only for a failed/partial job. */
   uploadJobRetry: HTMLButtonElement | null;
 

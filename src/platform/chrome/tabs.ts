@@ -20,6 +20,13 @@ export async function createRuntimeTab(
   return await chrome.tabs.create({ url: getRuntimeUrl(path), ...options });
 }
 
+export async function createExternalTab(
+  url: string,
+  options: Pick<chrome.tabs.CreateProperties, 'active'> = {}
+): Promise<chrome.tabs.Tab> {
+  return await chrome.tabs.create({ url, ...options });
+}
+
 export async function removeTab(tabId: number): Promise<void> {
   await chrome.tabs.remove(tabId);
 }

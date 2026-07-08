@@ -25,6 +25,13 @@ export type UploadChunkResult = {
   durationMs: number;
   status: number | null;
   sentBytes: number;
+  file?: DriveUploadFile;
+};
+
+export type DriveUploadFile = {
+  id?: string;
+  name?: string;
+  webViewLink?: string;
 };
 
 /** Wraps a Drive PUT with a hard abort timeout. */
@@ -138,7 +145,12 @@ export async function uploadChunk(
       return { nextStart: chunkStart + chunkBody.size, attempts, hadRetry, durationMs: roundMs(nowMs() - chunkStartedAt), status: lastStatus, sentBytes: body.size };
     }
     if (isFinal && (res.status === 200 || res.status === 201)) {
-      return { nextStart: total, attempts, hadRetry, durationMs: roundMs(nowMs() - chunkStartedAt), status: lastStatus, sentBytes: body.size };
+      const json = typeof res.json === 'function' ? await res.json().catch(() => ({} as any)) : {};
+      const file: DriveUploadFile = {};
+      if (typeof json?.id === 'string' && json.id) file.id = json.id;
+      if (typeof json?.name === 'string' && json.name) file.name = json.name;
+      if (typeof json?.webViewLink === 'string' && json.webViewLink) file.webViewLink = json.webViewLink;
+      return { nextStart: total, attempts, hadRetry, durationMs: roundMs(nowMs() - chunkStartedAt), status: lastStatus, sentBytes: body.size, file };
     }
     if ((res.status === 401 || res.status === 403) && attempts < 2) {
       hadRetry = true;

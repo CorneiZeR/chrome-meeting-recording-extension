@@ -23,9 +23,16 @@ const STREAM_UPLOAD_ORDER: RecordingStream[] = ['tab', 'mic', 'self-video'];
 type UploadOutcome = {
   stream: RecordingStream;
   filename: string;
+  bytes: number;
   uploaded: boolean;
+  driveFileId?: string;
+  webViewLink?: string;
   error?: string;
 };
+
+function driveFolderWebViewLink(folderId: string | null): string | undefined {
+  return folderId ? `https://drive.google.com/drive/folders/${encodeURIComponent(folderId)}` : undefined;
+}
 
 export type RecordingFinalizerDeps = {
   log: (...a: any[]) => void;
@@ -158,9 +165,11 @@ export class RecordingFinalizer {
   ): Promise<UploadSummary> {
     const sharedGetUploadToken = createCachedTokenProvider(this.deps.getDriveToken);
     const folderResolver = new DriveFolderResolver(sharedGetUploadToken);
+    let folderWebViewLink: string | undefined;
     let sharedSetupError: string | null = null;
     try {
-      await folderResolver.resolveUploadParentId({ rootFolderName: DRIVE_ROOT_FOLDER_NAME, recordingFolderName });
+      const folderId = await folderResolver.resolveUploadParentId({ rootFolderName: DRIVE_ROOT_FOLDER_NAME, recordingFolderName });
+      folderWebViewLink = driveFolderWebViewLink(folderId);
     } catch (e) {
       sharedSetupError = describeRuntimeError(e);
       this.deps.warn('Drive setup failed; all artifacts will fall back locally', sharedSetupError);
@@ -185,6 +194,7 @@ export class RecordingFinalizer {
     };
 
     const summary: UploadSummary = { uploaded: [], localFallbacks: [] };
+    if (folderWebViewLink) summary.folderWebViewLink = folderWebViewLink;
     const outcomes = await runWithConcurrency(
       artifacts,
       Math.min(PERF_FLAGS.parallelUploadConcurrency, 2),
@@ -195,7 +205,7 @@ export class RecordingFinalizer {
           if (!skipLocalFallback) this.saveArtifactLocally(artifact, stream, 'fallback');
           markFileDone();
           logPerf(this.deps.log, 'finalizer', 'drive_file_complete', { filename: artifact.filename, stream, uploaded: false, durationMs: roundMs(nowMs() - startedAt) });
-          return { stream, filename: artifact.filename, uploaded: false, error: sharedSetupError } satisfies UploadOutcome;
+          return { stream, filename: artifact.filename, bytes: artifact.file.size, uploaded: false, error: sharedSetupError } satisfies UploadOutcome;
         }
 
         const driveTarget = new DriveTarget(artifact.filename, sharedGetUploadToken, (filename) => this.deps.log('Drive target complete:', filename), {
@@ -214,12 +224,19 @@ export class RecordingFinalizer {
         }
 
         try {
-          await driveTarget.upload(artifact.file);
+          const uploadedFile = await driveTarget.upload(artifact.file);
           if (opfsFilename) await this.deps.pendingUploads?.remove(opfsFilename);
           await this.cleanupArtifact(artifact);
           markFileDone();
           logPerf(this.deps.log, 'finalizer', 'drive_file_complete', { filename: artifact.filename, stream, uploaded: true, durationMs: roundMs(nowMs() - startedAt) });
-          return { stream, filename: artifact.filename, uploaded: true } satisfies UploadOutcome;
+          return {
+            stream,
+            filename: artifact.filename,
+            bytes: artifact.file.size,
+            uploaded: true,
+            driveFileId: uploadedFile?.id,
+            webViewLink: uploadedFile?.webViewLink,
+          } satisfies UploadOutcome;
         } catch (e) {
           const error = describeRuntimeError(e);
           // Falling back to a local download saves the file and cleans up OPFS,
@@ -234,16 +251,23 @@ export class RecordingFinalizer {
           }
           markFileDone();
           logPerf(this.deps.log, 'finalizer', 'drive_file_complete', { filename: artifact.filename, stream, uploaded: false, durationMs: roundMs(nowMs() - startedAt) });
-          return { stream, filename: artifact.filename, uploaded: false, error } satisfies UploadOutcome;
+          return { stream, filename: artifact.filename, bytes: artifact.file.size, uploaded: false, error } satisfies UploadOutcome;
         }
       }
     );
 
     for (const outcome of outcomes) {
       if (outcome.uploaded) {
-        summary.uploaded.push({ stream: outcome.stream, filename: outcome.filename });
+        const entry = {
+          stream: outcome.stream,
+          filename: outcome.filename,
+          bytes: outcome.bytes,
+        };
+        if (outcome.driveFileId) Object.assign(entry, { driveFileId: outcome.driveFileId });
+        if (outcome.webViewLink) Object.assign(entry, { webViewLink: outcome.webViewLink });
+        summary.uploaded.push(entry);
       } else {
-        summary.localFallbacks.push({ stream: outcome.stream, filename: outcome.filename, error: outcome.error });
+        summary.localFallbacks.push({ stream: outcome.stream, filename: outcome.filename, bytes: outcome.bytes, error: outcome.error });
       }
     }
 

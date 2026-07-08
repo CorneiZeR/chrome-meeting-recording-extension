@@ -45,12 +45,16 @@ export type RecordingRunConfig = {
 export type UploadSummaryEntry = {
   stream: RecordingStream;
   filename: string;
+bytes?: number;
+  driveFileId?: string;
+  webViewLink?: string;
   error?: string;
 };
 
 export type UploadSummary = {
   uploaded: UploadSummaryEntry[];
   localFallbacks: UploadSummaryEntry[];
+folderWebViewLink?: string;
 };
 
 /** Terminal-or-running state of one background Drive-upload job (ADR-0004). */
@@ -61,6 +65,9 @@ export type UploadJobFile = {
   stream: RecordingStream;
   filename: string;
   status: 'uploading' | 'uploaded' | 'fallback';
+bytes?: number;
+  driveFileId?: string;
+  webViewLink?: string;
 };
 
 /**

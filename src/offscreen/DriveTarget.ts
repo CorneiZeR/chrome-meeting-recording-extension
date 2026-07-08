@@ -22,7 +22,7 @@ import {
   type TokenProvider,
 } from './drive/request';
 import { uploadChunk, fetchWithTimeout } from './drive/DriveChunkUploader';
-import type { UploadChunkResult } from './drive/DriveChunkUploader';
+import type { DriveUploadFile, UploadChunkResult } from './drive/DriveChunkUploader';
 import { PERF_FLAGS, clamp, logPerf, nowMs, roundMs } from '../shared/perf';
 
 export type DriveTargetOptions = DriveFolderHierarchy;
@@ -30,6 +30,9 @@ export type DriveUploadSharedContext = {
   getUploadToken: TokenProvider;
   folderResolver: DriveFolderResolver;
   log?: (...a: any[]) => void;
+};
+export type DriveUploadResult = DriveUploadFile & {
+  webViewLink?: string;
 };
 
 type DriveTargetCtorOptions = DriveFolderHierarchy & {
@@ -72,10 +75,10 @@ export class DriveTarget {
   }
 
   /** Uploads the sealed artifact using Drive's resumable upload flow. */
-  async upload(file: Blob): Promise<void> {
+  async upload(file: Blob): Promise<DriveUploadResult | undefined> {
     if (this.used) throw new Error('Drive target already used');
     this.used = true;
-    if (file.size === 0) return;
+    if (file.size === 0) return undefined;
 
     const uploadStartedAt = nowMs();
     await this.initSession();
@@ -84,6 +87,7 @@ export class DriveTarget {
     let start = 0;
     let chunkSize = DRIVE_UPLOAD_CHUNK_BYTES;
     let fastChunkStreak = 0;
+    let uploadedFile: DriveUploadFile | undefined;
 
     while (start < total) {
       const endExclusive = Math.min(start + chunkSize, total);
@@ -91,6 +95,7 @@ export class DriveTarget {
       const isFinal = endExclusive >= total;
       const chunkResult = await uploadChunk(this.sessionUri!, this.getUploadToken, start, body, total, isFinal);
       start = chunkResult.nextStart;
+      uploadedFile = chunkResult.file ?? uploadedFile;
       this.onProgress?.(Math.min(start, total), total);
 
       logPerf(this.log, 'drive', 'chunk_uploaded', {
@@ -116,6 +121,7 @@ export class DriveTarget {
       durationMs: roundMs(nowMs() - uploadStartedAt),
     });
     this.onDone(this.filename);
+    return uploadedFile;
   }
 
   /** Starts a resumable upload session and stores the returned session URI. */

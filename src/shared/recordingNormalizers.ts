@@ -97,10 +97,20 @@ function parseUploadSummaryEntry(entry: unknown): UploadSummaryEntry | null {
   const filename = typeof candidate.filename === 'string' ? candidate.filename.trim() : '';
   if (!filename) return null;
   const error = typeof candidate.error === 'string' ? candidate.error.trim() : '';
+  const bytes = typeof candidate.bytes === 'number' && candidate.bytes >= 0 ? candidate.bytes : undefined;
+  const driveFileId = typeof candidate.driveFileId === 'string' && candidate.driveFileId.trim()
+    ? candidate.driveFileId.trim()
+    : undefined;
+  const webViewLink = typeof candidate.webViewLink === 'string' && candidate.webViewLink.trim()
+    ? candidate.webViewLink.trim()
+    : undefined;
 
   return {
     stream,
     filename,
+    bytes,
+    driveFileId,
+    webViewLink,
     error: error || undefined,
   };
 }
@@ -120,6 +130,9 @@ export function normalizeUploadSummary(value: unknown): UploadSummary | undefine
   return {
     uploaded: normalizeEntries(candidate.uploaded),
     localFallbacks: normalizeEntries(candidate.localFallbacks),
+    folderWebViewLink: typeof candidate.folderWebViewLink === 'string' && candidate.folderWebViewLink.trim()
+      ? candidate.folderWebViewLink.trim()
+      : undefined,
   };
 }
 
@@ -135,7 +148,21 @@ function parseUploadJobFile(value: unknown): UploadJobFile | null {
   if (!(VALID_RECORDING_STREAMS as readonly unknown[]).includes(stream)) return null;
   if (typeof filename !== 'string' || !filename) return null;
   if (!(VALID_UPLOAD_JOB_FILE_STATUSES as readonly unknown[]).includes(status)) return null;
-  return { stream: stream as RecordingStream, filename, status: status as UploadJobFile['status'] };
+  const bytes = typeof value.bytes === 'number' && value.bytes >= 0 ? value.bytes : undefined;
+  const driveFileId = typeof value.driveFileId === 'string' && value.driveFileId.trim()
+    ? value.driveFileId.trim()
+    : undefined;
+  const webViewLink = typeof value.webViewLink === 'string' && value.webViewLink.trim()
+    ? value.webViewLink.trim()
+    : undefined;
+  return {
+    stream: stream as RecordingStream,
+    filename,
+    status: status as UploadJobFile['status'],
+    bytes,
+    driveFileId,
+    webViewLink,
+  };
 }
 
 function parseUploadJob(value: unknown): UploadJob | null {
@@ -151,6 +178,9 @@ function parseUploadJob(value: unknown): UploadJob | null {
     label: typeof label === 'string' ? label : id,
     status: status as UploadJobStatus,
     progress: typeof progress === 'number' && progress >= 0 ? Math.min(1, progress) : 0,
+    folderWebViewLink: typeof value.folderWebViewLink === 'string' && value.folderWebViewLink.trim()
+      ? value.folderWebViewLink.trim()
+      : undefined,
     files: normalizedFiles,
     startedAt: typeof startedAt === 'number' && startedAt > 0 ? startedAt : Date.now(),
     finishedAt: typeof finishedAt === 'number' && finishedAt > 0 ? finishedAt : undefined,

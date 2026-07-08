@@ -58,7 +58,10 @@ describe('RecordingFinalizer', () => {
       if (this.filename === 'tab.webm') {
         return Promise.reject(new DOMException('network timeout', 'AbortError'));
       }
-      return Promise.resolve();
+      return Promise.resolve({
+        id: 'drive-mic',
+        webViewLink: 'https://drive.google.com/file/d/drive-mic/view',
+      });
     });
 
     const tab = makeArtifact('tab.webm');
@@ -74,14 +77,22 @@ describe('RecordingFinalizer', () => {
 
     expect(uploadSpy).toHaveBeenCalledTimes(2);
     expect(summary).toEqual({
-      uploaded: [{ stream: 'mic', filename: 'mic.webm' }],
+      uploaded: [{
+        stream: 'mic',
+        filename: 'mic.webm',
+        bytes: 4,
+        driveFileId: 'drive-mic',
+        webViewLink: 'https://drive.google.com/file/d/drive-mic/view',
+      }],
       localFallbacks: [
         {
           stream: 'tab',
           filename: 'tab.webm',
+          bytes: 4,
           error: 'AbortError: network timeout code=20',
         },
       ],
+      folderWebViewLink: 'https://drive.google.com/drive/folders/folder-1',
     });
     expect(deps.requestSave).toHaveBeenCalledWith('tab.webm', 'blob:4', 'tab.webm');
     expect(tab.cleanup).not.toHaveBeenCalled();
@@ -94,7 +105,7 @@ describe('RecordingFinalizer', () => {
       // tab fails -> local fallback; mic succeeds.
       return this.filename === 'tab.webm'
         ? Promise.reject(new DOMException('network timeout', 'AbortError'))
-        : Promise.resolve();
+        : Promise.resolve(undefined);
     });
 
     const pendingUploads = {
@@ -175,10 +186,11 @@ describe('RecordingFinalizer', () => {
 
     expect(summary).toEqual({
       uploaded: [
-        { stream: 'tab', filename: 'tab.webm' },
-        { stream: 'mic', filename: 'mic.webm' },
+        { stream: 'tab', filename: 'tab.webm', bytes: 4 },
+        { stream: 'mic', filename: 'mic.webm', bytes: 4 },
       ],
       localFallbacks: [],
+      folderWebViewLink: 'https://drive.google.com/drive/folders/folder-1',
     });
     expect(deps.getDriveToken).toHaveBeenCalledTimes(1);
   });
@@ -200,6 +212,7 @@ describe('RecordingFinalizer', () => {
       maxActiveUploads = Math.max(maxActiveUploads, activeUploads);
       await releasePromise;
       activeUploads -= 1;
+      return undefined;
     });
 
     const tab = makeArtifact('tab.webm');
@@ -222,10 +235,11 @@ describe('RecordingFinalizer', () => {
     expect(maxActiveUploads).toBe(2);
     expect(summary).toEqual({
       uploaded: [
-        { stream: 'tab', filename: 'tab.webm' },
-        { stream: 'mic', filename: 'mic.webm' },
+        { stream: 'tab', filename: 'tab.webm', bytes: 4 },
+        { stream: 'mic', filename: 'mic.webm', bytes: 4 },
       ],
       localFallbacks: [],
+      folderWebViewLink: 'https://drive.google.com/drive/folders/folder-1',
     });
   });
 
@@ -248,8 +262,8 @@ describe('RecordingFinalizer', () => {
     expect(summary).toEqual({
       uploaded: [],
       localFallbacks: [
-        { stream: 'tab', filename: 'tab.webm', error: 'Error: folder lookup failed' },
-        { stream: 'mic', filename: 'mic.webm', error: 'Error: folder lookup failed' },
+        { stream: 'tab', filename: 'tab.webm', bytes: 4, error: 'Error: folder lookup failed' },
+        { stream: 'mic', filename: 'mic.webm', bytes: 4, error: 'Error: folder lookup failed' },
       ],
     });
     expect(deps.requestSave).toHaveBeenNthCalledWith(1, 'tab.webm', 'blob:4', 'tab.webm');
@@ -264,7 +278,10 @@ describe('RecordingFinalizer', () => {
       if (this.filename === 'tab.webm') {
         return Promise.reject(new DOMException('network timeout', 'AbortError'));
       }
-      return Promise.resolve();
+      return Promise.resolve({
+        id: 'drive-mic',
+        webViewLink: 'https://drive.google.com/file/d/drive-mic/view',
+      });
     });
 
     const tab = makeArtifact('tab.webm');
@@ -279,10 +296,17 @@ describe('RecordingFinalizer', () => {
     });
 
     expect(summary).toEqual({
-      uploaded: [{ stream: 'mic', filename: 'mic.webm' }],
+      uploaded: [{
+        stream: 'mic',
+        filename: 'mic.webm',
+        bytes: 4,
+        driveFileId: 'drive-mic',
+        webViewLink: 'https://drive.google.com/file/d/drive-mic/view',
+      }],
       localFallbacks: [
-        { stream: 'tab', filename: 'tab.webm', error: 'AbortError: network timeout code=20' },
+        { stream: 'tab', filename: 'tab.webm', bytes: 4, error: 'AbortError: network timeout code=20' },
       ],
+      folderWebViewLink: 'https://drive.google.com/drive/folders/folder-1',
     });
     expect(deps.requestSave).toHaveBeenCalledWith('tab.webm', 'blob:4', 'tab.webm');
     expect(mic.cleanup).toHaveBeenCalledTimes(1);
@@ -298,6 +322,7 @@ describe('RecordingFinalizer', () => {
     jest.spyOn(DriveTarget.prototype, 'upload').mockImplementation(async function (this: any, file: Blob) {
       this.onProgress?.(file.size / 2, file.size);
       this.onProgress?.(file.size, file.size);
+      return undefined;
     });
 
     const onUploadProgress = jest.fn();
@@ -323,7 +348,7 @@ describe('RecordingFinalizer', () => {
     jest.spyOn(DriveTarget.prototype, 'upload').mockImplementation(function (this: any) {
       return this.filename === 'tab.webm'
         ? Promise.reject(new DOMException('network timeout', 'AbortError'))
-        : Promise.resolve();
+        : Promise.resolve(undefined);
     });
 
     const onUploadProgress = jest.fn();
@@ -350,7 +375,7 @@ describe('RecordingFinalizer', () => {
       artifacts: [{ stream: 'tab', artifact: makeArtifact('tab.webm') }],
     });
 
-    expect(summary?.localFallbacks).toEqual([{ stream: 'tab', filename: 'tab.webm', error: expect.any(String) }]);
+    expect(summary?.localFallbacks).toEqual([{ stream: 'tab', filename: 'tab.webm', bytes: 4, error: expect.any(String) }]);
     expect(deps.requestSave).toHaveBeenCalledWith('tab.webm', expect.any(String), 'tab.webm');
   });
 
@@ -365,7 +390,7 @@ describe('RecordingFinalizer', () => {
     });
 
     // Still reported as not-uploaded — but NOT re-downloaded (the original failure saved it).
-    expect(summary?.localFallbacks).toEqual([{ stream: 'tab', filename: 'tab.webm', error: expect.any(String) }]);
+    expect(summary?.localFallbacks).toEqual([{ stream: 'tab', filename: 'tab.webm', bytes: 4, error: expect.any(String) }]);
     expect(deps.requestSave).not.toHaveBeenCalled();
   });
 });

@@ -55,6 +55,7 @@ const controller = new PopupController({
   chipStorageLabel: byId('chip-storage-label'),
   micRow: byId('row-mic'),
   micModeLabel: byId('mic-mode-label'),
+  micMeterBars: Array.from(document.querySelectorAll<HTMLElement>('#row-mic .meter span')),
   muteMicBtn: byId<HTMLButtonElement>('mute-mic'),
   cameraRow: byId('row-camera'),
   hideCameraBtn: byId<HTMLButtonElement>('hide-camera'),
@@ -80,6 +81,7 @@ const controller = new PopupController({
   uploadJobLabel: byId('upload-job-label'),
   uploadJobSub: byId('upload-job-sub'),
   uploadJobFiles: byId('upload-job-files'),
+  uploadJobOpenDrive: byId<HTMLButtonElement>('upload-job-open-drive'),
   uploadJobRetry: byId<HTMLButtonElement>('upload-job-retry'),
 
   // Shared status / toast line

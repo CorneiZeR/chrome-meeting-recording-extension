@@ -7,7 +7,7 @@
 
 /** Resumable upload endpoint for media file creation. */
 export const DRIVE_UPLOAD_URL =
-  'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&supportsAllDrives=true';
+  'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&supportsAllDrives=true&fields=id,name,webViewLink';
 
 /** Files endpoint used for folder lookup/creation. */
 export const DRIVE_FILES_URL =

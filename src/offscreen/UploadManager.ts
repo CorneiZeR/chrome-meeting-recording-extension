@@ -91,7 +91,12 @@ export class UploadManager {
       label: inferDriveRecordingFolderName(artifacts[0]?.artifact.filename ?? id),
       status: 'uploading',
       progress: 0,
-      files: artifacts.map(({ stream, artifact }) => ({ stream, filename: artifact.filename, status: 'uploading' })),
+      files: artifacts.map(({ stream, artifact }) => ({
+        stream,
+        filename: artifact.filename,
+        status: 'uploading',
+        bytes: artifact.file.size,
+      })),
       startedAt: this.now(),
     };
     this.pending.push({ job, artifacts, skipLocalFallback });
@@ -166,15 +171,22 @@ export class UploadManager {
    * file to done (uploaded or saved locally) before returning.
    */
   private settle(job: UploadJob, summary: UploadSummary | undefined): UploadJob {
-    const uploaded = new Set((summary?.uploaded ?? []).map((e) => e.filename));
-    const fellBack = new Set((summary?.localFallbacks ?? []).map((e) => e.filename));
-    const files: UploadJobFile[] = job.files.map((f) => ({
-      ...f,
-      status: uploaded.has(f.filename) ? 'uploaded' : fellBack.has(f.filename) ? 'fallback' : f.status,
-    }));
+    const uploaded = new Map((summary?.uploaded ?? []).map((e) => [e.filename, e]));
+    const fellBack = new Map((summary?.localFallbacks ?? []).map((e) => [e.filename, e]));
+    const files: UploadJobFile[] = job.files.map((f) => {
+      const uploadedFile = uploaded.get(f.filename);
+      const fallbackFile = fellBack.get(f.filename);
+      return {
+        ...f,
+        bytes: uploadedFile?.bytes ?? fallbackFile?.bytes ?? f.bytes,
+        driveFileId: uploadedFile?.driveFileId ?? f.driveFileId,
+        webViewLink: uploadedFile?.webViewLink ?? f.webViewLink,
+        status: uploadedFile ? 'uploaded' : fallbackFile ? 'fallback' : f.status,
+      };
+    });
     const allFallback = files.length > 0 && files.every((f) => f.status === 'fallback');
     const anyFallback = files.some((f) => f.status === 'fallback');
     const status: UploadJobStatus = allFallback ? 'failed' : anyFallback ? 'partial' : 'completed';
-    return { ...job, status, progress: 1, files, finishedAt: this.now() };
+    return { ...job, status, progress: 1, folderWebViewLink: summary?.folderWebViewLink ?? job.folderWebViewLink, files, finishedAt: this.now() };
   }
 }
