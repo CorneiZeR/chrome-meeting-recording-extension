@@ -31,7 +31,10 @@ export type RpcHandlerDeps = {
   onStopRequested: () => void;
   /** Re-uploads a failed/partial background upload job; false when not retryable (ADR-0004). */
   retryUpload: (jobId: string) => boolean;
-  pushState: (phase: RecordingPhase, extra?: Pick<OffscreenPhaseUpdate, 'uploadSummary' | 'error'>) => void;
+  pushState: (
+    phase: RecordingPhase,
+    extra?: Pick<OffscreenPhaseUpdate, 'uploadSummary' | 'error' | 'tabResolution'>
+  ) => void;
   clearWarnings: () => void;
   log: (...a: any[]) => void;
   error: (...a: any[]) => void;

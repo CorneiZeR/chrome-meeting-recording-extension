@@ -42,10 +42,16 @@ export type RecordingRunConfig = {
   tabContentType?: TabContentType;
 };
 
+/** Delivered dimensions of the captured meeting-tab video track. */
+export type CapturedTabResolution = {
+  width?: number;
+  height?: number;
+};
+
 export type UploadSummaryEntry = {
   stream: RecordingStream;
   filename: string;
-bytes?: number;
+  bytes?: number;
   driveFileId?: string;
   webViewLink?: string;
   error?: string;
@@ -54,7 +60,7 @@ bytes?: number;
 export type UploadSummary = {
   uploaded: UploadSummaryEntry[];
   localFallbacks: UploadSummaryEntry[];
-folderWebViewLink?: string;
+  folderWebViewLink?: string;
 };
 
 /** Terminal-or-running state of one background Drive-upload job (ADR-0004). */
@@ -65,7 +71,7 @@ export type UploadJobFile = {
   stream: RecordingStream;
   filename: string;
   status: 'uploading' | 'uploaded' | 'fallback';
-bytes?: number;
+  bytes?: number;
   driveFileId?: string;
   webViewLink?: string;
 };
@@ -84,6 +90,8 @@ export type UploadJob = {
   status: UploadJobStatus;
   /** Aggregate upload progress across the job's files, fraction in [0, 1]. */
   progress: number;
+  /** Browser-openable Drive folder URL once the upload parent is known. */
+  folderWebViewLink?: string;
   files: UploadJobFile[];
   startedAt: number;
   /** Set once the job reaches a terminal status (completed / failed / partial). */
@@ -167,6 +175,12 @@ export type RecordingSessionSnapshot = {
   recordedMs?: number;
   runningSince?: number;
   /**
+   * Real delivered dimensions from the captured tab video track's getSettings().
+   * Only meaningful while an active run exists; omitted when Chrome does not
+   * expose dimensions or after the session returns to idle.
+   */
+  tabResolution?: CapturedTabResolution;
+  /**
    * Background Drive-upload jobs that have been detached from the recording
    * session (ADR-0004). Phase-independent — a job keeps running (and stays on the
    * snapshot) while a new recording starts — and persisted so a reopened popup can
@@ -196,6 +210,8 @@ export type RecordingStatusView = {
   /** Pause-aware recording timer state; see {@link RecordingSessionSnapshot.recordedMs}. */
   recordedMs?: number;
   runningSince?: number;
+  /** Real captured tab dimensions; see {@link RecordingSessionSnapshot.tabResolution}. */
+  tabResolution?: CapturedTabResolution;
   /** Background Drive-upload jobs; see {@link RecordingSessionSnapshot.uploadJobs}. */
   uploadJobs?: UploadJob[];
   updatedAt: number;

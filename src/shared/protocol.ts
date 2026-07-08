@@ -12,6 +12,7 @@ import type {
   RecordingRunConfig,
   RecordingStatusView,
   RecordingPhase,
+  CapturedTabResolution,
   UploadJob,
   UploadSummary,
 } from './recording';
@@ -128,6 +129,7 @@ export type OffscreenPhaseUpdate = {
   uploadSummary?: UploadSummary;
   error?: string;
   warnings?: string[];
+  tabResolution?: CapturedTabResolution;
 };
 
 export type BgToOffscreenRpc =

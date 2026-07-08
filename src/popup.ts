@@ -85,6 +85,7 @@ const controller = new PopupController({
   uploadJobRetry: byId<HTMLButtonElement>('upload-job-retry'),
   cameraWarning: byId('camera-warning'),
   cameraWarningText: byId('camera-warning-text'),
+  tabSourceSub: byId('tab-source-sub'),
 
   // Shared status / toast line
   recordingStatusEl: byId('recording-status'),

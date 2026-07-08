@@ -222,7 +222,7 @@ describe('RecorderEngine', () => {
 
     const baseStream = makeStream({
       audioTracks: [makeTrack('audio', { suppressLocalAudioPlayback: false })],
-      videoTracks: [makeTrack('video')],
+      videoTracks: [makeTrack('video', { width: 1920, height: 1080 })],
     });
     (navigator.mediaDevices.getUserMedia as jest.Mock).mockResolvedValue(baseStream);
     deps.openTarget = jest.fn(async (filename: string, mimeType?: string) =>
@@ -250,7 +250,7 @@ describe('RecorderEngine', () => {
   it('notifies the recording phase exactly once even when several recorders start', async () => {
     const baseStream = makeStream({
       audioTracks: [makeTrack('audio', { suppressLocalAudioPlayback: false })],
-      videoTracks: [makeTrack('video')],
+      videoTracks: [makeTrack('video', { width: 1920, height: 1080 })],
     });
 
     (navigator.mediaDevices.getUserMedia as jest.Mock).mockImplementation(async (constraints: MediaStreamConstraints) => {
@@ -266,7 +266,9 @@ describe('RecorderEngine', () => {
 
     expect(engine.getActiveRecorderCount()).toBe(2);
     expect(deps.notifyPhase).toHaveBeenCalledTimes(1);
-    expect(deps.notifyPhase).toHaveBeenCalledWith('recording');
+    expect(deps.notifyPhase).toHaveBeenCalledWith('recording', {
+      tabResolution: { width: 1920, height: 1080 },
+    });
 
     await engine.stop();
   });

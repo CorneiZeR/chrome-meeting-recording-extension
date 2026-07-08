@@ -157,6 +157,29 @@ describe('session snapshot recording timer', () => {
   });
 });
 
+describe('session snapshot tabResolution', () => {
+  const active = (extra: Record<string, unknown> = {}) => ({
+    phase: 'recording',
+    runConfig: { storageMode: 'local', micMode: 'off', recordSelfVideo: false },
+    updatedAt: 1,
+    ...extra,
+  });
+
+  it('keeps real tab dimensions only while a recording is active', () => {
+    expect(normalizeSessionSnapshot(active({ tabResolution: { width: 1920, height: 1080 } })).tabResolution)
+      .toEqual({ width: 1920, height: 1080 });
+    expect(normalizeSessionSnapshot(active({ tabResolution: { width: -1, height: 719.6 } })).tabResolution)
+      .toEqual({ width: undefined, height: 720 });
+    expect(normalizeSessionSnapshot({ phase: 'idle', tabResolution: { width: 1920, height: 1080 }, updatedAt: 1 }).tabResolution)
+      .toBeUndefined();
+  });
+
+  it('projects tabResolution onto the popup status view', () => {
+    const view = toStatusView(active({ tabResolution: { width: 1280, height: 720 } }) as any);
+    expect(view.tabResolution).toEqual({ width: 1280, height: 720 });
+  });
+});
+
 describe('session snapshot desired/observed migration (ADR-0003 Decision 4)', () => {
   it('reconstructs the planes from each legacy phase and round-trips the derived phase', () => {
     const cases: Array<[RecordingPhase, DesiredState, ObservedState, boolean]> = [

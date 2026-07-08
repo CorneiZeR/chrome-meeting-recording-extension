@@ -50,6 +50,7 @@ describe('PopupController', () => {
       startBtn: document.createElement('button'),
       storageModeSelect: document.createElement('select'),
       recordSelfVideoCheckbox: document.createElement('input'),
+      tabContentTypeGroup: document.createElement('div'),
       openSettingsBtn: document.createElement('button'),
       openDiagnosticsBtn: document.createElement('button'),
       cameraWarning: document.createElement('div'),
@@ -84,6 +85,7 @@ describe('PopupController', () => {
       hideCameraBtn: pill('data-camera-label'),
       pauseBtn: pill('data-pause-label'),
       stopBtn: document.createElement('button'),
+      tabSourceSub: document.createElement('div'),
 
       // Finalizing view
       finalizingLabel: document.createElement('div'),
@@ -104,6 +106,7 @@ describe('PopupController', () => {
       uploadJobLabel: document.createElement('div'),
       uploadJobSub: document.createElement('div'),
       uploadJobFiles: document.createElement('ul'),
+      uploadJobOpenDrive: document.createElement('button'),
       uploadJobRetry: document.createElement('button'),
 
       // Shared
@@ -983,6 +986,15 @@ describe('PopupController', () => {
       await new Promise(process.nextTick);
       expect(elements.micRow.hidden).toBe(true);
     });
+  });
+
+  it('renders the meeting tab source from the run config content type', async () => {
+    mockSendMessage.mockResolvedValueOnce(recordingSession({
+      runConfig: { storageMode: 'local', micMode: 'off', recordSelfVideo: false, tabContentType: 'video' },
+    }));
+    controller.init();
+    await new Promise(process.nextTick);
+    expect(elements.tabSourceSub.textContent).toBe('Video');
   });
 
   describe('hide-camera toggle (recording-view row)', () => {

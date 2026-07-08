@@ -91,7 +91,10 @@ export class OffscreenController {
   onStopRequested = (): void => { void this.finalize(); };
 
   /** Advances the broadcast phase, rebaselining the lag clock on a new active phase. */
-  pushState = (phase: RecordingPhase, extra?: Pick<OffscreenPhaseUpdate, 'uploadSummary' | 'error'>): void => {
+  pushState = (
+    phase: RecordingPhase,
+    extra?: Pick<OffscreenPhaseUpdate, 'uploadSummary' | 'error' | 'tabResolution'>
+  ): void => {
     if (phase !== this.phase && phase !== 'idle') {
       this.deps.sampler.markActivePhaseStart(this.now());
     }

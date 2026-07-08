@@ -19,6 +19,7 @@ import {
   VALID_TAB_CONTENT_TYPES,
 } from './recordingConstants';
 import type {
+  CapturedTabResolution,
   DesiredState,
   MicMode,
   ObservedState,
@@ -234,6 +235,19 @@ function normalizeEpoch(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : undefined;
 }
 
+function normalizePositiveInt(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0
+    ? Math.round(value)
+    : undefined;
+}
+
+function normalizeTabResolution(value: unknown): CapturedTabResolution | undefined {
+  if (!isRecord(value)) return undefined;
+  const width = normalizePositiveInt(value.width);
+  const height = normalizePositiveInt(value.height);
+  return width != null || height != null ? { width, height } : undefined;
+}
+
 const VALID_OBSERVED_STATES: readonly ObservedState[] = [
   'none',
   'starting',
@@ -337,6 +351,7 @@ export function normalizeSessionSnapshot(value: unknown): RecordingSessionSnapsh
         : typeof candidate.runningSince === 'number' && candidate.runningSince > 0
           ? candidate.runningSince
           : undefined,
+    tabResolution: phase === 'idle' ? undefined : normalizeTabResolution(candidate.tabResolution),
     updatedAt: typeof candidate.updatedAt === 'number' ? candidate.updatedAt : Date.now(),
   };
 }

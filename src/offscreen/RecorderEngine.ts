@@ -8,7 +8,7 @@
 
 import { captureTabStreamFromId } from './RecorderCapture';
 import { buildRecorderRuntimeSettingsSnapshot, type RecorderRuntimeSettingsSnapshot } from '../shared/settings';
-import { DEFAULT_RECORDING_RUN_CONFIG, isStoppablePhase, type MicMode, type RecordingRunConfig, type RecordingStream } from '../shared/recording';
+import { DEFAULT_RECORDING_RUN_CONFIG, isStoppablePhase, type CapturedTabResolution, type MicMode, type RecordingRunConfig, type RecordingStream } from '../shared/recording';
 import { describeMediaError } from './RecorderSupport';
 import type { MixedAudioMixer } from './RecorderAudio';
 import type { AudioPlaybackBridge } from './RecorderAudio';
@@ -52,6 +52,7 @@ export class RecorderEngine {
   private tabCaptureStream: MediaStream | null = null;
   private tabRecordingStream: MediaStream | null = null;
   private micStream: MediaStream | null = null;
+  private tabResolution: CapturedTabResolution | undefined;
   private readonly micLevelMonitor = new MicLevelMonitor();
 
   private suffix = '';
@@ -85,7 +86,7 @@ export class RecorderEngine {
 
   getActiveRecorderCount(): number { return this.activeRecorders; }
   getDebugState(): EngineState { return this.state; }
-getMicLevel(): number { return this.micMuted ? 0 : this.micLevelMonitor.level(); }
+  getMicLevel(): number { return this.micMuted ? 0 : this.micLevelMonitor.level(); }
 
   /**
    * Mutes or unmutes the live microphone. Silence-in-place: `track.enabled =
@@ -222,6 +223,7 @@ getMicLevel(): number { return this.micMuted ? 0 : this.micLevelMonitor.level();
   ): Promise<MediaStream> {
     const baseStream = await captureTabStreamFromId(streamId, recorderSettings.tab.output, this.deps);
     this.tabCaptureStream = baseStream;
+    this.tabResolution = RecorderEngine.readTabResolution(baseStream);
     logStreamAcquired(baseStream, this.deps);
 
     this.playback = await ensureAudiblePlayback(baseStream, this.deps);
@@ -390,7 +392,7 @@ getMicLevel(): number { return this.micMuted ? 0 : this.micLevelMonitor.level();
   }
 
   private onRecorderStarted() {
-    if (this.activeRecorders === 0) this.deps.notifyPhase('recording');
+    if (this.activeRecorders === 0) this.deps.notifyPhase('recording', { tabResolution: this.tabResolution });
     this.activeRecorders += 1;
   }
 
@@ -430,6 +432,7 @@ getMicLevel(): number { return this.micMuted ? 0 : this.micLevelMonitor.level();
     this.safeStopStream(this.micStream);
     this.micLevelMonitor.stop();
     this.tabCaptureStream = null; this.tabRecordingStream = null; this.micStream = null;
+    this.tabResolution = undefined;
     this.playback?.stop(); this.playback = null;
     this.mixedAudio?.stop(); this.mixedAudio = null;
     this.suffix = '';
@@ -443,5 +446,12 @@ getMicLevel(): number { return this.micMuted ? 0 : this.micLevelMonitor.level();
     this.finalizedArtifacts = [];
     this.stopPromise = null; this.resolveStop = null;
     this.pendingStartPromises = [];
+  }
+
+  private static readTabResolution(stream: MediaStream): CapturedTabResolution | undefined {
+    const settings = stream.getVideoTracks()[0]?.getSettings?.();
+    const width = typeof settings?.width === 'number' && settings.width > 0 ? Math.round(settings.width) : undefined;
+    const height = typeof settings?.height === 'number' && settings.height > 0 ? Math.round(settings.height) : undefined;
+    return width != null || height != null ? { width, height } : undefined;
   }
 }

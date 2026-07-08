@@ -12,6 +12,7 @@
  */
 
 export type {
+  CapturedTabResolution,
   DesiredState,
   MicMode,
   ObservedState,

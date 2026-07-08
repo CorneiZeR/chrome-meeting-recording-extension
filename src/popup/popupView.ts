@@ -81,6 +81,7 @@ export type PopupElements = {
   uploadJobRetry: HTMLButtonElement | null;
   cameraWarning: HTMLElement | null;
   cameraWarningText: HTMLElement | null;
+  tabSourceSub: HTMLElement | null;
 
   // Shared status / toast line
   recordingStatusEl: HTMLElement | null;

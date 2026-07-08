@@ -174,6 +174,7 @@ export class PopupController {
 
     if (view === 'recording') {
       this.updateRecordingBanner(phase, session);
+      this.updateTabSourceInfo(session);
       this.updateChips(session);
       this.updateMuteControl(session);
       this.updateCameraControl(session);
@@ -414,6 +415,15 @@ export class PopupController {
         session?.runConfig?.storageMode === 'drive' ? 'Google Drive' : 'Local Disk';
     }
   }
+
+  private updateTabSourceInfo(session?: RecordingStatusView) {
+    if (!this.el.tabSourceSub) return;
+    const contentType = session?.runConfig?.tabContentType === 'video' ? 'Video' : 'Screen';
+    const height = session?.tabResolution?.height;
+    this.el.tabSourceSub.textContent =
+      typeof height === 'number' && height > 0 ? `${contentType} · ${Math.round(height)}p` : contentType;
+  }
+
   private syncMicLevelPoller(phase: RecordingPhase, session?: RecordingStatusView): void {
     const micMode = session?.runConfig?.micMode;
     const micActive = micMode === 'mixed' || micMode === 'separate';
