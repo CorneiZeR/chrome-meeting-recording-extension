@@ -121,7 +121,7 @@
   animation: mrPulse 1.6s ease-in-out infinite;
 }
 
-/* Static mic level meter (representative until live levels are wired). */
+/* Live mic level meter; PopupController toggles `.lit` on the existing bars. */
 .meter {
   display: flex;
   align-items: center;
@@ -203,4 +203,3 @@
 .chips {
   display: none;
 }
-

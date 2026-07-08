@@ -398,6 +398,34 @@ describe('RecordingController', () => {
     });
   });
 
+  describe('getMicLevel', () => {
+    it('returns zero without offscreen RPC when the run has no active unmuted mic', async () => {
+      session.start({ storageMode: 'local', micMode: 'off', recordSelfVideo: false }, { targetTabId: 42 });
+      session.applyOffscreenPhase({ phase: 'recording' });
+
+      await expect(controller.getMicLevel()).resolves.toEqual({ level: 0 });
+      expect(offscreen.rpc).not.toHaveBeenCalled();
+
+      session.start({ storageMode: 'local', micMode: 'separate', recordSelfVideo: false }, { targetTabId: 42 });
+      session.applyOffscreenPhase({ phase: 'recording' });
+      session.setMicMuted(true);
+
+      await expect(controller.getMicLevel()).resolves.toEqual({ level: 0 });
+      expect(offscreen.rpc).not.toHaveBeenCalled();
+    });
+
+    it('requests OFFSCREEN_GET_MIC_LEVEL only for an active unpaused mic recording', async () => {
+      session.start({ storageMode: 'local', micMode: 'mixed', recordSelfVideo: false }, { targetTabId: 42 });
+      session.applyOffscreenPhase({ phase: 'recording' });
+      offscreen.rpc.mockResolvedValue({ level: 0.42 });
+
+      await expect(controller.getMicLevel()).resolves.toEqual({ level: 0.42 });
+
+      expect(offscreen.ensureReady).toHaveBeenCalled();
+      expect(offscreen.rpc).toHaveBeenCalledWith({ type: 'OFFSCREEN_GET_MIC_LEVEL' });
+    });
+  });
+
   describe('retryUpload', () => {
     it('forwards OFFSCREEN_RETRY_UPLOAD even when idle (uploads are detached)', async () => {
       // No recording active — retry must still reach the offscreen.

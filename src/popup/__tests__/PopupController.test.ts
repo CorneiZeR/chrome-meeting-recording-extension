@@ -78,6 +78,7 @@ describe('PopupController', () => {
       chipStorageLabel: document.createElement('span'),
       micRow: document.createElement('div'),
       micModeLabel: document.createElement('span'),
+      micMeterBars: Array.from({ length: 7 }, () => document.createElement('span')),
       muteMicBtn: pill('data-mute-label'),
       cameraRow: document.createElement('div'),
       hideCameraBtn: pill('data-camera-label'),
@@ -1036,7 +1037,8 @@ describe('PopupController', () => {
       expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ type: 'SET_PAUSED', paused: true });
       expect(label.textContent).toBe('Resume');
       expect(pill.getAttribute('aria-pressed')).toBe('true');
-      expect(pill.classList.contains('btn-danger')).toBe(true);
+      expect(pill.classList.contains('btn-primary')).toBe(true);
+      expect(pill.classList.contains('btn-danger')).toBe(false);
     });
 
     it('reverts the toggle when the background rejects the pause', async () => {

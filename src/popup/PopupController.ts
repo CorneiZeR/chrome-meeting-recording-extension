@@ -9,6 +9,7 @@
 import { CameraPermissionService } from './CameraPermissionService';
 import { CaptionPoller } from './CaptionPoller';
 import { MicPermissionService } from './MicPermissionService';
+import { MicLevelPoller, renderMicLevelBars } from './MicLevelPoller';
 import { RecordingTimer } from './RecordingTimer';
 import { SessionTabsView } from './SessionTabsView';
 import { PopupStateController } from './controllers/PopupStateController';
@@ -76,6 +77,7 @@ export class PopupController {
   private readonly state: PopupStateController;
   private readonly timer: RecordingTimer;
   private readonly captionPoller: CaptionPoller;
+  private readonly micLevelPoller: MicLevelPoller;
   private readonly sessionTabs: SessionTabsView;
   private inFlight = false;
   private statusTimer: ReturnType<typeof setTimeout> | null = null;
@@ -92,6 +94,7 @@ export class PopupController {
     this.el = el;
     this.timer = new RecordingTimer(el.recTimer);
     this.captionPoller = new CaptionPoller(el.chipTranscriptLabel, el.chipTranscript);
+    this.micLevelPoller = new MicLevelPoller(el.micMeterBars);
     this.state = new PopupStateController(el, {
       onPhaseChange: (phase, session) => this.onPhaseChange(phase, session),
       onToast: (msg) => this.toast(msg),
@@ -133,6 +136,7 @@ export class PopupController {
     }
     this.timer.stop();
     this.captionPoller.stop();
+    this.micLevelPoller.stop();
     this.sessionTabs.dispose();
   }
 
@@ -153,6 +157,7 @@ export class PopupController {
     if (job) {
       this.timer.stop();
       this.captionPoller.stop();
+      this.micLevelPoller.stop();
       if (this.el.viewConfig) this.el.viewConfig.hidden = true;
       if (this.el.viewPermission) this.el.viewPermission.hidden = true;
       if (this.el.viewRecording) this.el.viewRecording.hidden = true;
@@ -176,9 +181,11 @@ export class PopupController {
       if (this.el.stopBtn) this.el.stopBtn.disabled = false;
       this.timer.sync(phase, session);
       this.captionPoller.start();
+      this.syncMicLevelPoller(phase, session);
     } else {
       this.timer.stop();
       this.captionPoller.stop();
+      this.micLevelPoller.stop();
       this.micMuted = this.cameraMuted = this.paused = false;
       if (view === 'finalizing') this.updateFinalizingView(phase, session);
       if (view === 'config' && this.el.startBtn) this.el.startBtn.disabled = false;
@@ -288,12 +295,14 @@ export class PopupController {
     row.hidden = !active;
     if (!active) {
       this.micMuted = false;
+      this.micLevelPoller.stop();
       return;
     }
 
     if (this.el.micModeLabel) this.el.micModeLabel.textContent = `· ${micMode}`;
     this.micMuted = session?.micMuted === true;
     this.renderTogglePill(btn, this.micMuted, '[data-mute-label]');
+    if (this.micMuted) renderMicLevelBars(this.el.micMeterBars, 0);
   }
 
   /**
@@ -381,8 +390,9 @@ export class PopupController {
     btn.disabled = !recording;
     this.paused = recording && session?.paused === true;
     btn.setAttribute('aria-pressed', String(this.paused));
-    btn.classList.toggle('btn-danger', this.paused);
+    btn.classList.toggle('btn-primary', this.paused);
     btn.classList.toggle('btn-secondary', !this.paused);
+    btn.classList.remove('btn-danger');
     const label = btn.querySelector<HTMLElement>('[data-pause-label]') ?? btn;
     label.textContent = this.paused ? 'Resume' : 'Pause';
   }
@@ -403,6 +413,17 @@ export class PopupController {
       this.el.chipStorageLabel.textContent =
         session?.runConfig?.storageMode === 'drive' ? 'Google Drive' : 'Local Disk';
     }
+  }
+  private syncMicLevelPoller(phase: RecordingPhase, session?: RecordingStatusView): void {
+    const micMode = session?.runConfig?.micMode;
+    const micActive = micMode === 'mixed' || micMode === 'separate';
+    const shouldPoll =
+      phase === 'recording'
+      && session?.paused !== true
+      && micActive
+      && session?.micMuted !== true;
+    if (shouldPoll) this.micLevelPoller.start();
+    else this.micLevelPoller.stop();
   }
 
   /** Populates the finalizing view: indeterminate spinner + run metadata (storage/duration/mic/camera). */
