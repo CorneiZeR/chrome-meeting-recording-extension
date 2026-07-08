@@ -198,6 +198,7 @@ module.exports = (_env, argv) => {
           },
           { from: path.join(STATIC_DIR, 'popup.html'),     to: 'popup.html' },
           { from: path.join(STATIC_DIR, 'styles'),         to: 'styles' },
+          { from: path.join(STATIC_DIR, 'fonts'),          to: 'fonts' },
           { from: path.join(STATIC_DIR, 'debug.html'),     to: 'debug.html' },
           { from: path.join(STATIC_DIR, 'offscreen.html'), to: 'offscreen.html', noErrorOnMissing: true },
           { from: path.join(STATIC_DIR, 'micsetup.html'), to: 'micsetup.html' },
