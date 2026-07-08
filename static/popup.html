@@ -5,6 +5,15 @@
     <meta charset="utf-8" />
     <title>Google Meet Helper</title>
     <style>
+      /*
+        Meet Recorder popup — "Meet Recorder Design System" restyle.
+
+        The popup body *is* the design's 288px card: a single dark surface with a
+        persistent wordmark header, a grouped-list section per state, and one accent
+        set (blue action / green ready / red recording / amber warning). Every state
+        the PopupController drives (config / recording / finalizing / per-job upload)
+        keeps its original element ids and toggle classes — this file only restyles.
+      */
       *,
       *::before,
       *::after {
@@ -13,56 +22,108 @@
         padding: 0;
       }
 
-      /* The `hidden` attribute must win over component display rules (.btn,
-         .toggle-row, .chip all set `display`, which would otherwise override the
-         UA [hidden] style and leave hidden controls/rows visible). */
+      :root {
+        --accent: #4c7fe3;
+        --accent-hi: #7da4f5;
+        --ready: #3fb950;
+        --rec: #e5484d;
+        --warn: #c69a5a;
+        --surface: #131417;
+        --list-border: #262a31;
+        --list-top: #1b1d23;
+        --list-bottom: #17181d;
+        --divider: #23262c;
+        --ink: #eef0f3;
+        --ink-2: #c4c9d2;
+        --ink-3: #8b909c;
+        --ink-4: #6b7080;
+      }
+
+      /* The `hidden` attribute must win over component display rules (.btn, .srow,
+         .chip all set `display`, which would otherwise override the UA [hidden]
+         style and leave hidden controls/rows visible). */
       [hidden] {
         display: none !important;
       }
 
       body {
-        width: 280px;
-        font-family: 'Google Sans', 'Segoe UI', Roboto, Arial, sans-serif;
+        width: 288px;
+        font-family: 'Manrope', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
         font-size: 13px;
-        color: #c9cdd4;
-        background: #141517;
+        color: var(--ink-2);
+        background: var(--surface);
         padding: 14px;
       }
 
-      /* ── Header ── */
-      .popup-header {
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+      }
+
+      /* ── Persistent wordmark header ── */
+      .pp-header {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        margin-bottom: 14px;
+        margin-bottom: 12px;
       }
 
-      .popup-title {
-        font-size: 15px;
-        font-weight: 600;
-        color: #7da4f5;
-        letter-spacing: 0.01em;
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+      }
+
+      .brand-mark {
+        width: 24px;
+        height: 24px;
+        border-radius: 7px;
+        background: var(--accent);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+      }
+
+      .brand-name {
+        font-size: 15.5px;
+        font-weight: 800;
+        color: var(--ink);
+        letter-spacing: -0.015em;
+        white-space: nowrap;
       }
 
       .icon-button {
+        width: 26px;
+        height: 26px;
         border: 0;
         background: transparent;
-        padding: 5px;
-        cursor: pointer;
-        line-height: 0;
+        color: var(--ink-4);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
         border-radius: 50%;
-        transition: background 0.15s;
+        cursor: pointer;
+        flex-shrink: 0;
+        transition: background 0.15s, color 0.15s;
       }
 
       .icon-button:hover {
-        background: #2c2e33;
+        background: #1e2126;
+        color: #9aa0ab;
       }
 
       .icon-button svg {
         display: block;
         width: 16px;
         height: 16px;
-        opacity: 0.55;
       }
 
       /* ── State views ── */
@@ -70,80 +131,232 @@
         display: none;
       }
 
-      /* ── Section groups ── */
-      .section {
-        background: #1e1f24;
-        border: 1px solid #2c2e33;
-        border-radius: 8px;
-        padding: 10px 12px;
-        margin-bottom: 8px;
-      }
-
-      .section-label {
-        font-size: 10px;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.07em;
-        color: #5c6070;
-        margin-bottom: 8px;
-      }
-
-      /* ── Selects ── */
-      select {
-        width: 100%;
-        padding: 7px 28px 7px 9px;
-        border: 1px solid #2c2e33;
-        border-radius: 6px;
-        background-color: #25262b;
-        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%235c6070' d='M0 0l5 6 5-6z'/%3E%3C/svg%3E");
-        background-repeat: no-repeat;
-        background-position: right 9px center;
-        color: #c9cdd4;
-        font-family: inherit;
-        font-size: 12px;
-        cursor: pointer;
-        appearance: none;
-        transition: border-color 0.15s;
-      }
-
-      select:focus {
-        outline: none;
-        border-color: #4c7fe3;
-        box-shadow: 0 0 0 2px rgba(76, 127, 227, 0.2);
-      }
-
-      /* ── Checkbox ── */
-      .checkbox-label {
+      /* ── Ready line (idle) ── */
+      .ready {
         display: flex;
         align-items: center;
         gap: 8px;
-        cursor: pointer;
-        font-size: 12px;
-        color: #a0a6b4;
-        margin-top: 9px;
-        user-select: none;
+        margin-bottom: 14px;
       }
 
-      .checkbox-label input[type="checkbox"] {
-        width: 14px;
-        height: 14px;
-        accent-color: #4c7fe3;
-        cursor: pointer;
+      .ready-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--ready);
+        box-shadow: 0 0 0 3px rgba(63, 185, 80, 0.16);
         flex-shrink: 0;
       }
 
-      /* ── Segmented control (quick presets) ── */
+      .ready-text {
+        font-size: 11.5px;
+        color: var(--ink-3);
+      }
+
+      /* ── Grouped list (the design's core section shell) ── */
+      .glist {
+        border: 1px solid var(--list-border);
+        border-radius: 13px;
+        overflow: hidden;
+        background: linear-gradient(180deg, var(--list-top) 0%, var(--list-bottom) 100%);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+      }
+
+      .grow {
+        display: flex;
+        align-items: center;
+        min-height: 44px;
+        padding: 0 12px;
+        gap: 10px;
+      }
+
+      .grow-label {
+        flex: 1;
+        font-size: 12.5px;
+        color: var(--ink-2);
+      }
+
+      .grow-div {
+        height: 1px;
+        background: var(--divider);
+        margin: 0 12px;
+      }
+
+      .grow-tall {
+        min-height: 52px;
+      }
+
+      .perm-ico {
+        width: 28px;
+        height: 28px;
+        border-radius: 8px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+      }
+
+      .perm-ico svg {
+        width: 14px;
+        height: 14px;
+      }
+
+      .perm-ico.ready {
+        color: var(--ready);
+        background: rgba(63, 185, 80, 0.14);
+      }
+
+      .perm-ico.warn {
+        color: var(--warn);
+        background: rgba(198, 154, 90, 0.14);
+      }
+
+      .perm-state {
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .perm-state.ready {
+        color: var(--ready);
+      }
+
+      .perm-state.warn {
+        color: var(--warn);
+      }
+
+      .permission-copy {
+        margin: 11px 2px 12px;
+        font-size: 11.5px;
+        line-height: 1.45;
+        color: var(--ink-3);
+      }
+
+      #permission-continue {
+        height: 38px;
+        margin-top: 8px;
+        font-size: 12.5px;
+      }
+
+      /* Native selects styled as each row's right-aligned "value ⌄". */
+      .grow-select {
+        appearance: none;
+        -webkit-appearance: none;
+        border: 0;
+        background: transparent;
+        font-family: inherit;
+        font-size: 12.5px;
+        font-weight: 600;
+        color: var(--ink);
+        text-align: right;
+        text-align-last: right;
+        padding: 6px 16px 6px 8px;
+        max-width: 156px;
+        cursor: pointer;
+        border-radius: 7px;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%235c6070' d='M0 0l5 6 5-6z'/%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: right 2px center;
+      }
+
+      .grow-select:focus-visible {
+        outline: none;
+        box-shadow: 0 0 0 2px rgba(76, 127, 227, 0.35);
+      }
+
+      .grow-select option {
+        background: var(--list-top);
+        color: var(--ink);
+      }
+
+      /* Camera row toggle (a styled checkbox): filled accent pill when on. */
+      .cam-toggle {
+        cursor: pointer;
+        display: inline-flex;
+      }
+
+      .cam-toggle input {
+        position: absolute;
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      .cam-pill {
+        height: 32px;
+        border-radius: 9px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 0 5px 0 12px;
+        background: #22252c;
+        transition: background 0.15s;
+      }
+
+      .cam-pill-text {
+        font-size: 12.5px;
+        font-weight: 600;
+        color: #9aa0ab;
+        white-space: nowrap;
+      }
+
+      .cam-pill-knob {
+        width: 24px;
+        height: 24px;
+        border-radius: 7px;
+        background: #363a42;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        transition: background 0.15s;
+      }
+
+      .cam-pill-knob svg {
+        width: 14px;
+        height: 14px;
+      }
+
+      .cam-pill-knob .on-check {
+        display: none;
+      }
+
+      .cam-toggle input:checked ~ .cam-pill {
+        background: var(--accent);
+      }
+
+      .cam-toggle input:checked ~ .cam-pill .cam-pill-text {
+        color: #fff;
+      }
+
+      .cam-toggle input:checked ~ .cam-pill .cam-pill-knob {
+        background: #fff;
+      }
+
+      .cam-toggle input:checked ~ .cam-pill .cam-pill-knob .on-check {
+        display: block;
+      }
+
+      .cam-toggle input:checked ~ .cam-pill .cam-pill-knob .off-x {
+        display: none;
+      }
+
+      .cam-toggle input:focus-visible ~ .cam-pill {
+        box-shadow: 0 0 0 2px rgba(76, 127, 227, 0.4);
+      }
+
+      /* ── Segmented control (tab quality) ── */
       .segmented {
         display: flex;
-        gap: 3px;
-        background: #25262b;
-        border: 1px solid #2c2e33;
-        border-radius: 6px;
-        padding: 3px;
+        width: 108px;
+        background: var(--surface);
+        border: 1px solid #2b2f37;
+        border-radius: 8px;
+        padding: 2px;
       }
 
       .seg {
         position: relative;
+        flex: 1;
         cursor: pointer;
       }
 
@@ -158,35 +371,45 @@
       .seg span {
         display: block;
         text-align: center;
-        padding: 4px 12px;
-        border-radius: 4px;
-        font-size: 12px;
-        font-weight: 500;
-        color: #a0a6b4;
+        padding: 4px 0;
+        border-radius: 6px;
+        font-size: 11.5px;
+        font-weight: 600;
+        color: var(--ink-3);
         transition: background 0.15s, color 0.15s;
       }
 
-      .seg input:checked+span {
-        background: #4c7fe3;
+      .seg input:checked + span {
+        background: var(--accent);
         color: #fff;
+        font-weight: 700;
       }
 
-      .seg input:focus-visible+span {
+      .seg input:focus-visible + span {
         box-shadow: 0 0 0 2px rgba(76, 127, 227, 0.35);
       }
 
-      /* ── Inline field row (label + compact control) ── */
-      .field-row {
+      /* ── Camera resolution warning ── */
+      .cam-warn {
         display: flex;
         align-items: center;
-        justify-content: space-between;
-        gap: 10px;
-        margin-top: 10px;
+        gap: 6px;
+        margin: 9px 2px 0;
       }
 
-      .field-name {
-        font-size: 12px;
-        color: #a0a6b4;
+      .cam-warn svg {
+        width: 11px;
+        height: 11px;
+        flex-shrink: 0;
+      }
+
+      .cam-warn-text {
+        font-size: 10.5px;
+        color: #9a8460;
+      }
+
+      .cam-warn-text b {
+        color: var(--warn);
       }
 
       /* ── Buttons ── */
@@ -194,17 +417,18 @@
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        gap: 6px;
-        padding: 7px 12px;
-        border-radius: 6px;
+        gap: 8px;
+        height: 44px;
+        border: 0;
+        border-radius: 12px;
         font-family: inherit;
-        font-size: 12px;
-        font-weight: 500;
+        font-size: 14px;
+        font-weight: 800;
+        letter-spacing: -0.01em;
         cursor: pointer;
-        border: 1px solid transparent;
-        transition: background 0.15s, box-shadow 0.15s, opacity 0.15s;
         white-space: nowrap;
         line-height: 1;
+        transition: background 0.15s, box-shadow 0.15s, opacity 0.15s;
       }
 
       .btn svg {
@@ -212,228 +436,301 @@
       }
 
       .btn-primary {
-        background: #4c7fe3;
+        background: var(--accent);
         color: #fff;
-        border-color: #4c7fe3;
+        box-shadow: 0 8px 20px -8px rgba(76, 127, 227, 0.7);
       }
 
       .btn-primary:hover:not(:disabled) {
         background: #3a6fd4;
-        box-shadow: 0 1px 4px rgba(76, 127, 227, 0.45);
       }
 
       .btn-danger {
-        background: #c0392b;
+        background: var(--rec);
         color: #fff;
-        border-color: #c0392b;
+        box-shadow: 0 8px 20px -8px rgba(229, 72, 77, 0.7);
       }
 
       .btn-danger:hover:not(:disabled) {
-        background: #a93226;
-        box-shadow: 0 1px 4px rgba(192, 57, 43, 0.45);
+        background: #d23b40;
       }
 
       .btn-secondary {
-        background: #25262b;
-        color: #c9cdd4;
-        border-color: #2c2e33;
+        background: #1a1c21;
+        color: #dfe2e8;
+        border: 1px solid #2b2f37;
+        font-weight: 700;
       }
 
       .btn-secondary:hover:not(:disabled) {
-        background: #2c2e33;
+        background: #21242a;
       }
 
       .btn:disabled {
-        opacity: 0.35;
+        opacity: 0.4;
         cursor: not-allowed;
+        box-shadow: none;
       }
 
-      /* ── Top actions ── */
-      .top-actions {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 6px;
-        margin-bottom: 8px;
-      }
-
-      /* ── Action row (start / pause+stop) ── */
-      .action-row {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 6px;
-        margin-top: 6px;
-      }
-
-      .start-btn {
+      .btn-full {
         width: 100%;
-        margin-top: 6px;
-        padding: 9px 12px;
       }
 
-      .action-row .btn {
-        padding: 9px 12px;
+      .start-cta {
+        width: 100%;
+        margin-top: 14px;
       }
 
-      /* ── Recording banner ── */
-      .rec-banner {
+      /* ── Idle footer actions ── */
+      .foot {
         display: flex;
         align-items: center;
-        gap: 8px;
-        background: rgba(192, 57, 43, 0.14);
-        border: 1px solid rgba(192, 57, 43, 0.38);
-        border-radius: 8px;
-        padding: 11px 14px;
-        margin-bottom: 10px;
-        color: #e8736a;
+        justify-content: space-between;
+        margin-top: 11px;
       }
 
-      .rec-banner.paused {
-        background: rgba(232, 160, 69, 0.12);
-        border-color: rgba(232, 160, 69, 0.38);
-        color: #e8a045;
+      .link-btn {
+        border: 0;
+        background: transparent;
+        color: #9aa0ab;
+        font-family: inherit;
+        font-size: 11.5px;
+        font-weight: 600;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 0;
+      }
+
+      .link-btn:hover {
+        color: var(--ink);
+      }
+
+      .link-btn.dim {
+        color: var(--ink-4);
+      }
+
+      .link-btn svg {
+        width: 12px;
+        height: 12px;
+      }
+
+      /* ── Recording status row (mirrors the design's REC / timer line) ── */
+      .rec-status {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 14px;
+        padding-right: 4px;
+      }
+
+      .rec-left {
+        display: flex;
+        align-items: center;
+        gap: 9px;
       }
 
       .rec-dot {
         width: 9px;
         height: 9px;
         border-radius: 50%;
-        background: currentColor;
+        background: var(--rec);
+        box-shadow: 0 0 0 4px rgba(229, 72, 77, 0.18);
         flex-shrink: 0;
-        animation: rec-pulse 1.4s ease-in-out infinite;
-      }
-
-      .rec-banner.paused .rec-dot {
-        animation: none;
-        opacity: 0.6;
-      }
-
-      @keyframes rec-pulse {
-
-        0%,
-        100% {
-          opacity: 1;
-        }
-
-        50% {
-          opacity: 0.3;
-        }
+        animation: mrPulse 1.6s ease-in-out infinite;
       }
 
       .rec-label {
-        font-size: 14px;
-        font-weight: 600;
+        font-size: 13px;
+        font-weight: 700;
+        color: #f0b6b8;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
       }
 
       .rec-timer {
-        margin-left: auto;
-        font-size: 16px;
-        font-weight: 600;
-        font-variant-numeric: tabular-nums;
+        font-size: 17px;
+        font-weight: 800;
+        color: var(--ink);
         letter-spacing: 0.02em;
+        font-variant-numeric: tabular-nums;
       }
 
-      /* ── Status chips ── */
-      .chips {
+      /* Paused: amber dot (no pulse), dimmed timer, and a faded source list. */
+      .rec-status.paused .rec-dot {
+        background: var(--warn);
+        box-shadow: none;
+        animation: none;
+      }
+
+      .rec-status.paused .rec-label {
+        color: #d6bd94;
+      }
+
+      .rec-status.paused .rec-timer {
+        color: var(--ink-3);
+      }
+
+      #rec-banner.paused ~ .glist {
+        opacity: 0.72;
+      }
+
+      /* ── Live source rows (recording view) ── */
+      .srow {
         display: flex;
-        gap: 6px;
-        margin-bottom: 10px;
+        align-items: center;
+        gap: 11px;
+        min-height: 48px;
+        padding: 0 12px;
+        border-top: 1px solid var(--divider);
       }
 
-      .chip {
+      /* Meeting-tab row is always first + visible, so the top border falls only
+         between rows; a hidden mic/camera row leaves no orphaned divider. */
+      .src-list .srow:first-child {
+        border-top: 0;
+      }
+
+      .srow-ico {
+        width: 28px;
+        height: 28px;
+        border-radius: 8px;
+        background: #22252c;
         display: inline-flex;
         align-items: center;
-        gap: 5px;
-        padding: 5px 11px;
-        border-radius: 999px;
-        background: rgba(76, 127, 227, 0.15);
-        color: #7da4f5;
-        font-size: 11px;
-        font-weight: 500;
-      }
-
-      .chip svg {
-        width: 12px;
-        height: 12px;
+        justify-content: center;
         flex-shrink: 0;
+        color: #9aa0ab;
       }
 
-      .chip.off {
-        background: #25262b;
-        color: #5c6070;
+      .srow-ico svg {
+        width: 14px;
+        height: 14px;
       }
 
-      /* ── Toggle rows (mic / camera while recording) ── */
-      .toggle-row {
+      .srow-main {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .srow-title {
+        font-size: 12.5px;
+        font-weight: 600;
+        color: #e8eaed;
+      }
+
+      .srow-mode {
+        font-weight: 400;
+        color: #7a7f8c;
+      }
+
+      .srow-sub {
+        font-size: 10.5px;
+        color: #7a7f8c;
+      }
+
+      .srow-recdot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--rec);
+        flex-shrink: 0;
+        animation: mrPulse 1.6s ease-in-out infinite;
+      }
+
+      /* Static mic level meter (representative until live levels are wired). */
+      .meter {
         display: flex;
         align-items: center;
-        gap: 10px;
-        background: #1e1f24;
-        border: 1px solid #2c2e33;
-        border-radius: 8px;
-        padding: 11px 12px;
-        margin-bottom: 8px;
+        gap: 2px;
+        margin-top: 4px;
+        height: 11px;
       }
 
-      .toggle-row svg {
+      .meter span {
+        width: 3px;
+        border-radius: 1px;
+        background: #2f5f3a;
+      }
+
+      .meter span.lit {
+        background: var(--ready);
+      }
+
+      /* ── Toggle switch (mic-mute / camera-hide) ──
+         PopupController.renderTogglePill toggles `.on`/`.off` on the button and
+         writes "on"/"off" into the [data-*-label] span (kept for a11y, visually
+         hidden). The visual state is the track colour + knob position. */
+      .switch {
+        width: 34px;
+        height: 20px;
+        border-radius: 999px;
+        background: #3a3d44;
+        position: relative;
+        border: 0;
+        padding: 0;
+        flex-shrink: 0;
+        cursor: pointer;
+        transition: background 0.15s;
+      }
+
+      .switch .knob {
+        position: absolute;
+        top: 2px;
+        left: 2px;
         width: 16px;
         height: 16px;
-        opacity: 0.7;
-        flex-shrink: 0;
+        border-radius: 50%;
+        background: #fff;
+        transition: transform 0.15s;
       }
 
-      .row-title {
-        flex: 1;
-        font-size: 13px;
-        font-weight: 500;
-        color: #c9cdd4;
+      .switch.on {
+        background: var(--ready);
       }
 
-      .row-mode {
-        color: #5c6070;
-        font-weight: 400;
+      .switch.on .knob {
+        transform: translateX(14px);
       }
 
-      .toggle-pill {
-        border: 0;
-        border-radius: 999px;
-        padding: 4px 13px;
-        font-family: inherit;
-        font-size: 11px;
-        font-weight: 600;
-        cursor: pointer;
-        transition: background 0.15s, color 0.15s;
-      }
-
-      .toggle-pill.on {
-        background: rgba(46, 160, 67, 0.2);
-        color: #3fb950;
-      }
-
-      .toggle-pill.off {
-        background: rgba(192, 57, 43, 0.18);
-        color: #e8736a;
-      }
-
-      .toggle-pill:disabled {
+      .switch:disabled {
         opacity: 0.5;
         cursor: not-allowed;
       }
 
-      /* ── Recording footer caption ── */
-      .rec-footer {
-        text-align: center;
-        font-size: 10px;
-        color: #5c6070;
-        margin-top: 10px;
+      .switch:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
       }
 
-      /* ── Finalizing view ── */
-      .finalizing {
-        text-align: center;
-        padding: 6px 0 2px;
+      /* ── Recording controls (pause + stop) ── */
+      .controls {
+        display: flex;
+        gap: 9px;
+        margin-top: 13px;
       }
 
-      /* ── Upload / finalizing progress ring ── */
+      .controls .btn {
+        flex: 1;
+        font-size: 13px;
+      }
+
+      /* Hidden legacy status chips — kept so CaptionPoller / updateChips keep a
+         valid target; the redesign surfaces this info in the source rows instead. */
+      .chips {
+        display: none;
+      }
+
+      /* ── Finalizing / per-job upload (spinner + grouped meta list) ── */
+      .center {
+        text-align: center;
+        padding: 6px 0 4px;
+      }
+
+      /* Progress ring (indeterminate while finalizing, determinate per upload job).
+         PopupController / SessionTabsView drive `data-mode`, the arc's
+         stroke-dashoffset, and the centre label. */
       .upload-ring {
         position: relative;
         width: 46px;
@@ -449,18 +746,17 @@
 
       .upload-ring-track {
         fill: none;
-        stroke: #2c2e33;
+        stroke: #22252c;
         stroke-width: 3;
       }
 
       .upload-ring-arc {
         fill: none;
-        stroke: #4c7fe3;
+        stroke: var(--accent);
         stroke-width: 3;
         stroke-linecap: round;
         stroke-dasharray: 100;
         stroke-dashoffset: 100;
-        /* Start the arc at 12 o'clock and grow clockwise. */
         transform: rotate(-90deg);
         transform-origin: 50% 50%;
         transition: stroke-dashoffset 0.3s ease;
@@ -472,14 +768,13 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 11px;
-        font-weight: 600;
-        color: #c9cdd4;
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--ink);
       }
 
-      /* Indeterminate: no measurable total yet — spin a fixed quarter arc. */
       .upload-ring[data-mode='indeterminate'] .upload-ring-svg {
-        animation: spin 0.8s linear infinite;
+        animation: spin 0.85s linear infinite;
       }
 
       .upload-ring[data-mode='indeterminate'] .upload-ring-arc {
@@ -493,20 +788,127 @@
         display: none;
       }
 
-      @keyframes spin {
-        to {
-          transform: rotate(360deg);
-        }
+      .upload-ring[data-mode='done'] {
+        width: 48px;
+        height: 48px;
+        margin-top: 4px;
+        border-radius: 50%;
+        background: rgba(63, 185, 80, 0.14);
+      }
+
+      .upload-ring[data-mode='done'] .upload-ring-svg {
+        display: none;
+      }
+
+      .upload-ring[data-mode='done'] .upload-ring-label {
+        font-size: 25px;
+        font-weight: 800;
+        color: var(--ready);
+      }
+
+      .finalizing-label {
+        font-size: 14px;
+        font-weight: 700;
+        color: var(--ink);
+        text-align: center;
+        margin: 12px 0 14px;
+      }
+
+      .upload-job-sub {
+        margin: -8px 0 13px;
+        font-size: 11.5px;
+        color: var(--ink-3);
+        text-align: center;
+      }
+
+      /* Grouped file/meta list rendered by SessionTabsView + updateFinalizingView. */
+      .meta-list {
+        list-style: none;
+        border: 1px solid var(--list-border);
+        border-radius: 13px;
+        overflow: hidden;
+        background: linear-gradient(180deg, var(--list-top) 0%, var(--list-bottom) 100%);
+      }
+
+      .meta-list li {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        min-height: 44px;
+        padding: 0 13px;
+        font-size: 12px;
+        border-bottom: 1px solid var(--divider);
+      }
+
+      .meta-list li:last-child {
+        border-bottom: 0;
+      }
+
+      .meta-list li span:first-child {
+        color: var(--ink-3);
+      }
+
+      .meta-list li span:last-child {
+        color: var(--ink-2);
+        font-weight: 600;
+      }
+
+      .file-list li {
+        justify-content: flex-start;
+        min-height: 46px;
+        gap: 10px;
+      }
+
+      .file-ico {
+        width: 26px;
+        height: 26px;
+        border-radius: 8px;
+        background: #22252c;
+        color: #9aa0ab;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+      }
+
+      .file-ico svg {
+        width: 14px;
+        height: 14px;
+      }
+
+      .file-main {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .file-title {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--ink-2);
+      }
+
+      .file-sub {
+        margin-top: 2px;
+        font-size: 10.5px;
+        color: var(--ink-3);
+      }
+
+      .file-open {
+        color: var(--accent);
+        font-size: 12px;
+        font-weight: 700;
+        text-decoration: none;
       }
 
       /* ── Session tabs (live session + background uploads, ADR-0004) ── */
-      /* Wrap rather than clip: the popup is narrow, so extra upload tabs flow onto
-         a second row instead of overflowing off the right edge. */
       .session-tabs {
         display: flex;
         flex-wrap: wrap;
         gap: 6px;
-        margin-bottom: 12px;
+        margin-bottom: 14px;
       }
 
       .session-tab {
@@ -516,12 +918,12 @@
         display: inline-flex;
         align-items: center;
         gap: 5px;
-        padding: 4px 9px;
+        padding: 4px 10px;
         font-size: 11px;
         font-weight: 600;
         line-height: 1.45;
         color: #9aa0ab;
-        background: #1e1f24;
+        background: #1a1c21;
         border: 1px solid #2c2e33;
         border-radius: 999px;
         cursor: pointer;
@@ -529,16 +931,15 @@
 
       .session-tab[aria-selected='true'] {
         color: #e8eaed;
-        border-color: #4c7fe3;
+        border-color: var(--accent);
         background: #25304a;
       }
 
       .session-tab:focus-visible {
-        outline: 2px solid #4c7fe3;
+        outline: 2px solid var(--accent);
         outline-offset: 1px;
       }
 
-      /* The end-anchor tab when idle: a "＋ New" action, dashed so it reads as one. */
       .session-tab--new {
         border-style: dashed;
         color: #8fb0f0;
@@ -548,7 +949,6 @@
         border-style: solid;
       }
 
-      /* Per-tab close affordance on finished uploads (browser-tab style). */
       .session-tab-close {
         margin-left: 1px;
         margin-right: -3px;
@@ -565,7 +965,6 @@
         background: #3a3d44;
       }
 
-      /* A completed tab gently fades out before it auto-dismisses. */
       .session-tab--fading {
         opacity: 0;
         transition: opacity 0.28s ease;
@@ -593,86 +992,49 @@
         color: #e0a23a;
       }
 
-      .finalizing-label {
-        font-size: 13px;
-        font-weight: 600;
-        color: #c9cdd4;
-        margin: 12px 0 10px;
-      }
-
-      .meta-list {
-        list-style: none;
-        background: #1e1f24;
-        border: 1px solid #2c2e33;
-        border-radius: 8px;
-        padding: 4px 12px;
-        text-align: left;
-      }
-
-      .meta-list li {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 7px 0;
-        font-size: 12px;
-        border-bottom: 1px solid #2c2e33;
-      }
-
-      .meta-list li:last-child {
-        border-bottom: 0;
-      }
-
-      .meta-list li span:first-child {
-        color: #5c6070;
-      }
-
-      .meta-list li span:last-child {
-        color: #c9cdd4;
-        font-weight: 500;
-      }
-
-      .finalizing-hint {
-        font-size: 11px;
-        color: #5c6070;
-        margin-top: 12px;
+      /* ── Retry CTA (failed / partial upload job) ── */
+      #upload-job-retry {
+        width: 100%;
+        margin-top: 14px;
       }
 
       /* ── Shared status / toast line ── */
       #recording-status {
         min-height: 16px;
         font-size: 11px;
-        color: #e8a045;
+        color: var(--warn);
         font-weight: 500;
         text-align: center;
-        padding: 6px 0 0;
+        padding: 8px 0 0;
       }
 
       #recording-status:empty {
         display: none;
       }
 
-      /* Retry a failed/partial upload from its screen (ADR-0004). */
-      #upload-job-retry {
-        width: 100%;
-        margin-top: 14px;
+      @keyframes mrPulse {
+        0%, 100% { opacity: 1; transform: scale(1); }
+        50% { opacity: 0.35; transform: scale(0.82); }
       }
 
-      /* ── Diagnostics ── */
-      #open-diagnostics {
-        width: 100%;
-        margin-top: 8px;
+      @keyframes spin {
+        to { transform: rotate(360deg); }
       }
-
     </style>
   </head>
 
   <body>
-    <!-- Header -->
-    <div class="popup-header">
-      <span class="popup-title">Meet Recorder</span>
+    <!-- Persistent wordmark header -->
+    <div class="pp-header">
+      <div class="brand">
+        <span class="brand-mark">
+          <svg width="10" height="10" viewBox="0 0 12 12" fill="#fff" aria-hidden="true"><circle cx="6" cy="6" r="4" /></svg>
+        </span>
+        <span class="brand-name">Meet Recorder</span>
+      </div>
       <button id="open-settings" class="icon-button" type="button" title="Open recorder settings"
         aria-label="Open recorder settings">
-        <svg viewBox="0 0 20 20" fill="white" xmlns="http://www.w3.org/2000/svg">
+        <svg viewBox="0 0 20 20" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
           <path fill-rule="evenodd"
             d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z"
             clip-rule="evenodd" />
@@ -685,45 +1047,45 @@
 
     <!-- ════════ CONFIG VIEW (idle / failed) ════════ -->
     <section id="view-config" class="view">
-      <div class="top-actions">
-        <button id="save" class="btn btn-secondary">
-          <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
-            <path d="M8 12l-4.5-4.5 1.06-1.06L7 8.88V2h2v6.88l2.44-2.44 1.06 1.06L8 12z" />
-            <path d="M2 13h12v1.5H2z" />
-          </svg>
-          Download
-        </button>
-        <button id="enable-mic" class="btn btn-secondary">
-          <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
-            <path d="M8 10a2 2 0 002-2V4a2 2 0 00-4 0v4a2 2 0 002 2z" />
-            <path
-              d="M4.5 8a.5.5 0 00-1 0 4.5 4.5 0 009 0 .5.5 0 00-1 0 3.5 3.5 0 01-7 0zM7.5 13.5v1.5h1v-1.5a.5.5 0 00-1 0z" />
-          </svg>
-          Enable Mic
-        </button>
+      <div class="ready">
+        <span class="ready-dot"></span>
+        <span class="ready-text">Ready — records tab, mic &amp; camera</span>
       </div>
 
-      <div class="section">
-        <div class="section-label">Microphone & Camera</div>
-        <select id="mic-mode">
-          <option value="off">Do not record microphone</option>
-          <option value="mixed">Mix into tab recording</option>
-          <option value="separate" selected>Save as separate audio file</option>
-        </select>
-        <label class="checkbox-label">
-          <input type="checkbox" id="record-self-video" checked />
-          Record my camera separately
-        </label>
-      </div>
-
-      <div class="section">
-        <div class="section-label">Output</div>
-        <select id="storage-mode">
-          <option value="local">Save to Local Disk (OPFS)</option>
-          <option value="drive" selected>Save to Google Drive (after stop)</option>
-        </select>
-        <div class="field-row">
-          <span class="field-name">Tab content</span>
+      <div class="glist">
+        <div class="grow">
+          <span class="grow-label">Microphone</span>
+          <select id="mic-mode" class="grow-select" aria-label="Microphone mode">
+            <option value="off">Off</option>
+            <option value="mixed">Mixed into tab</option>
+            <option value="separate" selected>Separate file</option>
+          </select>
+        </div>
+        <div class="grow-div"></div>
+        <div class="grow">
+          <span class="grow-label">Camera</span>
+          <label class="cam-toggle" title="Record my camera as a separate file">
+            <input type="checkbox" id="record-self-video" checked />
+            <span class="cam-pill">
+              <span class="cam-pill-text">Separate</span>
+              <span class="cam-pill-knob" aria-hidden="true">
+                <svg class="on-check" viewBox="0 0 18 18" fill="none"><path d="M3.5 9.5l3.5 3.5 7.5-8" stroke="#4c7fe3" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" /></svg>
+                <svg class="off-x" viewBox="0 0 18 18" fill="none"><path d="M5 5l8 8M13 5l-8 8" stroke="#9aa0ab" stroke-width="2" stroke-linecap="round" /></svg>
+              </span>
+            </span>
+          </label>
+        </div>
+        <div class="grow-div"></div>
+        <div class="grow">
+          <span class="grow-label">Save to</span>
+          <select id="storage-mode" class="grow-select" aria-label="Storage destination">
+            <option value="local">Local disk</option>
+            <option value="drive" selected>Google Drive</option>
+          </select>
+        </div>
+        <div class="grow-div"></div>
+        <div class="grow">
+          <span class="grow-label">Tab quality</span>
           <div id="tab-content-type" class="segmented" role="radiogroup" aria-label="Tab content type">
             <label class="seg">
               <input type="radio" name="tab-content-type" value="screen" checked />
@@ -737,86 +1099,151 @@
         </div>
       </div>
 
-      <button id="start-rec" class="btn btn-primary start-btn">
-        <svg width="11" height="11" viewBox="0 0 12 12" fill="currentColor">
+      <!-- Camera-resolution nudge — revealed once wired to the self-video preset. -->
+      <div id="camera-warning" class="cam-warn" hidden>
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.6l5.5 9.6a.5.5 0 01-.44.8H2.94a.5.5 0 01-.44-.8L8 2.6z" fill="none" stroke="#c69a5a" stroke-width="1.2" stroke-linejoin="round" /><path d="M8 6.1v2.7" stroke="#c69a5a" stroke-width="1.3" stroke-linecap="round" /><circle cx="8" cy="10.5" r="0.75" fill="#c69a5a" /></svg>
+        <span class="cam-warn-text" id="camera-warning-text"></span>
+      </div>
+
+      <!-- Mic-permission CTA: surfaced only when access is still needed. -->
+      <button id="enable-mic" class="btn btn-secondary btn-full" style="margin-top:12px;font-size:12.5px;height:40px;" type="button" hidden>
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+          <path d="M8 10a2 2 0 002-2V4a2 2 0 00-4 0v4a2 2 0 002 2z" />
+          <path d="M4.5 8a.5.5 0 00-1 0 4.5 4.5 0 009 0 .5.5 0 00-1 0 3.5 3.5 0 01-7 0zM7.5 13.5v1.5h1v-1.5a.5.5 0 00-1 0z" />
+        </svg>
+        Enable Microphone
+      </button>
+
+      <button id="start-rec" class="btn btn-primary start-cta">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
           <path d="M3 2l7 4-7 4V2z" />
         </svg>
         Start Recording
+      </button>
+
+      <div class="foot">
+        <button id="save" class="link-btn" type="button" title="Download the meeting transcript">
+          <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+            <path d="M8 12l-4.5-4.5 1.06-1.06L7 8.88V2h2v6.88l2.44-2.44 1.06 1.06L8 12z" />
+            <path d="M2 13h12v1.5H2z" />
+          </svg>
+          Transcript
+        </button>
+        <button id="open-diagnostics" class="link-btn dim" type="button" hidden>Diagnostics</button>
+      </div>
+    </section>
+
+    <!-- ════════ PERMISSION VIEW (pre-record camera interstitial) ════════ -->
+    <section id="view-permission" class="view" hidden>
+      <div class="glist">
+        <div class="grow grow-tall">
+          <span class="perm-ico ready" data-perm-mic-icon>
+            <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+              <path d="M8 10a2 2 0 002-2V4a2 2 0 00-4 0v4a2 2 0 002 2z" />
+              <path d="M4.5 8a.5.5 0 00-1 0 4.5 4.5 0 009 0 .5.5 0 00-1 0 3.5 3.5 0 01-7 0zM7.5 13.5v1.5h1v-1.5a.5.5 0 00-1 0z" />
+            </svg>
+          </span>
+          <span class="grow-label">Microphone</span>
+          <span id="perm-mic-state" class="perm-state ready">Granted</span>
+        </div>
+        <div class="grow-div"></div>
+        <div class="grow grow-tall">
+          <span class="perm-ico warn" data-perm-camera-icon>
+            <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+              <path d="M2 4.5A1.5 1.5 0 013.5 3h6A1.5 1.5 0 0111 4.5v1.2l3.2-1.8a.5.5 0 01.8.4v7.4a.5.5 0 01-.8.4L11 10.3v1.2A1.5 1.5 0 019.5 13h-6A1.5 1.5 0 012 11.5v-7z" />
+            </svg>
+          </span>
+          <span class="grow-label">Camera</span>
+          <span id="perm-camera-state" class="perm-state warn">Needed</span>
+        </div>
+      </div>
+
+      <p id="permission-copy" class="permission-copy">
+        Meet Recorder needs camera access to record it as a separate file. Your streams never leave the browser until you save.
+      </p>
+
+      <button id="grant-permission" class="btn btn-primary btn-full" type="button">
+        Grant camera access
+      </button>
+      <button id="permission-continue" class="btn btn-secondary btn-full" type="button">
+        Continue without camera
       </button>
     </section>
 
     <!-- ════════ RECORDING VIEW (starting / recording / paused) ════════ -->
     <section id="view-recording" class="view" hidden>
-      <div id="rec-banner" class="rec-banner">
-        <span class="rec-dot"></span>
-        <span id="rec-label" class="rec-label">Recording</span>
+      <div id="rec-banner" class="rec-status">
+        <div class="rec-left">
+          <span class="rec-dot"></span>
+          <span id="rec-label" class="rec-label">Recording</span>
+        </div>
         <span id="rec-timer" class="rec-timer">0:00</span>
       </div>
 
-      <div class="chips">
-        <span id="chip-transcript" class="chip off">
-          <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-            <path
-              d="M3 2h10a1 1 0 011 1v10a1 1 0 01-1 1H3a1 1 0 01-1-1V3a1 1 0 011-1zm1 3h8V4H4v1zm0 3h8V7H4v1zm0 3h5v-1H4v1z" />
-          </svg>
-          <span id="chip-transcript-label">Transcript off</span>
-        </span>
-        <span id="chip-storage" class="chip">
-          <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-            <path d="M4.5 13a3 3 0 01-.3-5.99A4 4 0 0112 6.5a2.75 2.75 0 01-.25 5.5H4.5z" />
-          </svg>
-          <span id="chip-storage-label">Google Drive</span>
-        </span>
+      <!-- Legacy status chips (hidden): valid targets for the caption poll and the
+           storage-chip update; their info now lives in the source rows below. -->
+      <div class="chips" hidden>
+        <span id="chip-transcript" class="chip off"><span id="chip-transcript-label">Transcript off</span></span>
+        <span id="chip-storage" class="chip"><span id="chip-storage-label">Google Drive</span></span>
       </div>
 
-      <div id="row-mic" class="toggle-row" hidden>
-        <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-          <path d="M8 10a2 2 0 002-2V4a2 2 0 00-4 0v4a2 2 0 002 2z" />
-          <path
-            d="M4.5 8a.5.5 0 00-1 0 4.5 4.5 0 009 0 .5.5 0 00-1 0 3.5 3.5 0 01-7 0zM7.5 13.5v1.5h1v-1.5a.5.5 0 00-1 0z" />
-        </svg>
-        <span class="row-title">Microphone <span id="mic-mode-label" class="row-mode"></span></span>
-        <button id="mute-mic" class="toggle-pill on" type="button" aria-pressed="false"
-          title="Mute the microphone (records silence) without stopping the recording">
-          <span data-mute-label>on</span>
-        </button>
+      <div class="glist src-list">
+        <!-- Meeting tab source (presentational: the captured tab is always live here). -->
+        <div class="srow">
+          <span class="srow-ico"><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M2 3.5A1.5 1.5 0 013.5 2h9A1.5 1.5 0 0114 3.5v7A1.5 1.5 0 0112.5 12H9v1h2v1H5v-1h2v-1H3.5A1.5 1.5 0 012 10.5v-7z" /></svg></span>
+          <div class="srow-main"><div class="srow-title">Meeting tab</div><div class="srow-sub">Capturing</div></div>
+          <span class="srow-recdot"></span>
+        </div>
+
+        <!-- Mic row (shown by updateMuteControl when the run records mic audio). -->
+        <div id="row-mic" class="srow" hidden>
+          <span class="srow-ico"><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 10a2 2 0 002-2V4a2 2 0 00-4 0v4a2 2 0 002 2z" /><path d="M4.5 8a.5.5 0 00-1 0 4.5 4.5 0 009 0 .5.5 0 00-1 0 3.5 3.5 0 01-7 0zM7.5 13.5v1.5h1v-1.5a.5.5 0 00-1 0z" /></svg></span>
+          <div class="srow-main">
+            <div class="srow-title">Microphone <span id="mic-mode-label" class="srow-mode"></span></div>
+            <div class="meter" aria-hidden="true">
+              <span class="lit" style="height:5px;"></span><span class="lit" style="height:8px;"></span><span class="lit" style="height:11px;"></span><span class="lit" style="height:7px;"></span><span style="height:4px;"></span><span style="height:6px;"></span><span style="height:3px;"></span>
+            </div>
+          </div>
+          <button id="mute-mic" class="switch on" type="button" aria-pressed="false"
+            title="Mute the microphone (records silence) without stopping the recording">
+            <span class="knob" aria-hidden="true"></span>
+            <span data-mute-label class="sr-only">on</span>
+          </button>
+        </div>
+
+        <!-- Camera row (shown by updateCameraControl when recording the camera separately). -->
+        <div id="row-camera" class="srow" hidden>
+          <span class="srow-ico"><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M2 4.5A1.5 1.5 0 013.5 3h6A1.5 1.5 0 0111 4.5v1.2l3.2-1.8a.5.5 0 01.8.4v7.4a.5.5 0 01-.8.4L11 10.3v1.2A1.5 1.5 0 019.5 13h-6A1.5 1.5 0 012 11.5v-7z" /></svg></span>
+          <div class="srow-main"><div class="srow-title">Camera <span id="camera-mode-label" class="srow-mode">· separate</span></div></div>
+          <button id="hide-camera" class="switch on" type="button" aria-pressed="false"
+            title="Hide the camera (records black frames) without stopping the recording">
+            <span class="knob" aria-hidden="true"></span>
+            <span data-camera-label class="sr-only">on</span>
+          </button>
+        </div>
       </div>
 
-      <div id="row-camera" class="toggle-row" hidden>
-        <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-          <path
-            d="M2 4.5A1.5 1.5 0 013.5 3h6A1.5 1.5 0 0111 4.5v1.2l3.2-1.8a.5.5 0 01.8.4v7.4a.5.5 0 01-.8.4L11 10.3v1.2A1.5 1.5 0 019.5 13h-6A1.5 1.5 0 012 11.5v-7z" />
-        </svg>
-        <span class="row-title">Camera <span id="camera-mode-label" class="row-mode">· separate</span></span>
-        <button id="hide-camera" class="toggle-pill on" type="button" aria-pressed="false"
-          title="Hide the camera (records black frames) without stopping the recording">
-          <span data-camera-label>on</span>
-        </button>
-      </div>
-
-      <div class="action-row">
+      <div class="controls">
         <button id="pause-recording" class="btn btn-secondary" type="button" aria-pressed="false"
           title="Pause the whole recording (records nothing); resume joins seamlessly with no gap">
-          <svg width="11" height="11" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
-            <rect x="2" y="2" width="3" height="8" rx="1" />
-            <rect x="7" y="2" width="3" height="8" rx="1" />
+          <svg width="11" height="12" viewBox="0 0 12 14" fill="currentColor" aria-hidden="true">
+            <rect x="1" y="1" width="3.4" height="12" rx="1" />
+            <rect x="7.6" y="1" width="3.4" height="12" rx="1" />
           </svg>
           <span data-pause-label>Pause</span>
         </button>
         <button id="stop-rec" class="btn btn-danger">
-          <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
-            <rect width="10" height="10" rx="1" />
+          <svg width="11" height="11" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
+            <rect x="1" y="1" width="10" height="10" rx="2" />
           </svg>
           Stop
         </button>
       </div>
-
-      <div class="rec-footer">Pause freezes everything · output stays seamless</div>
     </section>
 
     <!-- ════════ FINALIZING VIEW (stopping / uploading) ════════ -->
     <section id="view-finalizing" class="view" hidden>
-      <div class="finalizing">
+      <div class="center">
         <div id="upload-ring" class="upload-ring" data-mode="indeterminate">
           <svg class="upload-ring-svg" viewBox="0 0 36 36" aria-hidden="true">
             <circle class="upload-ring-track" cx="18" cy="18" r="16" />
@@ -825,19 +1252,18 @@
           <span id="upload-ring-label" class="upload-ring-label"></span>
         </div>
         <div id="finalizing-label" class="finalizing-label">Finalizing files…</div>
-        <ul class="meta-list">
-          <li><span>Storage</span><span id="meta-storage">—</span></li>
-          <li><span>Duration</span><span id="meta-duration">0:00</span></li>
-          <li><span>Microphone</span><span id="meta-mic">—</span></li>
-          <li><span>Camera</span><span id="meta-camera">—</span></li>
-        </ul>
-        <div class="finalizing-hint">You can close this popup.</div>
       </div>
+      <ul class="meta-list">
+        <li><span>Storage</span><span id="meta-storage">—</span></li>
+        <li><span>Duration</span><span id="meta-duration">0:00</span></li>
+        <li><span>Microphone</span><span id="meta-mic">—</span></li>
+        <li><span>Camera</span><span id="meta-camera">—</span></li>
+      </ul>
     </section>
 
     <!-- ════════ UPLOAD VIEW (a selected background upload job, ADR-0004) ════════ -->
     <section id="view-upload" class="view" hidden>
-      <div class="finalizing">
+      <div class="center">
         <div id="upload-job-ring" class="upload-ring" data-mode="determinate">
           <svg class="upload-ring-svg" viewBox="0 0 36 36" aria-hidden="true">
             <circle class="upload-ring-track" cx="18" cy="18" r="16" />
@@ -846,20 +1272,19 @@
           <span id="upload-job-ring-label" class="upload-ring-label"></span>
         </div>
         <div id="upload-job-label" class="finalizing-label" aria-live="polite">Uploading to Google Drive…</div>
-        <ul id="upload-job-files" class="meta-list"></ul>
-        <button id="upload-job-retry" class="btn btn-primary" type="button" hidden>
-          <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-            <path d="M13.65 2.35A8 8 0 108 16v-2a6 6 0 114.24-1.76L10 10h6V4l-2.35-1.65z" />
-          </svg>
-          Retry upload
-        </button>
+        <div id="upload-job-sub" class="upload-job-sub" hidden></div>
       </div>
+      <ul id="upload-job-files" class="meta-list file-list"></ul>
+      <button id="upload-job-retry" class="btn btn-primary" type="button" hidden>
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+          <path d="M13.65 2.35A8 8 0 108 16v-2a6 6 0 114.24-1.76L10 10h6V4l-2.35-1.65z" />
+        </svg>
+        Retry upload
+      </button>
     </section>
 
     <!-- Shared status / toast line -->
     <div id="recording-status"></div>
-
-    <button id="open-diagnostics" class="btn btn-secondary" hidden>Open Diagnostics</button>
 
     <script src="popup.js"></script>
   </body>

@@ -7,6 +7,12 @@ import type { RecordingRunConfig } from '../../shared/recording';
 jest.mock('../../popup/MicPermissionService');
 jest.mock('../../popup/CameraPermissionService');
 
+const flush = async () => {
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+};
+
 describe('PopupController', () => {
   let controller: PopupController;
   let elements: any;
@@ -18,6 +24,7 @@ describe('PopupController', () => {
     // The popup caches its last phase in localStorage for the synchronous first paint;
     // clear it so one test's phase can't leak into another's optimistic initial view.
     localStorage.clear();
+    jest.clearAllMocks();
     const makeRunConfig = (overrides: Partial<RecordingRunConfig> = {}): RecordingRunConfig => ({
       storageMode: 'local',
       micMode: 'off',
@@ -47,8 +54,16 @@ describe('PopupController', () => {
 
       // View containers
       viewConfig: document.createElement('section'),
+      viewPermission: document.createElement('section'),
       viewRecording: document.createElement('section'),
       viewFinalizing: document.createElement('section'),
+
+      // Permission interstitial
+      permMicState: document.createElement('span'),
+      permCameraState: document.createElement('span'),
+      permissionCopy: document.createElement('p'),
+      grantPermissionBtn: document.createElement('button'),
+      permissionContinueBtn: document.createElement('button'),
 
       // Recording view
       recBanner: document.createElement('div'),
@@ -83,6 +98,7 @@ describe('PopupController', () => {
       uploadJobRingArc: document.createElement('div'),
       uploadJobRingLabel: document.createElement('span'),
       uploadJobLabel: document.createElement('div'),
+      uploadJobSub: document.createElement('div'),
       uploadJobFiles: document.createElement('ul'),
       uploadJobRetry: document.createElement('button'),
 
@@ -121,7 +137,9 @@ describe('PopupController', () => {
     });
 
     (CameraPermissionService.prototype.ensureReadyForRecording as jest.Mock).mockResolvedValue(true);
+    (CameraPermissionService.prototype.queryCameraPermissionState as jest.Mock).mockResolvedValue('granted');
     (MicPermissionService.prototype.ensureReadyForRecording as jest.Mock).mockResolvedValue(true);
+    (MicPermissionService.prototype.queryMicPermissionState as jest.Mock).mockResolvedValue('granted');
 
     controller = new PopupController(elements);
 
@@ -456,6 +474,130 @@ describe('PopupController', () => {
 
     expect(elements.startBtn.disabled).toBe(true);
     expect(elements.stopBtn.disabled).toBe(false);
+  });
+
+  it('shows the permission interstitial instead of starting when camera permission is needed', async () => {
+    (CameraPermissionService.prototype.queryCameraPermissionState as jest.Mock).mockResolvedValue('prompt');
+    (MicPermissionService.prototype.queryMicPermissionState as jest.Mock).mockResolvedValue('granted');
+    controller.init();
+    await flush();
+    mockSendMessage.mockClear();
+    (chrome.tabs.sendMessage as jest.Mock).mockClear();
+
+    elements.storageModeSelect.value = 'drive';
+    elements.micModeSelect.value = 'mixed';
+    elements.recordSelfVideoCheckbox.checked = true;
+
+    elements.startBtn.click();
+    await flush();
+
+    expect(elements.viewPermission.hidden).toBe(false);
+    expect(elements.viewConfig.hidden).toBe(true);
+    expect(elements.permMicState.textContent).toBe('Granted');
+    expect(elements.permCameraState.textContent).toBe('Needed');
+    expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(101, { type: 'RESET_TRANSCRIPT' });
+    expect(chrome.runtime.sendMessage).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'START_RECORDING' }));
+    expect(elements.startBtn.disabled).toBe(false);
+  });
+
+  it('grants camera permission from the interstitial and starts with self video still enabled', async () => {
+    (CameraPermissionService.prototype.queryCameraPermissionState as jest.Mock).mockResolvedValue('prompt');
+    controller.init();
+    await flush();
+    mockSendMessage.mockClear();
+    elements.storageModeSelect.value = 'local';
+    elements.micModeSelect.value = 'mixed';
+    elements.recordSelfVideoCheckbox.checked = true;
+
+    elements.startBtn.click();
+    await flush();
+    mockSendMessage.mockResolvedValueOnce({
+      ok: true,
+      session: {
+        phase: 'recording',
+        runConfig: (global as any).__TEST_RUN_CONFIG__({ micMode: 'mixed', recordSelfVideo: true }),
+        updatedAt: Date.now(),
+      },
+    });
+
+    elements.grantPermissionBtn.click();
+    await flush();
+
+    expect(CameraPermissionService.prototype.ensureReadyForRecording).toHaveBeenCalled();
+    expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({
+      type: 'START_RECORDING',
+      tabId: 101,
+      runConfig: {
+        storageMode: 'local',
+        micMode: 'mixed',
+        recordSelfVideo: true,
+        tabContentType: 'screen',
+      },
+    });
+    expect(elements.viewPermission.hidden).toBe(true);
+    expect(elements.viewRecording.hidden).toBe(false);
+  });
+
+  it('keeps the permission interstitial visible when camera grant fails', async () => {
+    (CameraPermissionService.prototype.queryCameraPermissionState as jest.Mock).mockResolvedValue('prompt');
+    (CameraPermissionService.prototype.ensureReadyForRecording as jest.Mock).mockResolvedValue(false);
+    controller.init();
+    await flush();
+    mockSendMessage.mockClear();
+    elements.recordSelfVideoCheckbox.checked = true;
+
+    elements.startBtn.click();
+    await flush();
+    elements.grantPermissionBtn.click();
+    await flush();
+
+    expect(elements.viewPermission.hidden).toBe(false);
+    expect(chrome.runtime.sendMessage).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'START_RECORDING' }));
+    expect(elements.recordingStatusEl.textContent).toContain('Camera permission');
+    expect(elements.grantPermissionBtn.disabled).toBe(false);
+    expect(elements.permissionContinueBtn.disabled).toBe(false);
+  });
+
+  it('continues from the permission interstitial with self video forced off', async () => {
+    (CameraPermissionService.prototype.queryCameraPermissionState as jest.Mock).mockResolvedValue('prompt');
+    controller.init();
+    await flush();
+    mockSendMessage.mockClear();
+    elements.storageModeSelect.value = 'drive';
+    elements.micModeSelect.value = 'separate';
+    elements.recordSelfVideoCheckbox.checked = true;
+
+    elements.startBtn.click();
+    await flush();
+    mockSendMessage.mockResolvedValueOnce({
+      ok: true,
+      session: {
+        phase: 'recording',
+        runConfig: (global as any).__TEST_RUN_CONFIG__({
+          storageMode: 'drive',
+          micMode: 'separate',
+          recordSelfVideo: false,
+        }),
+        updatedAt: Date.now(),
+      },
+    });
+
+    elements.permissionContinueBtn.click();
+    await flush();
+
+    expect(CameraPermissionService.prototype.ensureReadyForRecording).not.toHaveBeenCalled();
+    expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({
+      type: 'START_RECORDING',
+      tabId: 101,
+      runConfig: {
+        storageMode: 'drive',
+        micMode: 'separate',
+        recordSelfVideo: false,
+        tabContentType: 'screen',
+      },
+    });
+    expect(elements.viewPermission.hidden).toBe(true);
+    expect(elements.viewRecording.hidden).toBe(false);
   });
 
   it('preserves micMode=off when starting from the popup form', async () => {

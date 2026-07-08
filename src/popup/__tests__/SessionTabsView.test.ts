@@ -16,6 +16,7 @@ const makeEl = (): PopupElements => ({
   uploadJobRingArc: document.createElement('div'),
   uploadJobRingLabel: document.createElement('span'),
   uploadJobLabel: document.createElement('div'),
+  uploadJobSub: document.createElement('div'),
   uploadJobFiles: document.createElement('ul'),
   uploadJobRetry: document.createElement('button'),
 } as unknown as PopupElements);
@@ -84,6 +85,30 @@ describe('SessionTabsView', () => {
     await flush();
 
     expect(callbacks.toast).toHaveBeenCalledWith('gone');
+  });
+
+  it('renders a completed job as the saved recording view with real filenames', () => {
+    view.renderJobView(job({
+      status: 'completed',
+      progress: 1,
+      files: [
+        { stream: 'tab', filename: 'meet-tab.webm', status: 'uploaded' },
+        { stream: 'mic', filename: 'meet-mic.webm', status: 'uploaded' },
+        { stream: 'self-video', filename: 'meet-camera.webm', status: 'uploaded' },
+      ],
+    }));
+
+    expect(el.uploadJobRing!.dataset.mode).toBe('done');
+    expect(el.uploadJobRingLabel!.textContent).toBe('✓');
+    expect(el.uploadJobLabel!.textContent).toBe('Recording saved');
+    expect(el.uploadJobSub!.hidden).toBe(false);
+    expect(el.uploadJobSub!.textContent).toBe('3 files · Google Drive');
+    expect(el.uploadJobFiles!.querySelectorAll('li')).toHaveLength(3);
+    expect(el.uploadJobFiles!.textContent).toContain('meet-tab.webm');
+    expect(el.uploadJobFiles!.textContent).toContain('meet-mic.webm');
+    expect(el.uploadJobFiles!.textContent).toContain('meet-camera.webm');
+    expect(el.uploadJobFiles!.querySelector('.file-open')).toBeNull();
+    expect(el.uploadJobRetry!.hidden).toBe(true);
   });
 
   it('dismissing a finished tab via its × sends DISMISS and applies the new session', async () => {

@@ -24,8 +24,16 @@ export type PopupElements = {
 
   // View containers
   viewConfig: HTMLElement | null;
+  viewPermission: HTMLElement | null;
   viewRecording: HTMLElement | null;
   viewFinalizing: HTMLElement | null;
+
+  // Permission interstitial
+  permMicState: HTMLElement | null;
+  permCameraState: HTMLElement | null;
+  permissionCopy: HTMLElement | null;
+  grantPermissionBtn: HTMLButtonElement | null;
+  permissionContinueBtn: HTMLButtonElement | null;
 
   // Recording view
   recBanner: HTMLElement | null;
@@ -64,6 +72,7 @@ export type PopupElements = {
   uploadJobRingArc: HTMLElement | null;
   uploadJobRingLabel: HTMLElement | null;
   uploadJobLabel: HTMLElement | null;
+  uploadJobSub: HTMLElement | null;
   uploadJobFiles: HTMLElement | null;
   /** "Retry upload" CTA, shown only for a failed/partial job. */
   uploadJobRetry: HTMLButtonElement | null;
@@ -83,6 +92,7 @@ export function viewForPhase(phase: RecordingPhase): PopupView {
 export function setActiveView(elements: PopupElements, phase: RecordingPhase): PopupView {
   const view = viewForPhase(phase);
   if (elements.viewConfig) elements.viewConfig.hidden = view !== 'config';
+  if (elements.viewPermission) elements.viewPermission.hidden = true;
   if (elements.viewRecording) elements.viewRecording.hidden = view !== 'recording';
   if (elements.viewFinalizing) elements.viewFinalizing.hidden = view !== 'finalizing';
   return view;

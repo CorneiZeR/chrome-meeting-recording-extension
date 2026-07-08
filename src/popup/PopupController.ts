@@ -35,7 +35,7 @@ import { createRuntimeTab, queryActiveTab } from '../platform/chrome/tabs';
 import { sendToBackground, sendToContent } from '../shared/messages';
 import type { BgToPopup, CommandResult } from '../shared/protocol';
 import { isDevBuild, isTestRuntime } from '../shared/build';
-import type { MicMode, RecordingPhase, RecordingStatusView } from '../shared/recording';
+import type { MicMode, RecordingPhase, RecordingRunConfig, RecordingStatusView } from '../shared/recording';
 
 /** Maps a mic mode to its finalizing-view metadata label. */
 function micModeLabel(mode: MicMode | undefined): string {
@@ -49,6 +49,13 @@ function micModeLabel(mode: MicMode | undefined): string {
  * right view on the first frame and never flash the wrong screen.
  */
 const LAST_PHASE_KEY = 'meetRecorder.lastPhase';
+
+type PermissionQueryState = 'granted' | 'denied' | 'prompt' | 'unknown';
+
+type PendingPermissionStart = {
+  tabId: number;
+  runConfig: RecordingRunConfig;
+};
 
 function readCachedPhase(): RecordingPhase {
   try {
@@ -76,6 +83,7 @@ export class PopupController {
   private micMuted = false;
   private cameraMuted = false;
   private paused = false;
+  private pendingPermissionStart: PendingPermissionStart | null = null;
   /** Last phase/session, replayed when a tab is clicked without a new background push. */
   private lastPhase: RecordingPhase = 'idle';
   private lastSession?: RecordingStatusView;
@@ -106,6 +114,7 @@ export class PopupController {
     this.wireRecordingStateListener();
     this.wireTranscriptDownload();
     this.wireStartStop();
+    this.wirePermissionInterstitial();
     this.wireMic();
     this.wireMuteMic();
     this.wireHideCamera();
@@ -145,6 +154,7 @@ export class PopupController {
       this.timer.stop();
       this.captionPoller.stop();
       if (this.el.viewConfig) this.el.viewConfig.hidden = true;
+      if (this.el.viewPermission) this.el.viewPermission.hidden = true;
       if (this.el.viewRecording) this.el.viewRecording.hidden = true;
       if (this.el.viewFinalizing) this.el.viewFinalizing.hidden = true;
       if (this.el.viewUpload) this.el.viewUpload.hidden = false;
@@ -520,15 +530,117 @@ export class PopupController {
     if (!micReady) throw new Error(buildMicPermissionError(micMode));
 
     if (recordSelfVideo) {
-      const cameraReady = await this.camera.ensureReadyForRecording();
-      if (!cameraReady) throw new Error(CAMERA_PERMISSION_ERROR);
+      const cameraState = await this.camera.queryCameraPermissionState();
+      if (cameraState !== 'granted') {
+        await this.showPermissionView({ tabId: tab.id, runConfig }, cameraState);
+        return;
+      }
     }
 
-    const resp = await sendToBackground({ type: 'START_RECORDING', tabId: tab.id, runConfig });
+    await this.beginRecording(tab.id, runConfig);
+  }
+
+  private async beginRecording(tabId: number, runConfig: RecordingRunConfig): Promise<void> {
+    const resp = await sendToBackground({ type: 'START_RECORDING', tabId, runConfig });
     if (resp.ok === false) throw new Error(resp.error || 'Failed to start');
 
     this.state.applySession(resp.session);
     this.toast(POPUP_TOAST_TEXT.recordingStarted);
+  }
+
+  private wirePermissionInterstitial(): void {
+    this.el.grantPermissionBtn?.addEventListener('click', () => void this.grantCameraAndStart());
+    this.el.permissionContinueBtn?.addEventListener('click', () => void this.continueWithoutCamera());
+  }
+
+  private async showPermissionView(
+    pending: PendingPermissionStart,
+    cameraState?: PermissionQueryState
+  ): Promise<void> {
+    this.pendingPermissionStart = pending;
+    if (this.el.viewConfig) this.el.viewConfig.hidden = true;
+    if (this.el.viewPermission) this.el.viewPermission.hidden = false;
+    if (this.el.viewRecording) this.el.viewRecording.hidden = true;
+    if (this.el.viewFinalizing) this.el.viewFinalizing.hidden = true;
+    if (this.el.viewUpload) this.el.viewUpload.hidden = true;
+    if (this.el.startBtn) this.el.startBtn.disabled = false;
+
+    if (this.el.permissionCopy) {
+      this.el.permissionCopy.textContent =
+        'Meet Recorder needs camera access to record it as a separate file. Your streams never leave the browser until you save.';
+    }
+
+    const [micState, resolvedCameraState] = await Promise.all([
+      this.mic.queryMicPermissionState().catch(() => 'unknown' as const),
+      cameraState ? Promise.resolve(cameraState) : this.camera.queryCameraPermissionState().catch(() => 'unknown' as const),
+    ]);
+    this.renderPermissionState('mic', micState);
+    this.renderPermissionState('camera', resolvedCameraState);
+    setStatusText(this.el, '');
+  }
+
+  private renderPermissionState(kind: 'mic' | 'camera', state: PermissionQueryState): void {
+    const el = kind === 'mic' ? this.el.permMicState : this.el.permCameraState;
+    if (!el) return;
+    const granted = state === 'granted';
+    el.textContent = granted ? 'Granted' : state === 'denied' ? 'Blocked' : 'Needed';
+    el.classList.toggle('ready', granted);
+    el.classList.toggle('warn', !granted);
+
+    const icon = this.el.viewPermission?.querySelector<HTMLElement>(
+      kind === 'mic' ? '[data-perm-mic-icon]' : '[data-perm-camera-icon]'
+    );
+    icon?.classList.toggle('ready', granted);
+    icon?.classList.toggle('warn', !granted);
+  }
+
+  private async grantCameraAndStart(): Promise<void> {
+    const pending = this.pendingPermissionStart;
+    if (!pending || this.inFlight) return;
+    this.inFlight = true;
+    if (this.el.grantPermissionBtn) this.el.grantPermissionBtn.disabled = true;
+    if (this.el.permissionContinueBtn) this.el.permissionContinueBtn.disabled = true;
+
+    try {
+      const ok = await this.camera.ensureReadyForRecording();
+      if (!ok) {
+        await this.showPermissionView(pending);
+        this.toast(CAMERA_PERMISSION_ERROR);
+        return;
+      }
+      await this.beginRecording(pending.tabId, pending.runConfig);
+      this.pendingPermissionStart = null;
+    } catch (e: unknown) {
+      console.error('[popup] START_RECORDING error', e);
+      this.onPhaseChange('idle');
+      alert(buildStartErrorAlert(e));
+    } finally {
+      this.inFlight = false;
+      if (this.el.grantPermissionBtn) this.el.grantPermissionBtn.disabled = false;
+      if (this.el.permissionContinueBtn) this.el.permissionContinueBtn.disabled = false;
+    }
+  }
+
+  private async continueWithoutCamera(): Promise<void> {
+    const pending = this.pendingPermissionStart;
+    if (!pending || this.inFlight) return;
+    this.inFlight = true;
+    if (this.el.grantPermissionBtn) this.el.grantPermissionBtn.disabled = true;
+    if (this.el.permissionContinueBtn) this.el.permissionContinueBtn.disabled = true;
+
+    try {
+      const runConfig = { ...pending.runConfig, recordSelfVideo: false };
+      await this.beginRecording(pending.tabId, runConfig);
+      this.pendingPermissionStart = null;
+    } catch (e: unknown) {
+      console.error('[popup] START_RECORDING error', e);
+      this.onPhaseChange('idle');
+      alert(buildStartErrorAlert(e));
+    } finally {
+      this.inFlight = false;
+      if (this.el.grantPermissionBtn) this.el.grantPermissionBtn.disabled = false;
+      if (this.el.permissionContinueBtn) this.el.permissionContinueBtn.disabled = false;
+    }
   }
 
   private async stopRecording(): Promise<void> {

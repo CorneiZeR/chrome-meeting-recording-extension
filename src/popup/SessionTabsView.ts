@@ -45,7 +45,7 @@ function uploadTabBadge(job: UploadJob): string {
 /** Headline status line for an upload job's view. */
 function uploadJobStatusText(job: UploadJob): string {
   switch (job.status) {
-    case 'completed': return 'Uploaded to Google Drive';
+    case 'completed': return 'Recording saved';
     case 'partial': return 'Uploaded — some files saved locally';
     case 'failed': return 'Upload failed — saved locally';
     default: return 'Uploading to Google Drive…';
@@ -60,6 +60,34 @@ function uploadFileStatusText(status: UploadJobFile['status']): string {
 /** Human label for a recording stream in an upload job's file list. */
 function streamLabel(stream: RecordingStream): string {
   return stream === 'tab' ? 'Screen / Tab' : stream === 'mic' ? 'Microphone' : 'Camera';
+}
+
+function fileCountText(count: number): string {
+  return `${count} ${count === 1 ? 'file' : 'files'}`;
+}
+
+function svgPathForStream(stream: RecordingStream): string {
+  if (stream === 'mic') {
+    return 'M8 10a2 2 0 002-2V4a2 2 0 00-4 0v4a2 2 0 002 2zM4.5 8a.5.5 0 00-1 0 4.5 4.5 0 009 0 .5.5 0 00-1 0 3.5 3.5 0 01-7 0zM7.5 13.5v1.5h1v-1.5a.5.5 0 00-1 0z';
+  }
+  if (stream === 'self-video') {
+    return 'M2 4.5A1.5 1.5 0 013.5 3h6A1.5 1.5 0 0111 4.5v1.2l3.2-1.8a.5.5 0 01.8.4v7.4a.5.5 0 01-.8.4L11 10.3v1.2A1.5 1.5 0 019.5 13h-6A1.5 1.5 0 012 11.5v-7z';
+  }
+  return 'M2 3.5A1.5 1.5 0 013.5 2h9A1.5 1.5 0 0114 3.5v7A1.5 1.5 0 0112.5 12H9v1h2v1H5v-1h2v-1H3.5A1.5 1.5 0 012 10.5v-7z';
+}
+
+function buildStreamIcon(stream: RecordingStream): HTMLElement {
+  const icon = document.createElement('span');
+  icon.className = 'file-ico';
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 16 16');
+  svg.setAttribute('fill', 'currentColor');
+  svg.setAttribute('aria-hidden', 'true');
+  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  path.setAttribute('d', svgPathForStream(stream));
+  svg.appendChild(path);
+  icon.appendChild(svg);
+  return icon;
 }
 
 /** Hooks back into PopupController for cross-cutting concerns the tab bar can't own. */
@@ -279,21 +307,32 @@ export class SessionTabsView {
   /** Populates the upload view (ring + status + per-file outcomes) for one job. */
   renderJobView(job: UploadJob): void {
     const percent = Math.round(Math.min(1, Math.max(0, job.progress)) * 100);
-    if (this.el.uploadJobRing) this.el.uploadJobRing.dataset.mode = 'determinate';
+    const completed = job.status === 'completed';
+    if (this.el.uploadJobRing) this.el.uploadJobRing.dataset.mode = completed ? 'done' : 'determinate';
     if (this.el.uploadJobRingArc) this.el.uploadJobRingArc.style.strokeDashoffset = String(100 - percent);
     if (this.el.uploadJobRingLabel) {
-      this.el.uploadJobRingLabel.textContent = job.status === 'completed' ? '✓' : `${percent}%`;
+      this.el.uploadJobRingLabel.textContent = completed ? '✓' : `${percent}%`;
     }
     if (this.el.uploadJobLabel) this.el.uploadJobLabel.textContent = uploadJobStatusText(job);
+    if (this.el.uploadJobSub) {
+      this.el.uploadJobSub.hidden = !completed;
+      this.el.uploadJobSub.textContent = completed ? `${fileCountText(job.files.length)} · Google Drive` : '';
+    }
     if (this.el.uploadJobFiles) {
       const frag = document.createDocumentFragment();
       for (const file of job.files) {
         const li = document.createElement('li');
-        const name = document.createElement('span');
-        name.textContent = streamLabel(file.stream);
-        const status = document.createElement('span');
-        status.textContent = uploadFileStatusText(file.status);
-        li.append(name, status);
+        li.appendChild(buildStreamIcon(file.stream));
+        const main = document.createElement('div');
+        main.className = 'file-main';
+        const name = document.createElement('div');
+        name.className = 'file-title';
+        name.textContent = file.filename;
+        const status = document.createElement('div');
+        status.className = 'file-sub';
+        status.textContent = `${streamLabel(file.stream)} · ${uploadFileStatusText(file.status)}`;
+        main.append(name, status);
+        li.appendChild(main);
         frag.appendChild(li);
       }
       this.el.uploadJobFiles.replaceChildren(frag);

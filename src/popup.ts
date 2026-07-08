@@ -34,8 +34,16 @@ const controller = new PopupController({
 
   // View containers
   viewConfig: byId('view-config'),
+  viewPermission: byId('view-permission'),
   viewRecording: byId('view-recording'),
   viewFinalizing: byId('view-finalizing'),
+
+  // Permission interstitial
+  permMicState: byId('perm-mic-state'),
+  permCameraState: byId('perm-camera-state'),
+  permissionCopy: byId('permission-copy'),
+  grantPermissionBtn: byId<HTMLButtonElement>('grant-permission'),
+  permissionContinueBtn: byId<HTMLButtonElement>('permission-continue'),
 
   // Recording view
   recBanner: byId('rec-banner'),
@@ -70,6 +78,7 @@ const controller = new PopupController({
   uploadJobRingArc: byId('upload-job-ring-arc'),
   uploadJobRingLabel: byId('upload-job-ring-label'),
   uploadJobLabel: byId('upload-job-label'),
+  uploadJobSub: byId('upload-job-sub'),
   uploadJobFiles: byId('upload-job-files'),
   uploadJobRetry: byId<HTMLButtonElement>('upload-job-retry'),
 
