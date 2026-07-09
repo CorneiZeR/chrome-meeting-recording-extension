@@ -12,10 +12,12 @@ const flush = async () => {
 
 const makeEl = (): PopupElements => ({
   sessionTabs: document.createElement('div'),
-  uploadJobRing: document.createElement('div'),
-  uploadJobRingArc: document.createElement('div'),
-  uploadJobRingLabel: document.createElement('span'),
+  uploadProgress: document.createElement('div'),
+  uploadDone: document.createElement('div'),
   uploadJobLabel: document.createElement('div'),
+  uploadJobPct: document.createElement('span'),
+  uploadBarFill: document.createElement('div'),
+  uploadJobMeta: document.createElement('div'),
   uploadJobSub: document.createElement('div'),
   uploadJobFiles: document.createElement('ul'),
   uploadJobOpenDrive: document.createElement('button'),
@@ -102,11 +104,10 @@ describe('SessionTabsView', () => {
       ],
     }));
 
-    expect(el.uploadJobRing!.dataset.mode).toBe('done');
-    expect(el.uploadJobRingLabel!.textContent).toBe('✓');
+    expect(el.uploadProgress!.hidden).toBe(true);
+    expect(el.uploadDone!.hidden).toBe(false);
     expect(el.uploadJobLabel!.textContent).toBe('Recording saved');
-    expect(el.uploadJobSub!.hidden).toBe(false);
-    expect(el.uploadJobSub!.textContent).toBe('3 files · Google Drive');
+    expect(el.uploadJobSub!.textContent).toBe('3 files · 138 MB · Google Drive');
     expect(el.uploadJobFiles!.querySelectorAll('li')).toHaveLength(3);
     expect(el.uploadJobFiles!.textContent).toContain('meet-tab.webm');
     expect(el.uploadJobFiles!.textContent).toContain('meet-mic.webm');
@@ -120,6 +121,25 @@ describe('SessionTabsView', () => {
     expect(chrome.tabs.create).toHaveBeenCalledWith({ url: 'https://drive.google.com/file/d/tab/view' });
     el.uploadJobOpenDrive!.click();
     expect(chrome.tabs.create).toHaveBeenCalledWith({ url: 'https://drive.google.com/drive/folders/folder-1' });
+  });
+
+  it('renders an in-progress job as a linear bar with a real aggregate + background button', () => {
+    view.wireEvents();
+    view.renderJobView(job({
+      status: 'uploading',
+      progress: 0.42,
+      files: [
+        { stream: 'tab', filename: 'tab.webm', status: 'uploaded', bytes: 90 * 1024 * 1024 },
+        { stream: 'mic', filename: 'mic.webm', status: 'uploading' },
+      ],
+    }));
+
+    expect(el.uploadProgress!.hidden).toBe(false);
+    expect(el.uploadDone!.hidden).toBe(true);
+    expect(el.uploadJobPct!.textContent).toBe('42%');
+    expect(el.uploadBarFill!.style.width).toBe('42%');
+    expect(el.uploadJobMeta!.textContent).toBe('1 of 2 files · 90 MB');
+    expect(el.uploadJobOpenDrive!.hidden).toBe(true);
   });
 
   it('dismissing a finished tab via its × sends DISMISS and applies the new session', async () => {

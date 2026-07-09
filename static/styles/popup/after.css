@@ -183,6 +183,73 @@
   font-weight: 700;
 }
 
+/* ── Uploading: linear progress bar (design) ── */
+.up-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.up-head-ico {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.up-head-title {
+  flex: 1;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #dfe2e8;
+}
+
+.up-head-pct {
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent-hi);
+}
+
+.up-bar {
+  height: 7px;
+  border-radius: 999px;
+  background: #1a1c21;
+  overflow: hidden;
+  margin-bottom: 5px;
+}
+
+.up-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #4c7fe3, #7da4f5);
+  transition: width 0.3s ease;
+}
+
+.up-meta {
+  font-size: 10.5px;
+  color: #7a7f8c;
+  margin-bottom: 14px;
+  min-height: 13px;
+}
+
+/* Done confirmation check circle (upload view). */
+.done-check {
+  width: 48px;
+  height: 48px;
+  margin: 0 auto 12px;
+  border-radius: 50%;
+  background: rgba(63, 185, 80, 0.14);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.done-check svg {
+  width: 24px;
+  height: 24px;
+}
+
 #upload-job-open-drive {
   margin-top: 12px;
   height: 40px;

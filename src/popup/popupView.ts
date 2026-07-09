@@ -69,10 +69,16 @@ export type PopupElements = {
   /** Tab bar populated with the live tab + one tab per background upload job. */
   sessionTabs: HTMLElement | null;
   viewUpload: HTMLElement | null;
-  uploadJobRing: HTMLElement | null;
-  uploadJobRingArc: HTMLElement | null;
-  uploadJobRingLabel: HTMLElement | null;
+  /** In-progress block (linear bar); hidden once the job completes. */
+  uploadProgress: HTMLElement | null;
+  /** Done block (saved confirmation); shown only for a completed job. */
+  uploadDone: HTMLElement | null;
   uploadJobLabel: HTMLElement | null;
+  uploadJobPct: HTMLElement | null;
+  /** The linear progress bar's fill; its `width` encodes the upload fraction. */
+  uploadBarFill: HTMLElement | null;
+  /** Aggregate "N of M files · <size>" line under the bar. */
+  uploadJobMeta: HTMLElement | null;
   uploadJobSub: HTMLElement | null;
   uploadJobFiles: HTMLElement | null;
   /** Opens the completed job's Google Drive folder when Drive returned one. */

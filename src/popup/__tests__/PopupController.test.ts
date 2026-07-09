@@ -100,10 +100,12 @@ describe('PopupController', () => {
       // Session tabs + per-job upload view
       sessionTabs: document.createElement('nav'),
       viewUpload: document.createElement('section'),
-      uploadJobRing: document.createElement('div'),
-      uploadJobRingArc: document.createElement('div'),
-      uploadJobRingLabel: document.createElement('span'),
+      uploadProgress: document.createElement('div'),
+      uploadDone: document.createElement('div'),
       uploadJobLabel: document.createElement('div'),
+      uploadJobPct: document.createElement('span'),
+      uploadBarFill: document.createElement('div'),
+      uploadJobMeta: document.createElement('div'),
       uploadJobSub: document.createElement('div'),
       uploadJobFiles: document.createElement('ul'),
       uploadJobOpenDrive: document.createElement('button'),
@@ -302,8 +304,10 @@ describe('PopupController', () => {
 
       expect(elements.viewUpload.hidden).toBe(false);
       expect(elements.viewConfig.hidden).toBe(true);
-      expect(elements.uploadJobRingLabel.textContent).toBe('42%');
-      expect(elements.uploadJobRingArc.style.strokeDashoffset).toBe('58'); // pathLength 100 ⇒ 100 − 42
+      expect(elements.uploadJobPct.textContent).toBe('42%');
+      expect(elements.uploadBarFill.style.width).toBe('42%');
+      expect(elements.uploadProgress.hidden).toBe(false);
+      expect(elements.uploadDone.hidden).toBe(true);
       expect(elements.uploadJobLabel.textContent).toContain('Uploading to Google Drive');
       expect(elements.uploadJobFiles.children).toHaveLength(1);
       // An in-flight upload tab has no × close affordance.
@@ -318,7 +322,8 @@ describe('PopupController', () => {
       await new Promise(process.nextTick);
 
       (elements.sessionTabs.querySelectorAll('.session-tab')[0] as HTMLButtonElement).click();
-      expect(elements.uploadJobRingLabel.textContent).toBe('✓');
+      expect(elements.uploadDone.hidden).toBe(false);
+      expect(elements.uploadProgress.hidden).toBe(true);
 
       // Re-query after the select re-rendered the bar; the finished tab carries a ×.
       const close = elements.sessionTabs.querySelector('.session-tab-close') as HTMLElement;
@@ -346,7 +351,7 @@ describe('PopupController', () => {
       });
 
       expect(elements.viewUpload.hidden).toBe(false);
-      expect(elements.uploadJobRingLabel.textContent).toBe('10%'); // the new job j2
+      expect(elements.uploadJobPct.textContent).toBe('10%'); // the new job j2
     });
 
     it('the ＋ New tab leaves the upload screen for Setup', async () => {

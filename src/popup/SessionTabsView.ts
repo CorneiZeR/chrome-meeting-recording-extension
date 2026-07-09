@@ -127,6 +127,8 @@ export class SessionTabsView {
   wireEvents(): void {
     this.el.uploadJobRetry?.addEventListener('click', () => void this.retryUploadJob());
     this.el.uploadJobOpenDrive?.addEventListener('click', () => void this.openUploadJobFolder());
+    // "Upload in background" just returns to the live/Setup tab; the upload keeps
+    // running (ADR-0004), so backgrounding it is exactly selecting the live tab.
     this.wireKeyboard();
   }
 
@@ -312,19 +314,30 @@ export class SessionTabsView {
     }
   }
 
-  /** Populates the upload view (ring + status + per-file outcomes) for one job. */
+  /** Populates the upload view: a linear progress bar while uploading, a saved
+   *  confirmation once complete, plus the per-file list. */
   renderJobView(job: UploadJob): void {
     const percent = Math.round(Math.min(1, Math.max(0, job.progress)) * 100);
     const completed = job.status === 'completed';
-    if (this.el.uploadJobRing) this.el.uploadJobRing.dataset.mode = completed ? 'done' : 'determinate';
-    if (this.el.uploadJobRingArc) this.el.uploadJobRingArc.style.strokeDashoffset = String(100 - percent);
-    if (this.el.uploadJobRingLabel) {
-      this.el.uploadJobRingLabel.textContent = completed ? '✓' : `${percent}%`;
-    }
+    const totalBytes = job.files.reduce((sum, f) => sum + (typeof f.bytes === 'number' ? f.bytes : 0), 0);
+    const sizeSuffix = totalBytes > 0 ? ` · ${formatBytes(totalBytes)}` : '';
+
+    // Toggle the in-progress bar vs. the saved-confirmation block.
+    if (this.el.uploadProgress) this.el.uploadProgress.hidden = completed;
+    if (this.el.uploadDone) this.el.uploadDone.hidden = !completed;
+
+    // In-progress bar (the head text also carries failed/partial outcomes).
     if (this.el.uploadJobLabel) this.el.uploadJobLabel.textContent = uploadJobStatusText(job);
+    if (this.el.uploadJobPct) this.el.uploadJobPct.textContent = `${percent}%`;
+    if (this.el.uploadBarFill) this.el.uploadBarFill.style.width = `${percent}%`;
+    if (this.el.uploadJobMeta) {
+      const uploaded = job.files.filter((f) => f.status === 'uploaded').length;
+      this.el.uploadJobMeta.textContent = `${uploaded} of ${fileCountText(job.files.length)}${sizeSuffix}`;
+    }
+
+    // Saved-confirmation subline (shown in the done block).
     if (this.el.uploadJobSub) {
-      this.el.uploadJobSub.hidden = !completed;
-      this.el.uploadJobSub.textContent = completed ? `${fileCountText(job.files.length)} · Google Drive` : '';
+      this.el.uploadJobSub.textContent = `${fileCountText(job.files.length)}${sizeSuffix} · Google Drive`;
     }
     if (this.el.uploadJobFiles) {
       const frag = document.createDocumentFragment();
