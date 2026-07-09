@@ -21,6 +21,8 @@ export type PopupElements = {
   tabContentTypeGroup: HTMLElement | null;
   openSettingsBtn: HTMLButtonElement | null;
   openDiagnosticsBtn: HTMLButtonElement | null;
+  /** The persistent wordmark header; gets `.compact` on every non-idle screen. */
+  ppHeader: HTMLElement | null;
 
   // View containers
   viewConfig: HTMLElement | null;
@@ -54,6 +56,8 @@ export type PopupElements = {
 
   // Finalizing view
   finalizingLabel: HTMLElement | null;
+  finalizingSub: HTMLElement | null;
+  finalizingFiles: HTMLElement | null;
   /** Progress-ring container; its `data-mode` toggles determinate vs. indeterminate. */
   uploadRing: HTMLElement | null;
   /** The ring's foreground arc; its `stroke-dashoffset` encodes the upload fraction. */

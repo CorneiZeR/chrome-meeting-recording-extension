@@ -31,6 +31,7 @@ const controller = new PopupController({
   tabContentTypeGroup: byId('tab-content-type'),
   openSettingsBtn: byId<HTMLButtonElement>('open-settings'),
   openDiagnosticsBtn: byId<HTMLButtonElement>('open-diagnostics'),
+  ppHeader: byId('pp-header'),
 
   // View containers
   viewConfig: byId('view-config'),
@@ -64,6 +65,8 @@ const controller = new PopupController({
 
   // Finalizing view
   finalizingLabel: byId('finalizing-label'),
+  finalizingSub: byId('finalizing-sub'),
+  finalizingFiles: byId('finalizing-files'),
   uploadRing: byId('upload-ring'),
   uploadRingArc: byId('upload-ring-arc'),
   uploadRingLabel: byId('upload-ring-label'),

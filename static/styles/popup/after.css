@@ -87,7 +87,25 @@
   font-weight: 700;
   color: var(--ink);
   text-align: center;
-  margin: 12px 0 14px;
+  margin: 12px 0 4px;
+}
+
+.finalizing-sub {
+  margin: 0 0 14px;
+  font-size: 11.5px;
+  color: var(--ink-3);
+  text-align: center;
+}
+
+/* Small per-file "sealing" spinner in the finalizing checklist. */
+.file-spin {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid #22252c;
+  border-top-color: var(--accent);
+  animation: spin 0.9s linear infinite;
+  flex-shrink: 0;
 }
 
 .upload-job-sub {
@@ -366,10 +384,21 @@
 }
 
 @keyframes mrPulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.35; transform: scale(0.82); }
+
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 0.35;
+    transform: scale(0.82);
+  }
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }

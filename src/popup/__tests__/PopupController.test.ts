@@ -96,6 +96,8 @@ describe('PopupController', () => {
       metaDuration: document.createElement('span'),
       metaMic: document.createElement('span'),
       metaCamera: document.createElement('span'),
+      finalizingSub: document.createElement('div'),
+      finalizingFiles: document.createElement('ul'),
 
       // Session tabs + per-job upload view
       sessionTabs: document.createElement('nav'),
@@ -236,10 +238,9 @@ describe('PopupController', () => {
     expect(elements.storageModeSelect.value).toBe('drive');
     expect(elements.micModeSelect.value).toBe('mixed');
     expect(elements.recordSelfVideoCheckbox.checked).toBe(true);
-    expect(elements.finalizingLabel.textContent).toContain('Finalizing files');
-    expect(elements.metaStorage.textContent).toBe('Google Drive');
-    expect(elements.metaMic.textContent).toBe('Mixed');
-    expect(elements.metaCamera.textContent).toBe('Separate');
+    expect(elements.finalizingLabel.textContent).toBe('Finalizing recording');
+    expect(elements.finalizingSub.textContent).toBe('Muxing tab & camera'); // mixed mic → no separate mic file
+    expect(elements.finalizingFiles.querySelectorAll('li')).toHaveLength(2);
     expect(elements.recordingStatusEl.textContent).toContain('Stopping recording');
     expect(elements.recordingStatusEl.textContent).toContain('Mode: Drive');
   });
@@ -1090,7 +1091,7 @@ describe('PopupController', () => {
       controller.init();
       await new Promise(process.nextTick);
 
-      expect(elements.recLabel.textContent).toBe('Recording');
+      expect(elements.recLabel.textContent).toBe('REC');
       expect(elements.recBanner.classList.contains('paused')).toBe(false);
       expect(elements.recTimer.textContent).toBe('0:05');
 
@@ -1143,11 +1144,9 @@ describe('PopupController', () => {
       await new Promise(process.nextTick);
 
       expect(elements.viewFinalizing.hidden).toBe(false);
-      expect(elements.finalizingLabel.textContent).toBe('Finalizing files…');
-      expect(elements.metaStorage.textContent).toBe('Local Disk (OPFS)');
-      expect(elements.metaDuration.textContent).toBe('2:05');
-      expect(elements.metaMic.textContent).toBe('Separate');
-      expect(elements.metaCamera.textContent).toBe('Separate');
+      expect(elements.finalizingLabel.textContent).toBe('Finalizing recording');
+      expect(elements.finalizingSub.textContent).toBe('Muxing tab, mic & camera');
+      expect(elements.finalizingFiles.querySelectorAll('li')).toHaveLength(3);
     });
   });
 

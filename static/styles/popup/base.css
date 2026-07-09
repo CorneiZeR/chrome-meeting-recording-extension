@@ -101,6 +101,23 @@ body {
   white-space: nowrap;
 }
 
+/* Compact header: on every non-idle screen the wordmark shrinks, the accent
+   mark drops away, and a hairline divider separates it from the content. */
+.pp-header.compact {
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--divider);
+}
+
+.pp-header.compact .brand-mark {
+  display: none;
+}
+
+.pp-header.compact .brand-name {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--ink-2);
+}
+
 .icon-button {
   width: 26px;
   height: 26px;

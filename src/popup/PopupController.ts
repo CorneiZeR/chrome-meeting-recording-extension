@@ -30,17 +30,17 @@ import {
   setStatusText,
   type PopupElements,
 } from './popupView';
-import { formatDuration } from './popupStatus';
 import { downloadFile } from '../platform/chrome/downloads';
 import { createRuntimeTab, queryActiveTab } from '../platform/chrome/tabs';
 import { sendToBackground, sendToContent } from '../shared/messages';
 import type { BgToPopup, CommandResult } from '../shared/protocol';
 import { isDevBuild, isTestRuntime } from '../shared/build';
-import type { MicMode, RecordingPhase, RecordingRunConfig, RecordingStatusView } from '../shared/recording';
+import type { RecordingPhase, RecordingRunConfig, RecordingStatusView } from '../shared/recording';
 
-/** Maps a mic mode to its finalizing-view metadata label. */
-function micModeLabel(mode: MicMode | undefined): string {
-  return mode === 'mixed' ? 'Mixed' : mode === 'separate' ? 'Separate' : 'Off';
+/** Joins labels as "a", "a & b", or "a, b & c". */
+function humanJoin(parts: string[]): string {
+  if (parts.length <= 1) return parts[0] ?? '';
+  return `${parts.slice(0, -1).join(', ')} & ${parts[parts.length - 1]}`;
 }
 
 /**
@@ -163,6 +163,7 @@ export class PopupController {
       if (this.el.viewRecording) this.el.viewRecording.hidden = true;
       if (this.el.viewFinalizing) this.el.viewFinalizing.hidden = true;
       if (this.el.viewUpload) this.el.viewUpload.hidden = false;
+      this.setHeaderCompact(true);
       this.sessionTabs.renderJobView(job);
       this.persistentStatus = this.state.buildPersistentStatus(phase, session?.paused === true);
       if (!this.statusTimer) setStatusText(this.el, this.persistentStatus);
@@ -171,6 +172,7 @@ export class PopupController {
 
     if (this.el.viewUpload) this.el.viewUpload.hidden = true;
     const view = setActiveView(this.el, phase);
+    this.setHeaderCompact(view !== 'config');
 
     if (view === 'recording') {
       this.updateRecordingBanner(phase, session);
@@ -398,12 +400,17 @@ export class PopupController {
     label.textContent = this.paused ? 'Resume' : 'Pause';
   }
 
+  /** Full wordmark header on the idle/config screen; compact header everywhere else. */
+  private setHeaderCompact(compact: boolean): void {
+    this.el.ppHeader?.classList.toggle('compact', compact);
+  }
+
   /** Sets the recording banner label + paused styling for the current phase. */
   private updateRecordingBanner(phase: RecordingPhase, session?: RecordingStatusView) {
     const paused = phase === 'recording' && session?.paused === true;
     const starting = phase === 'starting';
     if (this.el.recLabel) {
-      this.el.recLabel.textContent = starting ? 'Starting…' : paused ? 'Paused' : 'Recording';
+      this.el.recLabel.textContent = starting ? 'Starting…' : paused ? 'Paused' : 'REC';
     }
     if (this.el.recBanner) this.el.recBanner.classList.toggle('paused', paused);
   }
@@ -436,17 +443,34 @@ export class PopupController {
     else this.micLevelPoller.stop();
   }
 
-  /** Populates the finalizing view: indeterminate spinner + run metadata (storage/duration/mic/camera). */
+  /** Populates the finalizing view: spinner + a per-stream checklist of what's being sealed. */
   private updateFinalizingView(_phase: RecordingPhase, session?: RecordingStatusView) {
-    if (this.el.finalizingLabel) this.el.finalizingLabel.textContent = 'Finalizing files…';
+    if (this.el.finalizingLabel) this.el.finalizingLabel.textContent = 'Finalizing recording';
     this.updateUploadRing();
     const cfg = session?.runConfig;
-    if (this.el.metaStorage) {
-      this.el.metaStorage.textContent = cfg?.storageMode === 'drive' ? 'Google Drive' : 'Local Disk (OPFS)';
+    // The real output files this run produces: the tab always; a separate mic file
+    // only in 'separate' mode; a camera file only when recording it separately.
+    const sources: string[] = ['Meeting tab'];
+    if (cfg?.micMode === 'separate') sources.push('Microphone');
+    if (cfg?.recordSelfVideo) sources.push('Camera');
+
+    if (this.el.finalizingSub) {
+      const shorts = sources.map((s) => (s === 'Meeting tab' ? 'tab' : s === 'Microphone' ? 'mic' : 'camera'));
+      this.el.finalizingSub.textContent = `Muxing ${humanJoin(shorts)}`;
     }
-    if (this.el.metaDuration) this.el.metaDuration.textContent = formatDuration(session?.recordedMs ?? 0);
-    if (this.el.metaMic) this.el.metaMic.textContent = micModeLabel(cfg?.micMode);
-    if (this.el.metaCamera) this.el.metaCamera.textContent = cfg?.recordSelfVideo ? 'Separate' : 'Off';
+    if (this.el.finalizingFiles) {
+      const frag = document.createDocumentFragment();
+      for (const label of sources) {
+        const li = document.createElement('li');
+        const name = document.createElement('span');
+        name.textContent = label;
+        const spin = document.createElement('span');
+        spin.className = 'file-spin';
+        li.append(name, spin);
+        frag.appendChild(li);
+      }
+      this.el.finalizingFiles.replaceChildren(frag);
+    }
   }
 
   /**
