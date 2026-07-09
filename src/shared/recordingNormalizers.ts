@@ -176,6 +176,7 @@ function parseUploadJob(value: unknown): UploadJob | null {
     : [];
   return {
     id,
+    historyId: typeof value.historyId === 'string' && value.historyId ? value.historyId : undefined,
     label: typeof label === 'string' ? label : id,
     status: status as UploadJobStatus,
     progress: typeof progress === 'number' && progress >= 0 ? Math.min(1, progress) : 0,
@@ -319,6 +320,9 @@ export function normalizeSessionSnapshot(value: unknown): RecordingSessionSnapsh
   const runConfig = phase === 'idle' ? null : parseRunConfig(candidate.runConfig);
   const targetTabId = phase === 'idle' ? undefined : normalizeTargetTabId(candidate.targetTabId);
   const meetingSlug = phase === 'idle' ? undefined : normalizeMeetingSlug(candidate.meetingSlug);
+  const historyId = phase === 'idle' || typeof candidate.historyId !== 'string' || !candidate.historyId
+    ? undefined
+    : candidate.historyId;
 
   return {
     phase,
@@ -328,6 +332,7 @@ export function normalizeSessionSnapshot(value: unknown): RecordingSessionSnapsh
     runConfig,
     targetTabId,
     meetingSlug,
+    historyId,
     // Phase-independent: the epoch is preserved across idle so it stays monotonic.
     epoch: normalizeEpoch(candidate.epoch),
     // Phase-independent (ADR-0004): background upload jobs outlive the recording

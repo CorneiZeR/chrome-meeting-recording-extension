@@ -25,6 +25,7 @@ import {
   POPUP_TO_CONTENT_MESSAGE_TYPES,
 } from './protocolMessageTypes';
 import { getMessageType, hasKnownMessageType } from './typeGuards';
+import type { RecordingHistoryEntry } from './recordingHistory';
 
 export type RpcId = string;
 
@@ -59,6 +60,10 @@ export type PopupSetPaused = { type: 'SET_PAUSED'; paused: boolean };
 export type PopupDismissUploadJob = { type: 'DISMISS_UPLOAD_JOB'; jobId: string };
 /** Retries a failed/partial background upload job (ADR-0004). */
 export type PopupRetryUploadJob = { type: 'RETRY_UPLOAD_JOB'; jobId: string };
+export type PopupListRecordingHistory = { type: 'LIST_RECORDING_HISTORY' };
+export type PopupRenameRecordingHistory = { type: 'RENAME_RECORDING_HISTORY'; id: string; name: string };
+export type PopupRemoveRecordingHistory = { type: 'REMOVE_RECORDING_HISTORY'; id: string };
+export type PopupOpenRecordingHistoryFile = { type: 'OPEN_RECORDING_HISTORY_FILE'; recordingId: string; fileId: string };
 
 export type PopupToBg =
   | PopupStartRecording
@@ -70,7 +75,11 @@ export type PopupToBg =
   | PopupSetCameraMuted
   | PopupSetPaused
   | PopupDismissUploadJob
-  | PopupRetryUploadJob;
+  | PopupRetryUploadJob
+  | PopupListRecordingHistory
+  | PopupRenameRecordingHistory
+  | PopupRemoveRecordingHistory
+  | PopupOpenRecordingHistoryFile;
 
 export type PopupToBgResponse<T extends PopupToBg> =
   T extends PopupStartRecording ? CommandResult :
@@ -83,6 +92,10 @@ export type PopupToBgResponse<T extends PopupToBg> =
   T extends PopupSetPaused ? CommandResult :
   T extends PopupDismissUploadJob ? { session: RecordingStatusView } :
   T extends PopupRetryUploadJob ? CommandResult :
+  T extends PopupListRecordingHistory ? { ok: true; entries: RecordingHistoryEntry[] } | { ok: false; error: string } :
+  T extends PopupRenameRecordingHistory ? { ok: true; entry?: RecordingHistoryEntry } | { ok: false; error: string } :
+  T extends PopupRemoveRecordingHistory ? { ok: true; removed: boolean } | { ok: false; error: string } :
+  T extends PopupOpenRecordingHistoryFile ? { ok: true } | { ok: false; error: string } :
   never;
 
 export type PopupGetTranscript = { type: 'GET_TRANSCRIPT' };
@@ -140,6 +153,7 @@ export type BgToOffscreenRpc =
       runConfig: RecordingRunConfig;
       recorderSettings: RecorderRuntimeSettingsSnapshot;
       perfSettings: PerfSettings;
+      historyId: string;
       /** Monotonic run epoch the offscreen must echo in OFFSCREEN_STATE; see ADR-0003. */
       epoch: number;
     }>
@@ -160,7 +174,7 @@ export type OffscreenToBg =
   | { type: 'OFFSCREEN_READY'; version?: string }
   | ({ type: 'OFFSCREEN_STATE' } & OffscreenPhaseUpdate)
   | { type: 'OFFSCREEN_UPLOAD_STATE'; job: UploadJob }
-  | { type: 'OFFSCREEN_SAVE'; filename: string; blobUrl: string; opfsFilename?: string };
+  | { type: 'OFFSCREEN_SAVE'; historyId: string; stream: import('./recording').RecordingStream; filename: string; blobUrl: string; opfsFilename?: string };
 
 export type PerfEventMessage = {
   type: 'PERF_EVENT';

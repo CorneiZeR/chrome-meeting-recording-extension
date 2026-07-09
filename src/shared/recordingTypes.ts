@@ -85,6 +85,8 @@ export type UploadJobFile = {
  */
 export type UploadJob = {
   id: string;
+  /** Stable history identity of the recording that produced this detached upload. */
+  historyId?: string;
   /** Human label for the upload tab (meeting slug, or folder/timestamp fallback). */
   label: string;
   status: UploadJobStatus;
@@ -135,6 +137,8 @@ export type RecordingSessionSnapshot = {
   runConfig: RecordingRunConfig | null;
   targetTabId?: number;
   meetingSlug?: string;
+  /** Stable per-run recording-history identity; not exposed to the popup. */
+  historyId?: string;
   /**
    * Monotonic run epoch (fencing token). Incremented on each `start()`, persisted
    * across service-worker restarts, and echoed by the offscreen in OFFSCREEN_STATE

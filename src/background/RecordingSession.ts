@@ -17,6 +17,7 @@ import {
   type UploadSummary,
 } from '../shared/recording';
 import type { OffscreenPhaseUpdate } from '../shared/protocol';
+import { createRecordingHistoryId } from '../shared/recordingHistory';
 
 export type RecordingTarget = {
   targetTabId: number;
@@ -84,6 +85,7 @@ export class RecordingSession {
       runConfig,
       targetTabId: target?.targetTabId,
       meetingSlug: target?.meetingSlug,
+      historyId: createRecordingHistoryId(),
       warnings: undefined,
       // Fencing token (ADR-0003): a fresh, strictly-increasing epoch per run.
       epoch: (this.snapshot.epoch ?? 0) + 1,
@@ -111,6 +113,7 @@ export class RecordingSession {
       runConfig: this.snapshot.runConfig,
       targetTabId: this.snapshot.targetTabId,
       meetingSlug: this.snapshot.meetingSlug,
+      historyId: this.snapshot.historyId,
       warnings: this.snapshot.warnings,
       micMuted: this.snapshot.micMuted,
       cameraMuted: this.snapshot.cameraMuted,
@@ -157,6 +160,7 @@ export class RecordingSession {
       runConfig: this.snapshot.runConfig,
       targetTabId: this.snapshot.targetTabId,
       meetingSlug: this.snapshot.meetingSlug,
+      historyId: this.snapshot.historyId,
       epoch: this.snapshot.epoch,
       error,
       warnings: this.snapshot.warnings,
@@ -276,6 +280,7 @@ export class RecordingSession {
       runConfig: this.snapshot.runConfig,
       targetTabId: this.snapshot.targetTabId,
       meetingSlug: this.snapshot.meetingSlug,
+      historyId: this.snapshot.historyId,
       error,
       warnings,
       micMuted: this.snapshot.micMuted,
