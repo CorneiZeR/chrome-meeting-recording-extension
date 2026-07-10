@@ -52,7 +52,7 @@ export class UploadManager {
    * in-memory) artifacts. Bounded to one: a newer failure or a successful retry
    * evicts it, so a failed recording can't pin its bytes in memory indefinitely.
    */
-  private lastFailed: { jobId: string; artifacts: CompletedRecordingArtifact[] } | null = null;
+  private lastFailed: { jobId: string; historyId?: string; artifacts: CompletedRecordingArtifact[] } | null = null;
 
   constructor(private readonly deps: UploadManagerDeps) {
     this.concurrency = Math.max(1, deps.concurrency ?? 1);
@@ -65,8 +65,8 @@ export class UploadManager {
    * job and returns its id. Reports the job's initial `uploading` state immediately
    * so a tab appears at once, then pumps the queue.
    */
-  enqueue(artifacts: CompletedRecordingArtifact[]): string {
-    return this.enqueueJob(this.genId(), artifacts);
+  enqueue(artifacts: CompletedRecordingArtifact[], historyId?: string): string {
+    return this.enqueueJob(this.genId(), artifacts, false, historyId);
   }
 
   /**
@@ -77,17 +77,18 @@ export class UploadManager {
    */
   retry(jobId: string): boolean {
     if (this.lastFailed?.jobId !== jobId) return false;
-    const { artifacts } = this.lastFailed;
+    const { artifacts, historyId } = this.lastFailed;
     this.lastFailed = null;
     // The original failure already saved a local copy, so suppress the download
     // failsafe on the retry — a re-failure must not duplicate it (ADR-0004).
-    this.enqueueJob(jobId, artifacts, true);
+    this.enqueueJob(jobId, artifacts, true, historyId);
     return true;
   }
 
-  private enqueueJob(id: string, artifacts: CompletedRecordingArtifact[], skipLocalFallback = false): string {
+  private enqueueJob(id: string, artifacts: CompletedRecordingArtifact[], skipLocalFallback = false, historyId?: string): string {
     const job: UploadJob = {
       id,
+      historyId,
       label: inferDriveRecordingFolderName(artifacts[0]?.artifact.filename ?? id),
       status: 'uploading',
       progress: 0,
@@ -158,7 +159,7 @@ export class UploadManager {
   private rememberRetryable(settled: UploadJob, artifacts: CompletedRecordingArtifact[]): void {
     const failedFiles = new Set(settled.files.filter((f) => f.status === 'fallback').map((f) => f.filename));
     if (failedFiles.size > 0) {
-      this.lastFailed = { jobId: settled.id, artifacts: artifacts.filter((a) => failedFiles.has(a.artifact.filename)) };
+      this.lastFailed = { jobId: settled.id, historyId: settled.historyId, artifacts: artifacts.filter((a) => failedFiles.has(a.artifact.filename)) };
     } else if (this.lastFailed?.jobId === settled.id) {
       this.lastFailed = null;
     }

@@ -11,6 +11,7 @@ import { isBusyPhase, type RecordingPhase } from '../shared/recording';
 import { broadcastToPopup } from '../shared/messages';
 import type { OffscreenManager } from './OffscreenManager';
 import { debugPerf, nowMs, roundMs } from '../shared/perf';
+import type { RecordingHistoryService } from './RecordingHistoryService';
 
 let keepAliveTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -33,9 +34,10 @@ export function stopKeepAlive() {
  */
 export function registerSaveHandler(
   offscreen: OffscreenManager,
-  L: { log: (...a: any[]) => void; warn: (...a: any[]) => void }
+  L: { log: (...a: any[]) => void; warn: (...a: any[]) => void },
+  history?: Pick<RecordingHistoryService, 'createPending' | 'localSaveSettled'>,
 ) {
-  offscreen.onSaveRequested = ({ filename, blobUrl, opfsFilename }) => {
+  offscreen.onSaveRequested = ({ historyId, stream, filename, blobUrl, opfsFilename }) => {
     const resolvedFilename =
       typeof filename === 'string' && filename.trim()
         ? filename
@@ -47,6 +49,11 @@ export function registerSaveHandler(
     void (async () => {
       const downloadStartedAt = nowMs();
       let downloadId: number | undefined;
+
+      if (historyId) {
+        void history?.createPending(historyId, [{ id: `${historyId}:${stream}`, stream, filename: resolvedFilename }], 'local')
+          .catch((error) => L.warn('Recording history initialization failed:', error));
+      }
 
       try {
         downloadId = await downloadFile({ url: blobUrl, filename: resolvedFilename, saveAs: false });
@@ -64,6 +71,8 @@ export function registerSaveHandler(
         const message = error instanceof Error ? error.message : String(error);
         L.warn('downloads.download error:', message);
         await broadcastToPopup({ type: 'RECORDING_SAVE_ERROR', filename: resolvedFilename, error: message });
+        if (historyId) void history?.localSaveSettled(historyId, stream, undefined, 'interrupted', message)
+          .catch((historyError) => L.warn('Recording history update failed:', historyError));
         // The download never started: free the in-memory URL but keep the OPFS
         // source so crash recovery can retry it on a later launch.
         offscreen.revokeBlobUrl(blobUrl);
@@ -76,6 +85,8 @@ export function registerSaveHandler(
       // OPFS source is deleted ONLY on confirmed completion; an interrupted (or
       // never-settling) download keeps it so crash recovery can reclaim it.
       const settled = downloadId != null ? await awaitDownloadSettled(downloadId) : 'timeout';
+      if (historyId) void history?.localSaveSettled(historyId, stream, downloadId, settled)
+        .catch((historyError) => L.warn('Recording history update failed:', historyError));
       if (settled === 'complete') {
         offscreen.revokeBlobUrl(blobUrl, opfsFilename);
       } else if (settled === 'interrupted') {

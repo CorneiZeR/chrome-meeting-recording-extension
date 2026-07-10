@@ -62,6 +62,7 @@ const perfRuntimeReady = configurePerfRuntime({
 
 let portRef: chrome.runtime.Port | null = null;
 let reconnectEnabled = true;
+let activeHistoryId = '';
 
 // ─── Runtime diagnostics ─────────────────────────────────────────────────────
 
@@ -105,7 +106,10 @@ function connectPort(retryDelay = 1_000): chrome.runtime.Port {
     currentPhase: controller.currentPhase,
     isFinalizing: controller.isFinalizing,
     clearWarnings: controller.clearWarnings,
-    onStartRequested: controller.onStartRequested,
+    onStartRequested: (runConfig, storageMode, epoch, historyId) => {
+      activeHistoryId = historyId;
+      controller.onStartRequested(runConfig, storageMode, epoch);
+    },
     onStopRequested: controller.onStopRequested,
     retryUpload: (jobId) => uploadManager.retry(jobId),
     pushState: controller.pushState,
@@ -142,7 +146,8 @@ function getPort(): chrome.runtime.Port {
 // ─── State helpers ───────────────────────────────────────────────────────────
 
 function requestSave(filename: string, blobUrl: string, opfsFilename?: string) {
-  getPort().postMessage({ type: 'OFFSCREEN_SAVE', filename, blobUrl, opfsFilename });
+  const stream = filename.endsWith('-mic.webm') ? 'mic' : filename.endsWith('-self-video.webm') ? 'self-video' : 'tab';
+  getPort().postMessage({ type: 'OFFSCREEN_SAVE', historyId: activeHistoryId, stream, filename, blobUrl, opfsFilename });
 }
 
 async function getDriveToken(options?: { refresh?: boolean }): Promise<string> {
@@ -207,7 +212,7 @@ const engine = new RecorderEngine({
   },
 });
 
-controller.attachServices(engine, finalizer, (artifacts) => uploadManager.enqueue(artifacts));
+controller.attachServices(engine, finalizer, (artifacts) => uploadManager.enqueue(artifacts, activeHistoryId));
 
 // Captured during synchronous module load — before any OFFSCREEN_START RPC can
 // create this session's recording files — so orphan recovery can tell a stale

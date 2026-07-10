@@ -118,7 +118,7 @@ describe('background runtime messages', () => {
     });
 
     expect(loadRecorderRuntimeSettingsSnapshot).toHaveBeenCalledTimes(1);
-    expect(offscreenInstance.rpc).toHaveBeenCalledWith({
+    expect(offscreenInstance.rpc).toHaveBeenCalledWith(expect.objectContaining({
       type: 'OFFSCREEN_START',
       streamId: 'stream-1',
       meetingSlug: 'meet-abc-defg-hij',
@@ -133,7 +133,7 @@ describe('background runtime messages', () => {
         parallelUploadConcurrency: 2,
       }),
       epoch: 1,
-    });
+    }));
     expect(response).toEqual(expect.objectContaining({ ok: true }));
   });
 

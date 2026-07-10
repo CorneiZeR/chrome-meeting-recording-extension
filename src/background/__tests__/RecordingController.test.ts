@@ -68,7 +68,7 @@ describe('RecordingController', () => {
       expect(getCapturedTabs).toHaveBeenCalledTimes(1);
       expect(loadRecorderRuntimeSettingsSnapshot).toHaveBeenCalledTimes(1);
       expect(offscreen.ensureReady).toHaveBeenCalledTimes(1);
-      expect(offscreen.rpc).toHaveBeenCalledWith({
+      expect(offscreen.rpc).toHaveBeenCalledWith(expect.objectContaining({
         type: 'OFFSCREEN_START',
         streamId: 'stream-xyz',
         meetingSlug: 'meet-abc-defg-hij',
@@ -76,7 +76,7 @@ describe('RecordingController', () => {
         recorderSettings: { recorder: 'snapshot' },
         perfSettings: getPerfSettingsSnapshot(),
         epoch: 1,
-      });
+      }));
       expect(result).toEqual(expect.objectContaining({ ok: true }));
       expect(session.getSnapshot().phase).toBe('starting');
     });

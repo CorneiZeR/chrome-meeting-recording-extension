@@ -14,6 +14,24 @@ export function downloadFile(options: chrome.downloads.DownloadOptions): Promise
   });
 }
 
+/** Opens a downloaded file after confirming Chrome still knows it exists. */
+export function openDownloadedFile(downloadId: number): Promise<void> {
+  return new Promise((resolve, reject) => {
+    chrome.downloads.search({ id: downloadId }, (items) => {
+      const error = chrome.runtime.lastError?.message;
+      const item = items?.[0];
+      if (error) return reject(new Error(error));
+      if (!item || item.exists === false) return reject(new Error('This local file is no longer available'));
+      try {
+        chrome.downloads.open(downloadId);
+        resolve();
+      } catch (cause) {
+        reject(cause instanceof Error ? cause : new Error(String(cause)));
+      }
+    });
+  });
+}
+
 export type DownloadSettledResult = 'complete' | 'interrupted' | 'timeout';
 
 /**

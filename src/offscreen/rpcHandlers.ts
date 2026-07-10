@@ -27,7 +27,7 @@ export type RpcHandlerDeps = {
   connectPort: () => chrome.runtime.Port;
   currentPhase: () => RecordingPhase;
   isFinalizing: () => boolean;
-  onStartRequested: (runConfig: RecordingRunConfig, storageMode: 'local' | 'drive', epoch: number) => void;
+  onStartRequested: (runConfig: RecordingRunConfig, storageMode: 'local' | 'drive', epoch: number, historyId: string) => void;
   onStopRequested: () => void;
   /** Re-uploads a failed/partial background upload job; false when not retryable (ADR-0004). */
   retryUpload: (jobId: string) => boolean;
@@ -65,7 +65,7 @@ async function handleOffscreenStart(
 
   deps.clearWarnings();
   applyPerfSettings(msg.perfSettings);
-  deps.onStartRequested(runConfig, runConfig.storageMode, msg.epoch);
+  deps.onStartRequested(runConfig, runConfig.storageMode, msg.epoch, msg.historyId);
   deps.pushState('starting');
 
   try {

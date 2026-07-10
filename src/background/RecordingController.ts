@@ -129,6 +129,7 @@ export class RecordingController {
         runConfig,
         recorderSettings,
         perfSettings: getPerfSettingsSnapshot(),
+        historyId: started.historyId ?? '',
         // Fencing token (ADR-0003): the offscreen echoes this in OFFSCREEN_STATE.
         epoch: started.epoch ?? 0,
       } as const;

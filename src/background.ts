@@ -24,6 +24,9 @@ import { registerRecordingCommands } from './background/recordingCommands';
 import { registerRecordingAutoStop } from './background/recordingAutoStop';
 import { createPhaseWatchdog } from './background/phaseWatchdog';
 import { startKeepAlive, stopKeepAlive, isFreshRecordingStart, registerSaveHandler } from './background/sessionLifecycle';
+import { RecordingHistoryRepository } from './background/RecordingHistoryRepository';
+import { RecordingHistoryService } from './background/RecordingHistoryService';
+import { openDownloadedFile } from './platform/chrome/downloads';
 import { hydrateLegacySession, LEGACY_SESSION_PHASE_KEY, LEGACY_SESSION_RUN_CONFIG_KEY } from './background/legacySession';
 import { getSessionStorageValues, setSessionStorageValues } from './platform/chrome/storage';
 import { makeLogger } from './shared/logger';
@@ -44,6 +47,7 @@ import { TIMEOUTS } from './shared/timeouts';
 
 const L = makeLogger('background');
 const offscreen = new OffscreenManager();
+const history = new RecordingHistoryService(new RecordingHistoryRepository(), openDownloadedFile);
 
 let sessionHydrated = false;
 // Tracks the prior phase so we can reset diagnostics at the START of a new
@@ -110,6 +114,9 @@ offscreen.onStateChanged = (msg) => {
 // id, phase-independent) so the popup can render it and "busy" reflects it.
 offscreen.onUploadJobChanged = (job) => {
   session.upsertUploadJob(job);
+  if (job.status !== 'uploading') {
+    void history.applyTerminalUploadJob(job).catch((error) => L.warn('Recording history Drive update failed:', error));
+  }
 };
 
 // Liveness backstop for an orphaned `starting`/`stopping` (ADR-0003). Complements
@@ -139,13 +146,13 @@ const phaseWatchdog = createPhaseWatchdog({
   },
 });
 
-registerSaveHandler(offscreen, L);
+registerSaveHandler(offscreen, L, history);
 
 // The recording control plane: every start/stop trigger drives this one seam.
 const controller = new RecordingController({ L, offscreen, session });
 
 // Register all popup message handlers.
-registerMessageHandlers({ L, session, perfDebugStore, controller, cpuSampler: createChromeCpuSampler() });
+registerMessageHandlers({ L, session, perfDebugStore, controller, cpuSampler: createChromeCpuSampler(), history });
 registerRecordingCommands({ L, controller });
 registerRecordingAutoStop({ session, controller });
 

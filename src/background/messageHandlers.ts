@@ -21,6 +21,7 @@ import type { RecordingController } from './RecordingController';
 import type { RecordingSession } from './RecordingSession';
 import type { PerfDebugStore } from './PerfDebugStore';
 import type { CpuSampler } from './perf/CpuSampler';
+import type { RecordingHistoryService } from './RecordingHistoryService';
 
 export type MessageHandlersDeps = {
   L: { log: (...a: any[]) => void; warn: (...a: any[]) => void; error: (...a: any[]) => void };
@@ -29,6 +30,7 @@ export type MessageHandlersDeps = {
   controller: RecordingController;
   /** Dev-only system CPU sampler; null in production (no `system.cpu` permission). */
   cpuSampler?: CpuSampler | null;
+  history?: RecordingHistoryService;
 };
 
 /**
@@ -36,7 +38,7 @@ export type MessageHandlersDeps = {
  * commands to PERF_EVENT, GET_DRIVE_TOKEN, START_RECORDING, STOP_RECORDING,
  * and GET_RECORDING_STATUS handlers.
  */
-export function registerMessageHandlers({ L, session, perfDebugStore, controller, cpuSampler }: MessageHandlersDeps) {
+export function registerMessageHandlers({ L, session, perfDebugStore, controller, cpuSampler, history }: MessageHandlersDeps) {
   chrome.runtime.onMessage.addListener((
     msg: unknown,
     sender: chrome.runtime.MessageSender,
@@ -128,6 +130,23 @@ export function registerMessageHandlers({ L, session, perfDebugStore, controller
     const send = sendResponse as (r: CommandResult) => void;
 
     (async () => {
+      if (msg.type === 'LIST_RECORDING_HISTORY') {
+        if (!history) throw new Error('Recording history is unavailable');
+        sendResponse({ ok: true, entries: await history.list() }); return;
+      }
+      if (msg.type === 'RENAME_RECORDING_HISTORY') {
+        if (!history) throw new Error('Recording history is unavailable');
+        sendResponse({ ok: true, entry: await history.rename(msg.id, msg.name) }); return;
+      }
+      if (msg.type === 'REMOVE_RECORDING_HISTORY') {
+        if (!history) throw new Error('Recording history is unavailable');
+        sendResponse({ ok: true, removed: await history.remove(msg.id) }); return;
+      }
+      if (msg.type === 'OPEN_RECORDING_HISTORY_FILE') {
+        if (!history) throw new Error('Recording history is unavailable');
+        await history.openLocalFile(msg.recordingId, msg.fileId);
+        sendResponse({ ok: true }); return;
+      }
       if (msg.type === 'START_RECORDING')    { send(await controller.start(msg)); return; }
       if (msg.type === 'STOP_RECORDING')     { send(await controller.stop('popup stop button')); return; }
       if (msg.type === 'SET_MIC_MUTED')      { send(await controller.setMicMuted(msg.muted)); return; }
@@ -139,8 +158,13 @@ export function registerMessageHandlers({ L, session, perfDebugStore, controller
       if (msg.type === 'RETRY_UPLOAD_JOB')     { send(await controller.retryUpload(msg.jobId)); return; }
     })().catch((err) => {
       console.error('[background] top-level error', err);
-      session.fail(String(err));
-      sendResponse({ ok: false, error: String(err), session: toStatusView(session.getSnapshot()) } satisfies CommandResult);
+      const error = String(err);
+      if (isPopupToBgMessage(msg) && ['LIST_RECORDING_HISTORY', 'RENAME_RECORDING_HISTORY', 'REMOVE_RECORDING_HISTORY', 'OPEN_RECORDING_HISTORY_FILE'].includes(msg.type)) {
+        sendResponse({ ok: false, error });
+      } else {
+        session.fail(error);
+        sendResponse({ ok: false, error, session: toStatusView(session.getSnapshot()) } satisfies CommandResult);
+      }
     });
 
     return true;
