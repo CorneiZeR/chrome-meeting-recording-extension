@@ -322,6 +322,17 @@
   background: #d23b40;
 }
 
+.btn-discard {
+  background: transparent;
+  color: #f08b8f;
+  border: 1px solid #68353a;
+}
+
+.btn-discard:hover:not(:disabled) {
+  background: #382025;
+  border-color: #a64a52;
+}
+
 .btn-secondary {
   background: #1a1c21;
   color: #dfe2e8;
@@ -382,4 +393,3 @@
   width: 12px;
   height: 12px;
 }
-

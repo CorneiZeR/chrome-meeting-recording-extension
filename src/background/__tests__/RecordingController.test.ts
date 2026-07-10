@@ -253,6 +253,28 @@ describe('RecordingController', () => {
     });
   });
 
+  describe('discard', () => {
+    it('marks the session stopping and forwards OFFSCREEN_DISCARD without saving', async () => {
+      session.start({ ...RUN_CONFIG }, { targetTabId: 42 });
+
+      const result = await controller.discard('popup discard button');
+
+      expect(offscreen.ensureReady).toHaveBeenCalledTimes(1);
+      expect(offscreen.rpc).toHaveBeenCalledWith({ type: 'OFFSCREEN_DISCARD' });
+      expect(result).toEqual(expect.objectContaining({ ok: true }));
+      expect(session.getSnapshot().phase).toBe('stopping');
+    });
+
+    it('guards against discarding when no recording is active', async () => {
+      const result = await controller.discard();
+
+      expect(result).toEqual(
+        expect.objectContaining({ ok: false, error: 'Discard requested but no recording session is active' })
+      );
+      expect(offscreen.rpc).not.toHaveBeenCalled();
+    });
+  });
+
   describe('setMicMuted', () => {
     const startMic = (micMode: 'mixed' | 'separate' | 'off') =>
       session.start({ storageMode: 'local', micMode, recordSelfVideo: false }, { targetTabId: 42 });

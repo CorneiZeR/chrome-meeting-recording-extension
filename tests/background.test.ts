@@ -552,6 +552,32 @@ describe('background runtime messages', () => {
     return (chrome.runtime.onMessage.addListener as jest.Mock).mock.calls[0][0];
   }
 
+  it('dispatches DISCARD_RECORDING through the real background message listener', async () => {
+    (chrome.storage.session.get as jest.Mock).mockResolvedValue({
+      recordingSession: {
+        phase: 'recording',
+        desired: 'recording',
+        observed: 'recording',
+        failed: false,
+        runConfig: { storageMode: 'drive', micMode: 'separate', recordSelfVideo: true },
+        epoch: 3,
+        updatedAt: Date.now(),
+      },
+    });
+    const offscreenInstance = makeOffscreenInstance();
+    const listener = await importBackgroundWith(offscreenInstance);
+
+    const response = await new Promise<any>((resolve) => {
+      listener({ type: 'DISCARD_RECORDING' }, {}, resolve);
+    });
+
+    expect(response).toEqual(expect.objectContaining({
+      ok: true,
+      session: expect.objectContaining({ phase: 'stopping' }),
+    }));
+    expect(offscreenInstance.rpc).toHaveBeenCalledWith({ type: 'OFFSCREEN_DISCARD' });
+  });
+
   it('acknowledges a PERF_EVENT without keeping the response channel open', async () => {
     const listener = await importBackgroundWith(makeOffscreenInstance());
 

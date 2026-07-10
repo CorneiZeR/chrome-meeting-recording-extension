@@ -57,6 +57,12 @@ export function buildStopErrorAlert(error: unknown): string {
   return `Failed to stop recording:\n${message}`;
 }
 
+/** Formats the alert shown when destructive recording cleanup cannot be started. */
+export function buildDiscardErrorAlert(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  return `Failed to discard recording:\n${message}`;
+}
+
 /** Returns the user-facing mic-permission error for the active microphone mode. */
 export function buildMicPermissionError(micMode: MicMode): string {
   if (micMode === 'mixed') {

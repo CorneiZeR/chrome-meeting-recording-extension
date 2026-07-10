@@ -47,6 +47,8 @@ export type PopupStartRecording = {
 };
 
 export type PopupStopRecording = { type: 'STOP_RECORDING' };
+/** Stops the active capture and permanently deletes its temporary media artifacts. */
+export type PopupDiscardRecording = { type: 'DISCARD_RECORDING' };
 export type PopupGetRecordingStatus = { type: 'GET_RECORDING_STATUS' };
 export type PopupGetMicLevel = { type: 'GET_MIC_LEVEL' };
 export type PopupGetDriveToken = { type: 'GET_DRIVE_TOKEN'; refresh?: boolean };
@@ -68,6 +70,7 @@ export type PopupOpenRecordingHistoryFile = { type: 'OPEN_RECORDING_HISTORY_FILE
 export type PopupToBg =
   | PopupStartRecording
   | PopupStopRecording
+  | PopupDiscardRecording
   | PopupGetRecordingStatus
   | PopupGetMicLevel
   | PopupGetDriveToken
@@ -84,6 +87,7 @@ export type PopupToBg =
 export type PopupToBgResponse<T extends PopupToBg> =
   T extends PopupStartRecording ? CommandResult :
   T extends PopupStopRecording ? CommandResult :
+  T extends PopupDiscardRecording ? CommandResult :
   T extends PopupGetRecordingStatus ? { session: RecordingStatusView } :
   T extends PopupGetMicLevel ? { level: number } :
   T extends PopupGetDriveToken ? DriveTokenResponse :

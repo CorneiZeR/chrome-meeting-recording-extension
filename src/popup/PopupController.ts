@@ -16,6 +16,7 @@ import { PopupStateController } from './controllers/PopupStateController';
 import {
   buildLocalSaveFailedAlert,
   buildLocalSaveFailedToast,
+  buildDiscardErrorAlert,
   buildMicPermissionError,
   buildSavedLocallyMessage,
   buildStartErrorAlert,
@@ -117,6 +118,7 @@ export class PopupController {
     this.wireRecordingStateListener();
     this.wireTranscriptDownload();
     this.wireStartStop();
+    this.wireDiscard();
     this.wirePermissionInterstitial();
     this.wireMic();
     this.wireMuteMic();
@@ -555,6 +557,17 @@ export class PopupController {
     stopBtn.addEventListener('click',  () => this.executeCommand(stopBtn,  'STOP_RECORDING',  () => this.stopRecording(),  buildStopErrorAlert));
   }
 
+  private wireDiscard() {
+    const discardBtn = this.el.discardBtn;
+    if (!discardBtn) return;
+    discardBtn.addEventListener('click', () => this.executeCommand(
+      discardBtn,
+      'DISCARD_RECORDING',
+      () => this.discardRecording(),
+      buildDiscardErrorAlert
+    ));
+  }
+
   /**
    * Shared scaffolding for start/stop button handlers: guards against concurrent
    * commands, disables the button while the action is in-flight, and resets UI
@@ -711,5 +724,18 @@ export class PopupController {
     if (resp.ok === false) throw new Error(resp.error || 'Failed to stop');
     this.state.applySession(resp.session);
     this.toast(POPUP_TOAST_TEXT.stopping);
+  }
+
+  /** Discards both media artifacts and the live caption buffer for this meeting tab. */
+  private async discardRecording(): Promise<void> {
+    const tab = await queryActiveTab();
+    const resp = await sendToBackground({ type: 'DISCARD_RECORDING' });
+    if (resp.ok === false) throw new Error(resp.error || 'Failed to discard recording');
+
+    // Captions are recording content too. Reset is best-effort because capture is
+    // already being discarded by the background and the tab could close mid-click.
+    if (tab?.id) await sendToContent(tab.id, { type: 'RESET_TRANSCRIPT' }).catch(() => {});
+    this.state.applySession(resp.session);
+    this.toast('Discarding recording and deleting captured media…');
   }
 }

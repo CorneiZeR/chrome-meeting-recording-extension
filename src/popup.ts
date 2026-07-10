@@ -63,6 +63,7 @@ const controller = new PopupController({
   hideCameraBtn: byId<HTMLButtonElement>('hide-camera'),
   pauseBtn: byId<HTMLButtonElement>('pause-recording'),
   stopBtn: byId<HTMLButtonElement>('stop-rec'),
+  discardBtn: byId<HTMLButtonElement>('discard-rec'),
 
   // Finalizing view
   finalizingLabel: byId('finalizing-label'),

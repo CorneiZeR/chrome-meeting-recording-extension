@@ -179,6 +179,33 @@ export class RecordingController {
   }
 
   /**
+   * Stops the active capture without entering either the local-save or Drive-upload
+   * pipeline. The offscreen runtime seals only as needed to close its writers, then
+   * deletes every resulting temporary artifact before reporting idle.
+   */
+  async discard(reason = 'user requested discard'): Promise<CommandResult> {
+    if (!isStoppablePhase(this.session.getSnapshot().phase)) {
+      return this.fail('Discard requested but no recording session is active');
+    }
+    this.session.markStopping();
+    this.L.log('Discarding recording:', reason);
+
+    try {
+      await this.offscreen.ensureReady();
+      const r = await this.offscreen.rpc<{ ok: boolean; error?: string }>({ type: 'OFFSCREEN_DISCARD' });
+      if (!r?.ok) {
+        this.session.fail(r?.error || 'Discard failed in offscreen');
+        return this.fail(r?.error || 'Discard failed in offscreen');
+      }
+      return this.ok();
+    } catch (e: any) {
+      const error = `DISCARD failed: ${e?.message || e}`;
+      this.session.fail(error);
+      return this.fail(error);
+    }
+  }
+
+  /**
    * Toggles mic mute on the live recording. Guards that capture is active and
    * that the run actually has a microphone, forwards the actuation to the
    * offscreen engine, and on success mirrors the flag onto the session so the

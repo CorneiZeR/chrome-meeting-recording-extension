@@ -54,6 +54,8 @@ export type PopupElements = {
   hideCameraBtn: HTMLButtonElement | null;
   pauseBtn: HTMLButtonElement | null;
   stopBtn: HTMLButtonElement | null;
+  /** Destructive active-recording action; optional for lightweight view tests. */
+  discardBtn?: HTMLButtonElement | null;
 
   // Finalizing view
   finalizingLabel: HTMLElement | null;

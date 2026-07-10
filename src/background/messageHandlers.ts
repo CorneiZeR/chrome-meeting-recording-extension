@@ -149,6 +149,7 @@ export function registerMessageHandlers({ L, session, perfDebugStore, controller
       }
       if (msg.type === 'START_RECORDING')    { send(await controller.start(msg)); return; }
       if (msg.type === 'STOP_RECORDING')     { send(await controller.stop('popup stop button')); return; }
+      if (msg.type === 'DISCARD_RECORDING')  { send(await controller.discard('popup discard button')); return; }
       if (msg.type === 'SET_MIC_MUTED')      { send(await controller.setMicMuted(msg.muted)); return; }
       if (msg.type === 'SET_CAMERA_MUTED')   { send(await controller.setCameraMuted(msg.muted)); return; }
       if (msg.type === 'SET_PAUSED')         { send(await controller.setPaused(msg.paused)); return; }

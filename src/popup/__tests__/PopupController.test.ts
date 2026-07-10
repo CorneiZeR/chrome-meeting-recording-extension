@@ -85,6 +85,7 @@ describe('PopupController', () => {
       hideCameraBtn: pill('data-camera-label'),
       pauseBtn: pill('data-pause-label'),
       stopBtn: document.createElement('button'),
+      discardBtn: document.createElement('button'),
       tabSourceSub: document.createElement('div'),
 
       // Finalizing view
@@ -741,6 +742,34 @@ describe('PopupController', () => {
 
     expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ type: 'STOP_RECORDING' });
     expect(console.log).toHaveBeenCalledWith('[popup]', expect.stringContaining('Stopping...'));
+  });
+
+  it('handles DISCARD_RECORDING click and clears the active tab transcript', async () => {
+    mockSendMessage.mockResolvedValueOnce({
+      session: {
+        phase: 'recording',
+        runConfig: (global as any).__TEST_RUN_CONFIG__(),
+        updatedAt: Date.now(),
+      },
+    });
+    controller.init();
+    await new Promise(process.nextTick);
+
+    mockSendMessage.mockClear();
+    mockSendMessage.mockResolvedValueOnce({
+      ok: true,
+      session: {
+        phase: 'stopping',
+        runConfig: (global as any).__TEST_RUN_CONFIG__(),
+        updatedAt: Date.now(),
+      },
+    });
+    elements.discardBtn.click();
+    await flush();
+
+    expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ type: 'DISCARD_RECORDING' });
+    expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(101, { type: 'RESET_TRANSCRIPT' });
+    expect(console.log).toHaveBeenCalledWith('[popup]', expect.stringContaining('Discarding recording'));
   });
 
   it('opens the settings page from the gear button', async () => {
