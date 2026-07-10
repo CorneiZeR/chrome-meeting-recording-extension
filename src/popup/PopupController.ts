@@ -123,6 +123,7 @@ export class PopupController {
     this.wireHideCamera();
     this.wirePause();
     this.wireSettingsLink();
+    this.wireRecordingsLink();
     this.wireDiagnosticsLink();
     this.sessionTabs.wireEvents();
     void this.state.refreshInitialState();
@@ -490,6 +491,13 @@ export class PopupController {
     if (!this.el.openSettingsBtn) return;
     this.el.openSettingsBtn.addEventListener('click', async () => {
       await createRuntimeTab('settings.html');
+    });
+  }
+
+  private wireRecordingsLink() {
+    if (!this.el.openRecordingsBtn) return;
+    this.el.openRecordingsBtn.addEventListener('click', async () => {
+      await createRuntimeTab('recordings.html');
     });
   }
 

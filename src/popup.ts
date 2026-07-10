@@ -30,6 +30,7 @@ const controller = new PopupController({
   recordSelfVideoCheckbox: byId<HTMLInputElement>('record-self-video'),
   tabContentTypeGroup: byId('tab-content-type'),
   openSettingsBtn: byId<HTMLButtonElement>('open-settings'),
+  openRecordingsBtn: byId<HTMLButtonElement>('open-recordings'),
   openDiagnosticsBtn: byId<HTMLButtonElement>('open-diagnostics'),
   ppHeader: byId('pp-header'),
 

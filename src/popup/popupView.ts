@@ -20,6 +20,7 @@ export type PopupElements = {
   /** Container of the tab-content-type segmented radio group (screen/video). */
   tabContentTypeGroup: HTMLElement | null;
   openSettingsBtn: HTMLButtonElement | null;
+  openRecordingsBtn: HTMLButtonElement | null;
   openDiagnosticsBtn: HTMLButtonElement | null;
   /** The persistent wordmark header; gets `.compact` on every non-idle screen. */
   ppHeader: HTMLElement | null;
