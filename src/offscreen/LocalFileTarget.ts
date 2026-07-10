@@ -103,7 +103,13 @@ export class LocalFileTarget implements StorageTarget {
       file,
       opfsFilename: this.filename,
       cleanup: async () => {
-        await this.discardInternal();
+        try {
+          await this.discardInternal();
+        } finally {
+          // Drop the target's retained File reference after deletion. The caller
+          // owns the returned artifact only for the duration of its cleanup.
+          this.sealed = null;
+        }
       },
     };
     return this.sealed;

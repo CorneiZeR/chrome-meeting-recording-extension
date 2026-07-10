@@ -189,6 +189,13 @@ export class RecorderEngine {
 
     try {
       const tabRecorderStream = await this.acquireRecordingStreams(streamId, options, recorderSettings, runId);
+      // A stop/discard may arrive while capture permissions or a device are still
+      // resolving. Never start a recorder after that command; release the just-
+      // acquired tracks instead of leaving a late camera/mic/tab capture alive.
+      if (this.runId !== runId || this.state !== 'starting') {
+        this.safeStopStream(tabRecorderStream);
+        return;
+      }
       const startTasks = this.buildRecorderStartTasks(tabRecorderStream, runId, runStartedAt, recorderSettings);
       this.pendingStartPromises = startTasks;
       await Promise.all(startTasks);
@@ -307,7 +314,7 @@ export class RecorderEngine {
   }
 
   async stop(): Promise<CompletedRecordingArtifact[]> {
-    if (!this.tracks.some((t) => t.stream === 'tab') || !this.isRecording()) {
+    if (!this.isRecording()) {
       this.deps.warn('Stop called but not recording');
       return Promise.resolve([]);
     }
@@ -325,6 +332,14 @@ export class RecorderEngine {
     if (this.pendingStartPromises.length) {
       await Promise.allSettled(this.pendingStartPromises);
       this.pendingStartPromises = [];
+    }
+
+    // A stop/discard during startup can legitimately beat every recorder's
+    // `onstart`. Complete the lifecycle anyway so acquired device tracks and all
+    // references are released instead of waiting forever for an onstop callback.
+    if (!this.tracks.length) {
+      this.completeStop();
+      return this.stopPromise ?? Promise.resolve([]);
     }
 
     this.stopAllRecorders();
@@ -400,6 +415,11 @@ export class RecorderEngine {
     this.activeRecorders = Math.max(0, this.activeRecorders - 1);
     if (this.activeRecorders !== 0) return;
 
+    this.completeStop();
+  }
+
+  /** Releases every capture-side resource and resolves the pending stop exactly once. */
+  private completeStop() {
     const artifacts = [...this.finalizedArtifacts];
     this.state = 'idle';
     this.safeStopStream(this.tabCaptureStream);

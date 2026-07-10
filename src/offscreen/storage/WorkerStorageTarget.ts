@@ -172,8 +172,12 @@ export class WorkerStorageTarget implements StorageTarget {
       opfsFilename: this.filename,
       durationFixed,
       cleanup: async () => {
-        await this.discardInternal();
-        this.worker.terminate();
+        try {
+          await this.discardInternal();
+        } finally {
+          this.sealed = null;
+          this.worker.terminate();
+        }
       },
     };
     return this.sealed;

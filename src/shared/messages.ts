@@ -14,11 +14,28 @@ import type {
 import { sendRuntimeMessage } from '../platform/chrome/runtime';
 import { sendTabMessage } from '../platform/chrome/tabs';
 
+/**
+ * Raised when Chrome resolves runtime.sendMessage without a response. For an
+ * unpacked extension this normally means a rebuilt popup is talking to an older,
+ * still-running MV3 service worker that does not recognize the new command.
+ */
+export class BackgroundNoResponseError extends Error {
+  constructor(type: string) {
+    super(
+      `The background runtime did not respond to ${type}. Reload the unpacked extension in `
+      + 'chrome://extensions so its service worker matches this popup. The recording is still active; nothing was discarded.'
+    );
+    this.name = 'BackgroundNoResponseError';
+  }
+}
+
 /** Sends a typed command from popup/offscreen code to the background worker. */
 export async function sendToBackground<T extends PopupToBg>(
   message: T
 ): Promise<PopupToBgResponse<T>> {
-  return await sendRuntimeMessage<PopupToBgResponse<T>>(message);
+  const response = await sendRuntimeMessage<PopupToBgResponse<T> | undefined>(message);
+  if (response == null) throw new BackgroundNoResponseError(message.type);
+  return response;
 }
 
 /** Sends a typed command from popup code to the active content script. */

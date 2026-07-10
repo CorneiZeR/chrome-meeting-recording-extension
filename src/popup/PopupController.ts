@@ -570,8 +570,9 @@ export class PopupController {
 
   /**
    * Shared scaffolding for start/stop button handlers: guards against concurrent
-   * commands, disables the button while the action is in-flight, and resets UI
-   * to idle on failure.
+   * commands and disables the button while the action is in-flight. A failed
+   * start returns to setup; failed stop/discard commands re-read authoritative
+   * background state because capture may still be active.
    */
   private async executeCommand(
     btn: HTMLButtonElement,
@@ -586,7 +587,8 @@ export class PopupController {
       await action();
     } catch (e: unknown) {
       console.error(`[popup] ${label} error`, e);
-      this.onPhaseChange('idle');
+      if (label === 'START_RECORDING') this.onPhaseChange('idle');
+      else await this.state.refreshInitialState();
       alert(buildErrorAlert(e));
     } finally {
       this.inFlight = false;

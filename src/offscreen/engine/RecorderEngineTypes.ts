@@ -123,6 +123,11 @@ export class InMemoryStorageTarget implements StorageTarget {
     const file = new File([new Blob(this.chunks, { type: this.mimeType })], this.filename, {
       type: this.mimeType,
     });
+    // The File has its own immutable Blob backing; release the capture-time chunk
+    // list immediately instead of retaining the entire RAM fallback until its
+    // recorder becomes unreachable.
+    this.chunks.length = 0;
+    this.bufferedBytes = 0;
 
     return {
       filename: this.filename,

@@ -772,6 +772,24 @@ describe('PopupController', () => {
     expect(console.log).toHaveBeenCalledWith('[popup]', expect.stringContaining('Discarding recording'));
   });
 
+  it('keeps the recording view and explains stale runtime code when discard gets no response', async () => {
+    mockSendMessage.mockResolvedValueOnce(recordingSession());
+    controller.init();
+    await flush();
+
+    mockSendMessage
+      .mockReset()
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce(recordingSession());
+    elements.discardBtn.click();
+    await flush();
+
+    expect(window.alert).toHaveBeenCalledWith(expect.stringContaining('background runtime did not respond'));
+    expect(window.alert).toHaveBeenCalledWith(expect.stringContaining('Reload the unpacked extension'));
+    expect(elements.viewRecording.hidden).toBe(false);
+    expect(elements.viewConfig.hidden).toBe(true);
+  });
+
   it('opens the settings page from the gear button', async () => {
     controller.init();
     await new Promise(process.nextTick);
