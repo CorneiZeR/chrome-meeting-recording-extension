@@ -158,6 +158,7 @@ export type BgToOffscreenRpc =
       epoch: number;
     }>
   | RpcRequest<{ type: 'OFFSCREEN_STOP' }>
+  | RpcRequest<{ type: 'OFFSCREEN_DISCARD' }>
   | RpcRequest<{ type: 'OFFSCREEN_SET_MIC_MUTED'; muted: boolean }>
   | RpcRequest<{ type: 'OFFSCREEN_SET_CAMERA_MUTED'; muted: boolean }>
   | RpcRequest<{ type: 'OFFSCREEN_SET_PAUSED'; paused: boolean }>

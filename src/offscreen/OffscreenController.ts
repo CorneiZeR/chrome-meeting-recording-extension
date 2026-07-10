@@ -89,6 +89,7 @@ export class OffscreenController {
   };
 
   onStopRequested = (): void => { void this.finalize(); };
+  onDiscardRequested = (): void => { void this.discard(); };
 
   /** Advances the broadcast phase, rebaselining the lag clock on a new active phase. */
   pushState = (
@@ -146,6 +147,45 @@ export class OffscreenController {
     })()
       .catch((e) => {
         this.deps.error('Stop/finalize pipeline failed', describeRuntimeError(e));
+        this.pushState('failed', { error: describeRuntimeError(e) });
+      })
+      .finally(() => {
+        this.finalizeRunPromise = null;
+      });
+
+    return this.finalizeRunPromise;
+  }
+
+  /**
+   * Stops capture and removes the sealed temporary artifacts. Unlike `finalize`,
+   * this intentionally never calls the local finalizer or upload queue, so discard
+   * cannot create a download, Drive upload, or retained upload job.
+   */
+  discard(): Promise<void> {
+    if (this.finalizeRunPromise) return this.finalizeRunPromise;
+    const engine = this.engine;
+    if (!engine) throw new Error('OffscreenController.attachServices must be called before discard');
+
+    this.finalizeRunPromise = (async () => {
+      let artifacts = await engine.stop();
+      try {
+        const cleanup = await Promise.allSettled(artifacts.map(({ artifact }) => artifact.cleanup()));
+        const failures = cleanup.filter((result): result is PromiseRejectedResult => result.status === 'rejected');
+        if (failures.length) {
+          throw new Error(
+            `Failed to delete ${failures.length} discarded recording artifact(s): `
+            + failures.map(({ reason }) => describeRuntimeError(reason)).join('; ')
+          );
+        }
+      } finally {
+        // Do not retain Blob/File references after cleanup; this makes their backing
+        // buffers collectible as soon as the discard command completes.
+        artifacts = [];
+      }
+      this.pushState('idle');
+    })()
+      .catch((e) => {
+        this.deps.error('Discard pipeline failed', describeRuntimeError(e));
         this.pushState('failed', { error: describeRuntimeError(e) });
       })
       .finally(() => {

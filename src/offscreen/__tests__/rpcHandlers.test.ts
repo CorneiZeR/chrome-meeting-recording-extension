@@ -29,6 +29,7 @@ function wire(overrides: Partial<Record<string, any>> = {}) {
     isFinalizing: () => overrides.isFinalizing ?? false,
     onStartRequested: jest.fn(),
     onStopRequested: jest.fn(),
+    onDiscardRequested: jest.fn(),
     retryUpload: overrides.retryUpload ?? jest.fn().mockReturnValue(true),
     pushState: jest.fn((next: RecordingPhase) => { phase = next; }),
     clearWarnings: jest.fn(),
@@ -74,6 +75,7 @@ describe('offscreen rpc handlers', () => {
       isFinalizing: () => false,
       onStartRequested: jest.fn(),
       onStopRequested: jest.fn(),
+      onDiscardRequested: jest.fn(),
       pushState: jest.fn((nextPhase: RecordingPhase) => { phase = nextPhase; }),
       clearWarnings: jest.fn(),
       log: jest.fn(),
@@ -201,6 +203,29 @@ describe('offscreen rpc handlers', () => {
       expect(deps.pushState).toHaveBeenCalledWith('stopping');
       expect(deps.onStopRequested).toHaveBeenCalledTimes(1);
       expect(responseFor(port, 'stop-2')).toEqual({ ok: true });
+    });
+  });
+
+  describe('OFFSCREEN_DISCARD', () => {
+    it('marks stopping and starts the destructive cleanup path when active', async () => {
+      const { port, deps, listener } = wire();
+      await listener({ __id: 'discard-1', type: 'OFFSCREEN_DISCARD' });
+
+      expect(deps.pushState).toHaveBeenCalledWith('stopping');
+      expect(deps.onDiscardRequested).toHaveBeenCalledTimes(1);
+      expect(responseFor(port, 'discard-1')).toEqual({ ok: true });
+    });
+
+    it('rejects discard when the recorder is not active', async () => {
+      const engine = { isRecording: jest.fn().mockReturnValue(false) };
+      const { port, deps, listener } = wire({ engine });
+      await listener({ __id: 'discard-2', type: 'OFFSCREEN_DISCARD' });
+
+      expect(responseFor(port, 'discard-2')).toEqual({
+        ok: false,
+        error: 'Discard requested but recorder is not active',
+      });
+      expect(deps.onDiscardRequested).not.toHaveBeenCalled();
     });
   });
 

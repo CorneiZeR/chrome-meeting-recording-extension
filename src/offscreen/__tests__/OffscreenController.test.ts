@@ -185,4 +185,46 @@ describe('OffscreenController', () => {
       expect(stop).toHaveBeenCalledTimes(1);
     });
   });
+
+  describe('discard', () => {
+    it('cleans every artifact without saving locally or enqueueing an upload', async () => {
+      const { controller, postMessage } = makeController();
+      const cleanupTab = jest.fn().mockResolvedValue(undefined);
+      const cleanupMic = jest.fn().mockResolvedValue(undefined);
+      const stop = jest.fn().mockResolvedValue([
+        { stream: 'tab', artifact: { cleanup: cleanupTab } },
+        { stream: 'mic', artifact: { cleanup: cleanupMic } },
+      ]);
+      const finalize = jest.fn();
+      const enqueueUpload = jest.fn();
+      controller.attachServices({ stop } as any, { finalize } as any, enqueueUpload);
+
+      await controller.discard();
+
+      expect(stop).toHaveBeenCalledTimes(1);
+      expect(cleanupTab).toHaveBeenCalledTimes(1);
+      expect(cleanupMic).toHaveBeenCalledTimes(1);
+      expect(finalize).not.toHaveBeenCalled();
+      expect(enqueueUpload).not.toHaveBeenCalled();
+      expect(lastState(postMessage)).toEqual({ type: 'OFFSCREEN_STATE', phase: 'idle', epoch: 0 });
+    });
+
+    it('reports failure when any artifact cannot be deleted after attempting all cleanups', async () => {
+      const { controller, postMessage, error } = makeController();
+      const failedCleanup = jest.fn().mockRejectedValue(new Error('OPFS remove failed'));
+      const successfulCleanup = jest.fn().mockResolvedValue(undefined);
+      controller.attachServices({
+        stop: jest.fn().mockResolvedValue([
+          { stream: 'tab', artifact: { cleanup: failedCleanup } },
+          { stream: 'mic', artifact: { cleanup: successfulCleanup } },
+        ]),
+      } as any, {} as any);
+
+      await controller.discard();
+
+      expect(successfulCleanup).toHaveBeenCalledTimes(1);
+      expect(error).toHaveBeenCalledWith('Discard pipeline failed', expect.stringContaining('OPFS remove failed'));
+      expect(lastState(postMessage)).toEqual(expect.objectContaining({ type: 'OFFSCREEN_STATE', phase: 'failed' }));
+    });
+  });
 });
