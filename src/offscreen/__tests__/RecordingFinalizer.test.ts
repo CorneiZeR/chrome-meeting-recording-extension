@@ -99,6 +99,34 @@ describe('RecordingFinalizer', () => {
     expect(mic.cleanup).toHaveBeenCalledTimes(1);
   });
 
+  it('downloads unfinished artifacts locally when the Drive upload is canceled', async () => {
+    jest.spyOn(DriveFolderResolver.prototype, 'resolveUploadParentId').mockResolvedValue('folder-1');
+    jest.spyOn(DriveTarget.prototype, 'upload').mockImplementation(function (this: any) {
+      return new Promise((_resolve, reject) => {
+        const signal = this.signal as AbortSignal;
+        if (signal.aborted) reject(new DOMException('Upload canceled', 'AbortError'));
+        else signal.addEventListener('abort', () => reject(new DOMException('Upload canceled', 'AbortError')), { once: true });
+      });
+    });
+    const controller = new AbortController();
+    const tab = makeArtifact('tab.webm');
+    const pending = finalizer.finalize({
+      storageMode: 'drive',
+      artifacts: [{ stream: 'tab', artifact: tab }],
+      signal: controller.signal,
+    });
+    await Promise.resolve();
+    controller.abort();
+
+    const summary = await pending;
+
+    expect(summary?.uploaded).toEqual([]);
+    expect(summary?.localFallbacks).toEqual([
+      expect.objectContaining({ stream: 'tab', filename: 'tab.webm', bytes: 4 }),
+    ]);
+    expect(deps.requestSave).toHaveBeenCalledWith('tab.webm', 'blob:4', 'tab.webm');
+  });
+
   it('marks an upload pending before it starts and clears it on both success and fallback', async () => {
     jest.spyOn(DriveFolderResolver.prototype, 'resolveUploadParentId').mockResolvedValue('folder-1');
     jest.spyOn(DriveTarget.prototype, 'upload').mockImplementation(function (this: any) {

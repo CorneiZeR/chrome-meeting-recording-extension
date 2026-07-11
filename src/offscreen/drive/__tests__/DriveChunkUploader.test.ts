@@ -105,6 +105,25 @@ describe('recoverFromCommittedState', () => {
 });
 
 describe('uploadChunk', () => {
+  it('aborts the active request without retrying when the user cancels', async () => {
+    const controller = new AbortController();
+    (global.fetch as jest.Mock).mockImplementation((_url, init: RequestInit) =>
+      new Promise((_resolve, reject) => {
+        if (init.signal?.aborted) {
+          reject(new DOMException('aborted', 'AbortError'));
+          return;
+        }
+        init.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true });
+      })
+    );
+
+    const pending = uploadChunk(SESSION, token, 0, blob(100), 100, true, controller.signal);
+    controller.abort();
+
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+    expect((global.fetch as jest.Mock)).toHaveBeenCalledTimes(1);
+  });
+
   it('advances the offset on an intermediate 308', async () => {
     (global.fetch as jest.Mock).mockResolvedValueOnce(res(308));
     const result = await uploadChunk(SESSION, token, 0, blob(2048), 4096, false);

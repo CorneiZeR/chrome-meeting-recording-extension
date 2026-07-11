@@ -64,6 +64,8 @@ export type FinalizeArtifactsOptions = {
    * a fallback (not uploaded) — it just isn't re-saved.
    */
   skipLocalFallback?: boolean;
+  /** Aborts Drive work; unfinished artifacts follow the normal local fallback path. */
+  signal?: AbortSignal;
 };
 
 /** Runs async work with bounded concurrency while preserving input order in the results. */
@@ -109,7 +111,13 @@ export class RecordingFinalizer {
 
     if (options.storageMode === 'drive') {
       const recordingFolderName = inferDriveRecordingFolderName(orderedArtifacts[0].artifact.filename);
-      const summary = await this.uploadArtifactsToDrive(orderedArtifacts, recordingFolderName, options.onUploadProgress, options.skipLocalFallback === true);
+      const summary = await this.uploadArtifactsToDrive(
+        orderedArtifacts,
+        recordingFolderName,
+        options.onUploadProgress,
+        options.skipLocalFallback === true,
+        options.signal
+      );
       logPerf(this.deps.log, 'finalizer', 'finalize_complete', {
         durationMs: roundMs(nowMs() - startedAt),
         artifactCount: orderedArtifacts.length,
@@ -161,14 +169,17 @@ export class RecordingFinalizer {
     artifacts: CompletedRecordingArtifact[],
     recordingFolderName: string,
     onUploadProgress?: (fraction: number) => void,
-    skipLocalFallback = false
+    skipLocalFallback = false,
+    signal?: AbortSignal
   ): Promise<UploadSummary> {
     const sharedGetUploadToken = createCachedTokenProvider(this.deps.getDriveToken);
     const folderResolver = new DriveFolderResolver(sharedGetUploadToken);
     let folderWebViewLink: string | undefined;
     let sharedSetupError: string | null = null;
     try {
+      if (signal?.aborted) throw new DOMException('Upload canceled', 'AbortError');
       const folderId = await folderResolver.resolveUploadParentId({ rootFolderName: DRIVE_ROOT_FOLDER_NAME, recordingFolderName });
+      if (signal?.aborted) throw new DOMException('Upload canceled', 'AbortError');
       folderWebViewLink = driveFolderWebViewLink(folderId);
     } catch (e) {
       sharedSetupError = describeRuntimeError(e);
@@ -213,6 +224,7 @@ export class RecordingFinalizer {
           recordingFolderName,
           shared: { getUploadToken: sharedGetUploadToken, folderResolver, log: this.deps.log },
           onProgress: (uploaded) => { loadedPerFile[index] = uploaded; reportProgress(); },
+          signal,
         });
 
         // Mark the upload as in-flight so a crash/power-off mid-upload is

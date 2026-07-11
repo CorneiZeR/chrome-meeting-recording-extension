@@ -64,7 +64,7 @@ export type UploadSummary = {
 };
 
 /** Terminal-or-running state of one background Drive-upload job (ADR-0004). */
-export type UploadJobStatus = 'uploading' | 'completed' | 'failed' | 'partial';
+export type UploadJobStatus = 'uploading' | 'completed' | 'failed' | 'partial' | 'canceled';
 
 /** Per-stream file outcome shown in an upload job's detail view. */
 export type UploadJobFile = {

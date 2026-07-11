@@ -122,6 +122,56 @@ describe('UploadManager (ADR-0004)', () => {
     expect(manager.hasActiveJobs()).toBe(false);
   });
 
+  it('cancels an active upload and settles it as locally saved', async () => {
+    const finalize = jest.fn(async (opts: any) => {
+      await new Promise<void>((resolve) => opts.signal.addEventListener('abort', resolve, { once: true }));
+      return {
+        uploaded: [],
+        localFallbacks: opts.artifacts.map((a: any) => ({ stream: a.stream, filename: a.artifact.filename })),
+      };
+    });
+    const { manager, reports } = setup(finalize as any);
+    const id = manager.enqueue([artifact('tab', 'tab.webm')]);
+    await flush();
+
+    expect(manager.cancel(id)).toBe(true);
+    await flush();
+
+    expect(finalize.mock.calls[0][0].signal.aborted).toBe(true);
+    expect(reports[reports.length - 1]).toMatchObject({
+      id,
+      status: 'canceled',
+      progress: 1,
+      files: [{ filename: 'tab.webm', status: 'fallback' }],
+    });
+    expect(manager.cancel(id)).toBe(false);
+    expect(manager.hasActiveJobs()).toBe(false);
+  });
+
+  it('cancels a queued upload without waiting for the active network job', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const finalize = jest.fn(async (opts: any) => {
+      if (opts.artifacts[0].artifact.filename === 'active.webm') {
+        await gate;
+        return { uploaded: [{ stream: 'tab', filename: 'active.webm' }], localFallbacks: [] };
+      }
+      expect(opts.signal.aborted).toBe(true);
+      return { uploaded: [], localFallbacks: [{ stream: 'tab', filename: 'queued.webm' }] };
+    });
+    const { manager, reports } = setup(finalize as any);
+    manager.enqueue([artifact('tab', 'active.webm')]);
+    const queuedId = manager.enqueue([artifact('tab', 'queued.webm')]);
+    await flush();
+
+    expect(manager.cancel(queuedId)).toBe(true);
+    await flush();
+    expect(reports).toContainEqual(expect.objectContaining({ id: queuedId, status: 'canceled' }));
+
+    release();
+    await flush();
+  });
+
   it('retries a failed job from the retained artifacts, under the same id', async () => {
     let attempt = 0;
     const finalize = jest.fn(async () => {

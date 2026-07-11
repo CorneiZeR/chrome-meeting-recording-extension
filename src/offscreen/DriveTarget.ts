@@ -39,6 +39,8 @@ type DriveTargetCtorOptions = DriveFolderHierarchy & {
   shared?: DriveUploadSharedContext;
   /** Per-chunk progress hook reporting committed/total bytes for this one file. */
   onProgress?: (uploadedBytes: number, totalBytes: number) => void;
+  /** Cancels session creation, the active chunk request, and retry backoff. */
+  signal?: AbortSignal;
 };
 
 /**
@@ -55,6 +57,7 @@ export class DriveTarget {
   private readonly hierarchy: DriveFolderHierarchy;
   private readonly log: (...a: any[]) => void;
   private readonly onProgress?: (uploadedBytes: number, totalBytes: number) => void;
+  private readonly signal?: AbortSignal;
   private used = false;
 
   constructor(
@@ -72,6 +75,7 @@ export class DriveTarget {
     };
     this.log = shared?.log ?? (() => {});
     this.onProgress = options.onProgress;
+    this.signal = options.signal;
   }
 
   /** Uploads the sealed artifact using Drive's resumable upload flow. */
@@ -79,6 +83,7 @@ export class DriveTarget {
     if (this.used) throw new Error('Drive target already used');
     this.used = true;
     if (file.size === 0) return undefined;
+    this.throwIfCanceled();
 
     const uploadStartedAt = nowMs();
     await this.initSession();
@@ -93,7 +98,7 @@ export class DriveTarget {
       const endExclusive = Math.min(start + chunkSize, total);
       const body = file.slice(start, endExclusive, 'video/webm');
       const isFinal = endExclusive >= total;
-      const chunkResult = await uploadChunk(this.sessionUri!, this.getUploadToken, start, body, total, isFinal);
+      const chunkResult = await uploadChunk(this.sessionUri!, this.getUploadToken, start, body, total, isFinal, this.signal);
       start = chunkResult.nextStart;
       uploadedFile = chunkResult.file ?? uploadedFile;
       this.onProgress?.(Math.min(start, total), total);
@@ -126,6 +131,7 @@ export class DriveTarget {
 
   /** Starts a resumable upload session and stores the returned session URI. */
   private async initSession(): Promise<void> {
+    this.throwIfCanceled();
     const parentFolderId = await this.folderResolver.resolveUploadParentId(this.hierarchy);
     const metadata: Record<string, any> = { name: this.filename, mimeType: 'video/webm' };
     if (parentFolderId) metadata.parents = [parentFolderId];
@@ -139,7 +145,7 @@ export class DriveTarget {
           'X-Upload-Content-Type': 'video/webm',
         },
         body: JSON.stringify(metadata),
-      })
+      }, this.signal)
     );
 
     if (!res.ok) {
@@ -150,6 +156,10 @@ export class DriveTarget {
     const uri = res.headers.get('Location');
     if (!uri) throw new Error('Drive did not return a session URI');
     this.sessionUri = uri;
+  }
+
+  private throwIfCanceled(): void {
+    if (this.signal?.aborted) throw new DOMException('Upload canceled', 'AbortError');
   }
 
   private adjustChunkSize(

@@ -16,7 +16,21 @@ import type { TokenProvider } from './request';
 import { driveFetch } from './request';
 import { nowMs, roundMs } from '../../shared/perf';
 
-const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+const delay = (ms: number, signal?: AbortSignal) => new Promise<void>((resolve, reject) => {
+  if (signal?.aborted) {
+    reject(new DOMException('Upload canceled', 'AbortError'));
+    return;
+  }
+  const timer = setTimeout(() => {
+    signal?.removeEventListener('abort', onAbort);
+    resolve();
+  }, ms);
+  const onAbort = () => {
+    clearTimeout(timer);
+    reject(new DOMException('Upload canceled', 'AbortError'));
+  };
+  signal?.addEventListener('abort', onAbort, { once: true });
+});
 
 export type UploadChunkResult = {
   nextStart: number;
@@ -35,13 +49,17 @@ export type DriveUploadFile = {
 };
 
 /** Wraps a Drive PUT with a hard abort timeout. */
-export async function fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
+export async function fetchWithTimeout(url: string, init: RequestInit, cancelSignal?: AbortSignal): Promise<Response> {
   const ac = new AbortController();
   const timeout = setTimeout(() => ac.abort(), DRIVE_REQUEST_TIMEOUT_MS);
+  const onCancel = () => ac.abort();
+  cancelSignal?.addEventListener('abort', onCancel, { once: true });
+  if (cancelSignal?.aborted) ac.abort();
   try {
     return await driveFetch(url, { ...init, signal: ac.signal });
   } finally {
     clearTimeout(timeout);
+    cancelSignal?.removeEventListener('abort', onCancel);
   }
 }
 
@@ -65,13 +83,14 @@ export async function recoverFromCommittedState(
   token: string,
   start: number,
   body: Blob,
-  total: number
+  total: number,
+  signal?: AbortSignal
 ): Promise<{ done: boolean; start: number; body: Blob }> {
   try {
     const committedRes = await fetchWithTimeout(sessionUri, {
       method: 'PUT',
       headers: { Authorization: `Bearer ${token}`, 'Content-Range': `bytes */${total}` },
-    });
+    }, signal);
 
     if (committedRes.status === 200 || committedRes.status === 201) {
       return { done: true, start: total, body: new Blob() };
@@ -101,7 +120,8 @@ export async function uploadChunk(
   start: number,
   body: Blob,
   total: number,
-  isFinal: boolean
+  isFinal: boolean,
+  signal?: AbortSignal
 ): Promise<UploadChunkResult> {
   let chunkStart = start;
   let chunkBody = body;
@@ -111,6 +131,7 @@ export async function uploadChunk(
   const chunkStartedAt = nowMs();
 
   while (attempts < DRIVE_MAX_RETRIES) {
+    if (signal?.aborted) throw new DOMException('Upload canceled', 'AbortError');
     attempts += 1;
     const token = await getUploadToken();
     const end = chunkStart + chunkBody.size - 1;
@@ -125,17 +146,18 @@ export async function uploadChunk(
           'Content-Type': 'video/webm',
         },
         body: chunkBody,
-      });
+      }, signal);
     } catch (e) {
+      if (signal?.aborted) throw e;
       if (!isTransientFetchError(e)) throw e;
       hadRetry = true;
-      const recovered = await recoverFromCommittedState(sessionUri, token, chunkStart, chunkBody, total);
+      const recovered = await recoverFromCommittedState(sessionUri, token, chunkStart, chunkBody, total, signal);
       if (recovered.done) {
         return { nextStart: recovered.start, attempts, hadRetry, durationMs: roundMs(nowMs() - chunkStartedAt), status: lastStatus, sentBytes: body.size };
       }
       chunkStart = recovered.start;
       chunkBody = recovered.body;
-      await delay(backoffMs(attempts));
+      await delay(backoffMs(attempts), signal);
       continue;
     }
 
@@ -159,13 +181,13 @@ export async function uploadChunk(
     }
     if (res.status === 429 || res.status === 408 || res.status === 308 || (res.status >= 500 && res.status <= 599)) {
       hadRetry = true;
-      const recovered = await recoverFromCommittedState(sessionUri, token, chunkStart, chunkBody, total);
+      const recovered = await recoverFromCommittedState(sessionUri, token, chunkStart, chunkBody, total, signal);
       if (recovered.done) {
         return { nextStart: recovered.start, attempts, hadRetry, durationMs: roundMs(nowMs() - chunkStartedAt), status: lastStatus, sentBytes: body.size };
       }
       chunkStart = recovered.start;
       chunkBody = recovered.body;
-      await delay(backoffMs(attempts));
+      await delay(backoffMs(attempts), signal);
       continue;
     }
 

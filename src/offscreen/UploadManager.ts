@@ -25,6 +25,7 @@ export interface JobFinalizer {
     storageMode: 'drive';
     onUploadProgress?: (fraction: number) => void;
     skipLocalFallback?: boolean;
+    signal?: AbortSignal;
   }): Promise<UploadSummary | undefined>;
 }
 
@@ -43,7 +44,8 @@ export class UploadManager {
   private readonly concurrency: number;
   private readonly now: () => number;
   private readonly genId: () => string;
-  private readonly pending: Array<{ job: UploadJob; artifacts: CompletedRecordingArtifact[]; skipLocalFallback: boolean }> = [];
+  private readonly pending: UploadTask[] = [];
+  private readonly jobs = new Map<string, UploadTask>();
   private active = 0;
   private seq = 0;
   /**
@@ -85,6 +87,25 @@ export class UploadManager {
     return true;
   }
 
+  /** Aborts a queued/active upload. Its unfinished artifacts are downloaded locally. */
+  cancel(jobId: string): boolean {
+    const task = this.jobs.get(jobId);
+    if (!task || task.controller.signal.aborted) return false;
+    task.controller.abort();
+
+    // A queued canceled job does not need to wait behind network uploads: run its
+    // already-aborted finalizer immediately, which only executes local fallbacks.
+    const pendingIndex = this.pending.indexOf(task);
+    if (pendingIndex >= 0) {
+      this.pending.splice(pendingIndex, 1);
+      void this.run(task).finally(() => {
+        this.jobs.delete(task.job.id);
+        this.pump();
+      });
+    }
+    return true;
+  }
+
   private enqueueJob(id: string, artifacts: CompletedRecordingArtifact[], skipLocalFallback = false, historyId?: string): string {
     const job: UploadJob = {
       id,
@@ -100,7 +121,9 @@ export class UploadManager {
       })),
       startedAt: this.now(),
     };
-    this.pending.push({ job, artifacts, skipLocalFallback });
+    const task = { job, artifacts, skipLocalFallback, controller: new AbortController() };
+    this.pending.push(task);
+    this.jobs.set(id, task);
     this.deps.report(job);
     this.pump();
     return id;
@@ -108,7 +131,7 @@ export class UploadManager {
 
   /** True while any job is queued or uploading; feeds the ADR-0004 "busy" check. */
   hasActiveJobs(): boolean {
-    return this.active > 0 || this.pending.length > 0;
+    return this.jobs.size > 0;
   }
 
   /** Starts queued jobs up to the concurrency limit, refilling as each settles. */
@@ -116,27 +139,30 @@ export class UploadManager {
     while (this.active < this.concurrency && this.pending.length > 0) {
       const next = this.pending.shift()!;
       this.active += 1;
-      void this.run(next.job, next.artifacts, next.skipLocalFallback).finally(() => {
+      void this.run(next).finally(() => {
         this.active -= 1;
+        this.jobs.delete(next.job.id);
         this.pump();
       });
     }
   }
 
-  private async run(job: UploadJob, artifacts: CompletedRecordingArtifact[], skipLocalFallback = false): Promise<void> {
+  private async run(task: UploadTask): Promise<void> {
+    const { job, artifacts, skipLocalFallback, controller } = task;
     let lastProgress = job.progress;
     try {
       const summary = await this.deps.finalizer.finalize({
         artifacts,
         storageMode: 'drive',
         skipLocalFallback,
+        signal: controller.signal,
         onUploadProgress: (fraction) => {
           lastProgress = fraction;
           this.deps.report({ ...job, status: 'uploading', progress: fraction });
         },
       });
-      const settled = this.settle(job, summary);
-      this.rememberRetryable(settled, artifacts);
+      const settled = this.settle(job, summary, controller.signal.aborted);
+      if (!controller.signal.aborted) this.rememberRetryable(settled, artifacts);
       this.deps.report(settled);
     } catch (e) {
       // A thrown error (vs. a per-file fallback) means the whole job could not be
@@ -144,12 +170,12 @@ export class UploadManager {
       this.deps.warn?.('Upload job failed', job.label, describeRuntimeError(e));
       const failed: UploadJob = {
         ...job,
-        status: 'failed',
+        status: controller.signal.aborted ? 'canceled' : 'failed',
         progress: lastProgress,
         files: job.files.map((f) => ({ ...f, status: 'fallback' })),
         finishedAt: this.now(),
       };
-      this.rememberRetryable(failed, artifacts);
+      if (!controller.signal.aborted) this.rememberRetryable(failed, artifacts);
       this.deps.report(failed);
     }
   }
@@ -171,7 +197,7 @@ export class UploadManager {
    * all fell back ⇒ `failed`. Progress is pinned to 1 — the finalizer drives every
    * file to done (uploaded or saved locally) before returning.
    */
-  private settle(job: UploadJob, summary: UploadSummary | undefined): UploadJob {
+  private settle(job: UploadJob, summary: UploadSummary | undefined, canceled = false): UploadJob {
     const uploaded = new Map((summary?.uploaded ?? []).map((e) => [e.filename, e]));
     const fellBack = new Map((summary?.localFallbacks ?? []).map((e) => [e.filename, e]));
     const files: UploadJobFile[] = job.files.map((f) => {
@@ -187,7 +213,14 @@ export class UploadManager {
     });
     const allFallback = files.length > 0 && files.every((f) => f.status === 'fallback');
     const anyFallback = files.some((f) => f.status === 'fallback');
-    const status: UploadJobStatus = allFallback ? 'failed' : anyFallback ? 'partial' : 'completed';
+    const status: UploadJobStatus = canceled ? 'canceled' : allFallback ? 'failed' : anyFallback ? 'partial' : 'completed';
     return { ...job, status, progress: 1, folderWebViewLink: summary?.folderWebViewLink ?? job.folderWebViewLink, files, finishedAt: this.now() };
   }
 }
+
+type UploadTask = {
+  job: UploadJob;
+  artifacts: CompletedRecordingArtifact[];
+  skipLocalFallback: boolean;
+  controller: AbortController;
+};

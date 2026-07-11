@@ -62,6 +62,8 @@ export type PopupSetPaused = { type: 'SET_PAUSED'; paused: boolean };
 export type PopupDismissUploadJob = { type: 'DISMISS_UPLOAD_JOB'; jobId: string };
 /** Retries a failed/partial background upload job (ADR-0004). */
 export type PopupRetryUploadJob = { type: 'RETRY_UPLOAD_JOB'; jobId: string };
+/** Cancels an active Drive upload and downloads every unfinished file locally. */
+export type PopupCancelUploadJob = { type: 'CANCEL_UPLOAD_JOB'; jobId: string };
 export type PopupListRecordingHistory = { type: 'LIST_RECORDING_HISTORY' };
 export type PopupRenameRecordingHistory = { type: 'RENAME_RECORDING_HISTORY'; id: string; name: string };
 export type PopupRemoveRecordingHistory = { type: 'REMOVE_RECORDING_HISTORY'; id: string };
@@ -79,6 +81,7 @@ export type PopupToBg =
   | PopupSetPaused
   | PopupDismissUploadJob
   | PopupRetryUploadJob
+  | PopupCancelUploadJob
   | PopupListRecordingHistory
   | PopupRenameRecordingHistory
   | PopupRemoveRecordingHistory
@@ -96,6 +99,7 @@ export type PopupToBgResponse<T extends PopupToBg> =
   T extends PopupSetPaused ? CommandResult :
   T extends PopupDismissUploadJob ? { session: RecordingStatusView } :
   T extends PopupRetryUploadJob ? CommandResult :
+  T extends PopupCancelUploadJob ? CommandResult :
   T extends PopupListRecordingHistory ? { ok: true; entries: RecordingHistoryEntry[] } | { ok: false; error: string } :
   T extends PopupRenameRecordingHistory ? { ok: true; entry?: RecordingHistoryEntry } | { ok: false; error: string } :
   T extends PopupRemoveRecordingHistory ? { ok: true; removed: boolean } | { ok: false; error: string } :
@@ -167,7 +171,8 @@ export type BgToOffscreenRpc =
   | RpcRequest<{ type: 'OFFSCREEN_SET_CAMERA_MUTED'; muted: boolean }>
   | RpcRequest<{ type: 'OFFSCREEN_SET_PAUSED'; paused: boolean }>
   | RpcRequest<{ type: 'OFFSCREEN_GET_MIC_LEVEL' }>
-  | RpcRequest<{ type: 'OFFSCREEN_RETRY_UPLOAD'; jobId: string }>;
+  | RpcRequest<{ type: 'OFFSCREEN_RETRY_UPLOAD'; jobId: string }>
+  | RpcRequest<{ type: 'OFFSCREEN_CANCEL_UPLOAD'; jobId: string }>;
 
 export type BgToOffscreenOneWay =
   | { type: 'REVOKE_BLOB_URL'; blobUrl: string; opfsFilename?: string };
