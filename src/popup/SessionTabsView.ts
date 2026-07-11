@@ -41,6 +41,7 @@ function liveTabLabel(phase: RecordingPhase): string {
 function uploadTabBadge(job: UploadJob): string {
   if (job.status === 'completed') return '✓';
   if (job.status === 'failed' || job.status === 'partial') return '!';
+  if (job.status === 'canceled') return '×';
   return `${Math.round(Math.min(1, Math.max(0, job.progress)) * 100)}%`;
 }
 
@@ -50,6 +51,7 @@ function uploadJobStatusText(job: UploadJob): string {
     case 'completed': return 'Recording saved';
     case 'partial': return 'Uploaded — some files saved locally';
     case 'failed': return 'Upload failed — saved locally';
+    case 'canceled': return 'Upload canceled — saved locally';
     default: return 'Uploading to Google Drive…';
   }
 }
@@ -123,9 +125,10 @@ export class SessionTabsView {
     private readonly callbacks: SessionTabsCallbacks,
   ) {}
 
-  /** Wires the retry button + roving-tabindex keyboard nav. Call once from init. */
+  /** Wires upload actions + roving-tabindex keyboard nav. Call once from init. */
   wireEvents(): void {
     this.el.uploadJobRetry?.addEventListener('click', () => void this.retryUploadJob());
+    this.el.uploadJobCancel?.addEventListener('click', () => void this.cancelUploadJob());
     this.el.uploadJobOpenDrive?.addEventListener('click', () => void this.openUploadJobFolder());
     // "Upload in background" just returns to the live/Setup tab; the upload keeps
     // running (ADR-0004), so backgrounding it is exactly selecting the live tab.
@@ -374,6 +377,11 @@ export class SessionTabsView {
       this.el.uploadJobRetry.hidden = !(job.status === 'failed' || job.status === 'partial');
       this.el.uploadJobRetry.dataset.jobId = job.id;
     }
+    if (this.el.uploadJobCancel) {
+      this.el.uploadJobCancel.hidden = job.status !== 'uploading';
+      this.el.uploadJobCancel.disabled = false;
+      this.el.uploadJobCancel.dataset.jobId = job.id;
+    }
     if (this.el.uploadJobOpenDrive) {
       this.el.uploadJobOpenDrive.hidden = !(completed && job.folderWebViewLink);
       this.el.uploadJobOpenDrive.dataset.folderUrl = completed ? job.folderWebViewLink ?? '' : '';
@@ -396,6 +404,28 @@ export class SessionTabsView {
       if (resp.session) this.callbacks.applySession(resp.session);
     } catch (e: unknown) {
       console.error('[popup] RETRY_UPLOAD_JOB error', e);
+    }
+  }
+
+  private async cancelUploadJob(): Promise<void> {
+    const btn = this.el.uploadJobCancel;
+    const id = btn?.dataset.jobId;
+    if (!btn || !id || btn.disabled) return;
+    btn.disabled = true;
+    try {
+      const resp = await sendToBackground({ type: 'CANCEL_UPLOAD_JOB', jobId: id });
+      if (resp.ok === false) {
+        btn.disabled = false;
+        this.callbacks.toast(resp.error || 'This upload is no longer active');
+      } else {
+        this.callbacks.toast('Canceling upload — downloading locally…');
+      }
+      // The command response can still contain the pre-cancel upload snapshot;
+      // keep the button disabled until OFFSCREEN_UPLOAD_STATE reports `canceled`.
+      if (resp.ok === false && resp.session) this.callbacks.applySession(resp.session);
+    } catch (e: unknown) {
+      btn.disabled = false;
+      console.error('[popup] CANCEL_UPLOAD_JOB error', e);
     }
   }
 

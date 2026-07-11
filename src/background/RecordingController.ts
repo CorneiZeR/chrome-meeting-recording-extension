@@ -229,6 +229,18 @@ export class RecordingController {
     }
   }
 
+  /** Cancels a detached Drive upload; unfinished artifacts are downloaded locally. */
+  async cancelUpload(jobId: string): Promise<CommandResult> {
+    try {
+      await this.offscreen.ensureReady();
+      const r = await this.offscreen.rpc<{ ok: boolean; error?: string }>({ type: 'OFFSCREEN_CANCEL_UPLOAD', jobId });
+      if (!r?.ok) return this.fail(r?.error || 'Cancel failed in offscreen');
+      return this.ok();
+    } catch (e: any) {
+      return this.fail(`CANCEL_UPLOAD failed: ${e?.message || e}`);
+    }
+  }
+
   async setMicMuted(muted: boolean): Promise<CommandResult> {
     const snapshot = this.session.getSnapshot();
     if (!isStoppablePhase(snapshot.phase)) {

@@ -157,6 +157,7 @@ export function registerMessageHandlers({ L, session, perfDebugStore, controller
       if (msg.type === 'GET_MIC_LEVEL')        { sendResponse(await controller.getMicLevel()); return; }
       if (msg.type === 'DISMISS_UPLOAD_JOB')   { sendResponse({ session: toStatusView(session.removeUploadJob(msg.jobId)) }); return; }
       if (msg.type === 'RETRY_UPLOAD_JOB')     { send(await controller.retryUpload(msg.jobId)); return; }
+      if (msg.type === 'CANCEL_UPLOAD_JOB')    { send(await controller.cancelUpload(msg.jobId)); return; }
     })().catch((err) => {
       console.error('[background] top-level error', err);
       const error = String(err);

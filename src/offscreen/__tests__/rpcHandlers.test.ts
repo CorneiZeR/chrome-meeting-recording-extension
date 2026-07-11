@@ -31,6 +31,7 @@ function wire(overrides: Partial<Record<string, any>> = {}) {
     onStopRequested: jest.fn(),
     onDiscardRequested: jest.fn(),
     retryUpload: overrides.retryUpload ?? jest.fn().mockReturnValue(true),
+    cancelUpload: overrides.cancelUpload ?? jest.fn().mockReturnValue(true),
     pushState: jest.fn((next: RecordingPhase) => { phase = next; }),
     clearWarnings: jest.fn(),
     log: jest.fn(),
@@ -403,6 +404,18 @@ describe('offscreen rpc handlers', () => {
 
       expect(responseFor(port, 'retry-3')).toEqual({ ok: false, error: 'Missing jobId' });
       expect(retryUpload).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('OFFSCREEN_CANCEL_UPLOAD', () => {
+    it('cancels the job and responds ok while it is active', async () => {
+      const cancelUpload = jest.fn().mockReturnValue(true);
+      const { port, listener } = wire({ cancelUpload });
+
+      await listener({ __id: 'cancel-1', type: 'OFFSCREEN_CANCEL_UPLOAD', jobId: 'job-1' });
+
+      expect(cancelUpload).toHaveBeenCalledWith('job-1');
+      expect(responseFor(port, 'cancel-1')).toEqual({ ok: true });
     });
   });
 });

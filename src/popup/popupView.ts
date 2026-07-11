@@ -92,6 +92,8 @@ export type PopupElements = {
   uploadJobOpenDrive: HTMLButtonElement | null;
   /** "Retry upload" CTA, shown only for a failed/partial job. */
   uploadJobRetry: HTMLButtonElement | null;
+  /** Cancels an in-progress Drive upload and downloads unfinished files. */
+  uploadJobCancel: HTMLButtonElement | null;
   cameraWarning: HTMLElement | null;
   cameraWarningText: HTMLElement | null;
   tabSourceSub: HTMLElement | null;

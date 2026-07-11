@@ -476,4 +476,14 @@ describe('RecordingController', () => {
       expect(result).toEqual(expect.objectContaining({ ok: false, error: expect.stringContaining('RETRY_UPLOAD failed') }));
     });
   });
+
+  describe('cancelUpload', () => {
+    it('forwards OFFSCREEN_CANCEL_UPLOAD even when the recorder is idle', async () => {
+      const result = await controller.cancelUpload('job-1');
+
+      expect(offscreen.ensureReady).toHaveBeenCalled();
+      expect(offscreen.rpc).toHaveBeenCalledWith({ type: 'OFFSCREEN_CANCEL_UPLOAD', jobId: 'job-1' });
+      expect(result.ok).toBe(true);
+    });
+  });
 });

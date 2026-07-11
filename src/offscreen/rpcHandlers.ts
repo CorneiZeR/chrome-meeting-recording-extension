@@ -32,6 +32,8 @@ export type RpcHandlerDeps = {
   onDiscardRequested: () => void;
   /** Re-uploads a failed/partial background upload job; false when not retryable (ADR-0004). */
   retryUpload: (jobId: string) => boolean;
+  /** Cancels an active/queued upload and starts local fallback downloads. */
+  cancelUpload: (jobId: string) => boolean;
   pushState: (
     phase: RecordingPhase,
     extra?: Pick<OffscreenPhaseUpdate, 'uploadSummary' | 'error' | 'tabResolution'>
@@ -149,6 +151,15 @@ async function handleOffscreenRetryUpload(
   return retried ? { ok: true } : { ok: false, error: 'Upload is no longer retryable' };
 }
 
+async function handleOffscreenCancelUpload(
+  msg: Extract<BgToOffscreenRpc, { type: 'OFFSCREEN_CANCEL_UPLOAD' }>,
+  deps: RpcHandlerDeps
+): Promise<{ ok: boolean; error?: string }> {
+  if (typeof msg.jobId !== 'string') return { ok: false, error: 'Missing jobId' };
+  const canceled = deps.cancelUpload(msg.jobId);
+  return canceled ? { ok: true } : { ok: false, error: 'Upload is no longer active' };
+}
+
 async function handleRevokeBlobUrl(
   msg: Extract<BgToOffscreenOneWay, { type: 'REVOKE_BLOB_URL' }>,
   deps: RpcHandlerDeps
@@ -180,6 +191,7 @@ export function wirePortHandlers(port: chrome.runtime.Port, deps: RpcHandlerDeps
       OFFSCREEN_SET_PAUSED: (msg) => handleOffscreenSetPaused(msg, deps),
       OFFSCREEN_GET_MIC_LEVEL: () => handleOffscreenGetMicLevel(deps),
       OFFSCREEN_RETRY_UPLOAD: (msg) => handleOffscreenRetryUpload(msg, deps),
+      OFFSCREEN_CANCEL_UPLOAD: (msg) => handleOffscreenCancelUpload(msg, deps),
       REVOKE_BLOB_URL:   (msg) => handleRevokeBlobUrl(msg, deps),
     },
     (reqId, payload) => respond(deps.getPort, reqId, payload),

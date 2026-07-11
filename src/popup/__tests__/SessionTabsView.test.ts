@@ -22,6 +22,7 @@ const makeEl = (): PopupElements => ({
   uploadJobFiles: document.createElement('ul'),
   uploadJobOpenDrive: document.createElement('button'),
   uploadJobRetry: document.createElement('button'),
+  uploadJobCancel: document.createElement('button'),
 } as unknown as PopupElements);
 
 const job = (over: Partial<UploadJob> = {}): UploadJob => ({
@@ -89,6 +90,25 @@ describe('SessionTabsView', () => {
     await flush();
 
     expect(callbacks.toast).toHaveBeenCalledWith('gone');
+  });
+
+  it('cancels an in-progress upload and reports the local-download fallback', async () => {
+    mockSend.mockResolvedValue({ ok: true, session: { phase: 'idle' } } as never);
+    view.wireEvents();
+    view.renderJobView(job());
+
+    expect(el.uploadJobCancel!.hidden).toBe(false);
+    el.uploadJobCancel!.click();
+    await flush();
+
+    expect(mockSend).toHaveBeenCalledWith({ type: 'CANCEL_UPLOAD_JOB', jobId: 'j1' });
+    expect(callbacks.toast).toHaveBeenCalledWith('Canceling upload — downloading locally…');
+    expect(callbacks.applySession).not.toHaveBeenCalled();
+    expect(el.uploadJobCancel!.disabled).toBe(true);
+
+    view.renderJobView(job({ status: 'canceled', progress: 1, files: [{ stream: 'tab', filename: 'tab.webm', status: 'fallback' }] }));
+    expect(el.uploadJobCancel!.hidden).toBe(true);
+    expect(el.uploadJobLabel!.textContent).toBe('Upload canceled — saved locally');
   });
 
   it('renders a completed job as the saved recording view with real filenames', () => {

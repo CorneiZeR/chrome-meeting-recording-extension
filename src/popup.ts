@@ -90,6 +90,7 @@ const controller = new PopupController({
   uploadJobFiles: byId('upload-job-files'),
   uploadJobOpenDrive: byId<HTMLButtonElement>('upload-job-open-drive'),
   uploadJobRetry: byId<HTMLButtonElement>('upload-job-retry'),
+  uploadJobCancel: byId<HTMLButtonElement>('upload-job-cancel'),
   cameraWarning: byId('camera-warning'),
   cameraWarningText: byId('camera-warning-text'),
   tabSourceSub: byId('tab-source-sub'),
