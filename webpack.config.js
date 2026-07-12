@@ -206,7 +206,9 @@ module.exports = (_env, argv) => {
           { from: path.join(STATIC_DIR, 'camsetup.html'), to: 'camsetup.html' },
           { from: path.join(STATIC_DIR, 'settings.html'), to: 'settings.html' },
           { from: path.join(STATIC_DIR, 'recordings.html'), to: 'recordings.html' },
-          { from: PUBLIC_DIR, to: '.', noErrorOnMissing: true },
+          // Finder metadata is ignored by git but can still exist locally; never
+          // ship it inside the extension package.
+          { from: PUBLIC_DIR, to: '.', noErrorOnMissing: true, globOptions: { ignore: ['**/.DS_Store', '**/._*'] } },
         ]
       })
     ]

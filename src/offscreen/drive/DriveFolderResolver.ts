@@ -21,20 +21,21 @@ function escapeDriveQueryLiteral(value: string): string {
 }
 
 export class DriveFolderResolver {
-  private static recordingFolderCache = new Map<string, Promise<string>>();
+  private static recordingFolderCache = new Map<string, SharedAbortableFlight<string>>();
   private resolvedUploadParentId: string | null = null;
-  private resolvedUploadParentPromise: Promise<string | null> | null = null;
+  private resolvedUploadParentFlight: SharedAbortableFlight<string | null> | null = null;
 
   constructor(private readonly getToken: TokenProvider) {}
 
   async resolveUploadParentId(hierarchy: DriveFolderHierarchy, signal?: AbortSignal): Promise<string | null> {
     if (this.resolvedUploadParentId) return this.resolvedUploadParentId;
-    if (!this.resolvedUploadParentPromise) {
-      const resolution = (async () => {
+    if (signal?.aborted) throw abortError();
+    if (!this.resolvedUploadParentFlight) {
+      const flight = new SharedAbortableFlight(async (setupSignal) => {
         const rootFolderName = hierarchy.rootFolderName?.trim();
         if (!rootFolderName) return null;
 
-        const rootFolderId = await this.getOrCreateFolder(rootFolderName, null);
+        const rootFolderId = await this.getOrCreateFolder(rootFolderName, null, setupSignal);
         const recordingFolderName = hierarchy.recordingFolderName?.trim();
         if (!recordingFolderName) {
           this.resolvedUploadParentId = rootFolderId;
@@ -42,36 +43,37 @@ export class DriveFolderResolver {
         }
 
         const cacheKey = `${rootFolderId}:${recordingFolderName}`;
-        let folderPromise = DriveFolderResolver.recordingFolderCache.get(cacheKey);
-        if (!folderPromise) {
-          folderPromise = this.getOrCreateFolder(recordingFolderName, rootFolderId).catch((error) => {
-            DriveFolderResolver.recordingFolderCache.delete(cacheKey);
-            throw error;
+        let folderFlight = DriveFolderResolver.recordingFolderCache.get(cacheKey);
+        if (!folderFlight) {
+          folderFlight = new SharedAbortableFlight((folderSignal) =>
+            this.getOrCreateFolder(recordingFolderName, rootFolderId, folderSignal)
+          );
+          DriveFolderResolver.recordingFolderCache.set(cacheKey, folderFlight);
+          void folderFlight.promise.catch(() => {
+            if (DriveFolderResolver.recordingFolderCache.get(cacheKey) === folderFlight) {
+              DriveFolderResolver.recordingFolderCache.delete(cacheKey);
+            }
           });
-          DriveFolderResolver.recordingFolderCache.set(cacheKey, folderPromise);
         }
-        this.resolvedUploadParentId = await folderPromise;
+        this.resolvedUploadParentId = await folderFlight.join(setupSignal);
         return this.resolvedUploadParentId;
-      })();
-      this.resolvedUploadParentPromise = resolution;
-      void resolution.then(
-        () => { if (this.resolvedUploadParentPromise === resolution) this.resolvedUploadParentPromise = null; },
-        () => { if (this.resolvedUploadParentPromise === resolution) this.resolvedUploadParentPromise = null; },
+      });
+      this.resolvedUploadParentFlight = flight;
+      void flight.promise.then(
+        () => { if (this.resolvedUploadParentFlight === flight) this.resolvedUploadParentFlight = null; },
+        () => { if (this.resolvedUploadParentFlight === flight) this.resolvedUploadParentFlight = null; },
       );
     }
-    // A job cancellation must not cancel this shared folder resolution: another
-    // file/job can still use it. It only stops the canceled caller from waiting;
-    // each network request below is independently hard-timed-out.
-    return await raceWithAbort(this.resolvedUploadParentPromise, signal);
+    return await this.resolvedUploadParentFlight.join(signal);
   }
 
-  private async getOrCreateFolder(name: string, parentId: string | null): Promise<string> {
-    const existingId = await this.findFolder(name, parentId);
+  private async getOrCreateFolder(name: string, parentId: string | null, signal?: AbortSignal): Promise<string> {
+    const existingId = await this.findFolder(name, parentId, signal);
     if (existingId) return existingId;
-    return await this.createFolder(name, parentId);
+    return await this.createFolder(name, parentId, signal);
   }
 
-  private async findFolder(name: string, parentId: string | null): Promise<string | null> {
+  private async findFolder(name: string, parentId: string | null, signal?: AbortSignal): Promise<string | null> {
     const parts = [
       `mimeType='${DRIVE_FOLDER_MIME}'`,
       `name='${escapeDriveQueryLiteral(name)}'`,
@@ -87,7 +89,7 @@ export class DriveFolderResolver {
       fetchWithTimeout(url, {
         method: 'GET',
         headers: { Authorization: `Bearer ${token}` },
-      })
+      }, signal)
     );
 
     if (!res.ok) {
@@ -100,7 +102,7 @@ export class DriveFolderResolver {
     return typeof id === 'string' ? id : null;
   }
 
-  private async createFolder(name: string, parentId: string | null): Promise<string> {
+  private async createFolder(name: string, parentId: string | null, signal?: AbortSignal): Promise<string> {
     const body: Record<string, any> = {
       name,
       mimeType: DRIVE_FOLDER_MIME,
@@ -115,7 +117,7 @@ export class DriveFolderResolver {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(body),
-      })
+      }, signal)
     );
 
     if (!res.ok) {
@@ -130,15 +132,66 @@ export class DriveFolderResolver {
   }
 }
 
-function raceWithAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
-  if (!signal) return promise;
-  if (signal.aborted) return Promise.reject(new DOMException('Upload canceled', 'AbortError'));
-  return new Promise<T>((resolve, reject) => {
-    const onAbort = () => reject(new DOMException('Upload canceled', 'AbortError'));
-    signal.addEventListener('abort', onAbort, { once: true });
-    promise.then(
-      (value) => { signal.removeEventListener('abort', onAbort); resolve(value); },
-      (error) => { signal.removeEventListener('abort', onAbort); reject(error); },
+/**
+ * Shares one setup request without sacrificing cancellation. A caller that aborts
+ * stops waiting immediately; the actual Drive request is aborted only after its
+ * final cancelable consumer leaves, so one canceled upload cannot poison another.
+ */
+class SharedAbortableFlight<T> {
+  private readonly controller = new AbortController();
+  private cancelableConsumers = 0;
+  private hasNonCancelableConsumer = false;
+  private settled = false;
+  readonly promise: Promise<T>;
+
+  constructor(start: (signal: AbortSignal) => Promise<T>) {
+    this.promise = start(this.controller.signal);
+    void this.promise.then(
+      () => { this.settled = true; },
+      () => { this.settled = true; },
     );
-  });
+  }
+
+  join(signal?: AbortSignal): Promise<T> {
+    if (!signal) {
+      this.hasNonCancelableConsumer = true;
+      return this.promise;
+    }
+    if (signal.aborted) return Promise.reject(abortError());
+
+    this.cancelableConsumers += 1;
+    return new Promise<T>((resolve, reject) => {
+      let released = false;
+      const release = () => {
+        if (released) return;
+        released = true;
+        this.cancelableConsumers -= 1;
+        if (!this.settled && !this.hasNonCancelableConsumer && this.cancelableConsumers === 0) {
+          this.controller.abort();
+        }
+      };
+      const onAbort = () => {
+        signal.removeEventListener('abort', onAbort);
+        release();
+        reject(abortError());
+      };
+      signal.addEventListener('abort', onAbort, { once: true });
+      this.promise.then(
+        (value) => {
+          signal.removeEventListener('abort', onAbort);
+          release();
+          resolve(value);
+        },
+        (error) => {
+          signal.removeEventListener('abort', onAbort);
+          release();
+          reject(error);
+        },
+      );
+    });
+  }
+}
+
+function abortError(): DOMException {
+  return new DOMException('Upload canceled', 'AbortError');
 }

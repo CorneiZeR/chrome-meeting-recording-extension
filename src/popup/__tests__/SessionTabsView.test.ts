@@ -111,6 +111,31 @@ describe('SessionTabsView', () => {
     expect(el.uploadJobLabel!.textContent).toBe('Upload canceled — saved locally');
   });
 
+  it('renders a retained recovery as retry-pending without offering an unavailable in-memory retry', () => {
+    view.renderJobView(job({
+      status: 'failed',
+      recoveryPending: true,
+      progress: 1,
+      files: [{ stream: 'tab', filename: 'tab.webm', status: 'retry-pending', error: 'network down' }],
+    }));
+
+    expect(el.uploadJobLabel!.textContent).toContain('retrying when the recorder starts');
+    expect(el.uploadJobFiles!.textContent).toContain('Retry pending');
+    expect(el.uploadJobRetry!.hidden).toBe(true);
+  });
+
+  it('does not claim a missing recovery source was saved locally', () => {
+    view.renderJobView(job({
+      status: 'failed',
+      progress: 1,
+      files: [{ stream: 'tab', filename: 'tab.webm', status: 'unavailable', error: 'OPFS file missing' }],
+    }));
+
+    expect(el.uploadJobLabel!.textContent).toBe('Upload failed — recovery source is unavailable');
+    expect(el.uploadJobFiles!.textContent).toContain('OPFS file missing');
+    expect(el.uploadJobRetry!.hidden).toBe(true);
+  });
+
   it('renders a completed job as the saved recording view with real filenames', () => {
     view.wireEvents();
     view.renderJobView(job({

@@ -22,6 +22,7 @@ import type { RecordingSession } from './RecordingSession';
 import type { PerfDebugStore } from './PerfDebugStore';
 import type { CpuSampler } from './perf/CpuSampler';
 import type { RecordingHistoryService } from './RecordingHistoryService';
+import { isRecordingHistoryMessage } from '../shared/recordingHistory';
 
 export type MessageHandlersDeps = {
   L: { log: (...a: any[]) => void; warn: (...a: any[]) => void; error: (...a: any[]) => void };
@@ -130,9 +131,15 @@ export function registerMessageHandlers({ L, session, perfDebugStore, controller
     const send = sendResponse as (r: CommandResult) => void;
 
     (async () => {
+      if (
+        ['LIST_RECORDING_HISTORY', 'RENAME_RECORDING_HISTORY', 'REMOVE_RECORDING_HISTORY', 'OPEN_RECORDING_HISTORY_FILE'].includes(msg.type)
+        && !isRecordingHistoryMessage(msg)
+      ) {
+        throw new Error('Malformed recording history request');
+      }
       if (msg.type === 'LIST_RECORDING_HISTORY') {
         if (!history) throw new Error('Recording history is unavailable');
-        sendResponse({ ok: true, entries: await history.list() }); return;
+        sendResponse({ ok: true, ...(await history.listPage(msg.cursor)) }); return;
       }
       if (msg.type === 'RENAME_RECORDING_HISTORY') {
         if (!history) throw new Error('Recording history is unavailable');

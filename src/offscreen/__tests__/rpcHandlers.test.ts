@@ -32,6 +32,7 @@ function wire(overrides: Partial<Record<string, any>> = {}) {
     onDiscardRequested: jest.fn(),
     retryUpload: overrides.retryUpload ?? jest.fn().mockReturnValue(true),
     cancelUpload: overrides.cancelUpload ?? jest.fn().mockReturnValue(true),
+    acknowledgeUploadState: overrides.acknowledgeUploadState ?? jest.fn().mockResolvedValue(undefined),
     pushState: jest.fn((next: RecordingPhase) => { phase = next; }),
     clearWarnings: jest.fn(),
     log: jest.fn(),
@@ -77,6 +78,7 @@ describe('offscreen rpc handlers', () => {
       onStartRequested: jest.fn(),
       onStopRequested: jest.fn(),
       onDiscardRequested: jest.fn(),
+      acknowledgeUploadState: jest.fn().mockResolvedValue(undefined),
       pushState: jest.fn((nextPhase: RecordingPhase) => { phase = nextPhase; }),
       clearWarnings: jest.fn(),
       log: jest.fn(),
@@ -416,6 +418,17 @@ describe('offscreen rpc handlers', () => {
 
       expect(cancelUpload).toHaveBeenCalledWith('job-1');
       expect(responseFor(port, 'cancel-1')).toEqual({ ok: true });
+    });
+  });
+
+  describe('OFFSCREEN_ACK_UPLOAD_STATE (one-way)', () => {
+    it('removes a terminal state from the outbox only after the background acknowledges it', async () => {
+      const acknowledgeUploadState = jest.fn().mockResolvedValue(undefined);
+      const { listener } = wire({ acknowledgeUploadState });
+
+      await listener({ type: 'OFFSCREEN_ACK_UPLOAD_STATE', jobId: 'job-1' });
+
+      expect(acknowledgeUploadState).toHaveBeenCalledWith('job-1');
     });
   });
 });

@@ -48,8 +48,26 @@ describe('RecordingFinalizer', () => {
     });
 
     expect(summary).toBeUndefined();
-    expect(deps.requestSave).toHaveBeenNthCalledWith(1, 'tab.webm', 'blob:4', 'tab.webm');
-    expect(deps.requestSave).toHaveBeenNthCalledWith(2, 'mic.webm', 'blob:4', 'mic.webm');
+    expect(deps.requestSave).toHaveBeenNthCalledWith(1, expect.objectContaining({ stream: 'tab', filename: 'tab.webm', blobUrl: 'blob:4', opfsFilename: 'tab.webm' }));
+    expect(deps.requestSave).toHaveBeenNthCalledWith(2, expect.objectContaining({ stream: 'mic', filename: 'mic.webm', blobUrl: 'blob:4', opfsFilename: 'mic.webm' }));
+  });
+
+  it('keeps the recording identity with a local fallback after another recording starts', async () => {
+    const tab = makeArtifact('tab.webm');
+
+    await finalizer.finalize({
+      storageMode: 'local',
+      historyId: 'recording:n',
+      artifacts: [{ stream: 'tab', artifact: tab }],
+    });
+
+    expect(deps.requestSave).toHaveBeenCalledWith({
+      historyId: 'recording:n',
+      stream: 'tab',
+      filename: 'tab.webm',
+      blobUrl: 'blob:4',
+      opfsFilename: 'tab.webm',
+    });
   });
 
   it('continues Drive uploads after one file falls back locally', async () => {
@@ -94,7 +112,7 @@ describe('RecordingFinalizer', () => {
       ],
       folderWebViewLink: 'https://drive.google.com/drive/folders/folder-1',
     });
-    expect(deps.requestSave).toHaveBeenCalledWith('tab.webm', 'blob:4', 'tab.webm');
+    expect(deps.requestSave).toHaveBeenCalledWith(expect.objectContaining({ stream: 'tab', filename: 'tab.webm', blobUrl: 'blob:4', opfsFilename: 'tab.webm' }));
     expect(tab.cleanup).not.toHaveBeenCalled();
     expect(mic.cleanup).toHaveBeenCalledTimes(1);
   });
@@ -124,7 +142,7 @@ describe('RecordingFinalizer', () => {
     expect(summary?.localFallbacks).toEqual([
       expect.objectContaining({ stream: 'tab', filename: 'tab.webm', bytes: 4 }),
     ]);
-    expect(deps.requestSave).toHaveBeenCalledWith('tab.webm', 'blob:4', 'tab.webm');
+    expect(deps.requestSave).toHaveBeenCalledWith(expect.objectContaining({ stream: 'tab', filename: 'tab.webm', blobUrl: 'blob:4', opfsFilename: 'tab.webm' }));
   });
 
   it('marks an upload pending before it starts and clears it on both success and fallback', async () => {
@@ -148,6 +166,8 @@ describe('RecordingFinalizer', () => {
 
     await finalizerWithStore.finalize({
       storageMode: 'drive',
+      historyId: 'recording:1',
+      uploadJobId: 'job:1',
       artifacts: [
         { stream: 'mic', artifact: mic },
         { stream: 'tab', artifact: tab },
@@ -156,10 +176,10 @@ describe('RecordingFinalizer', () => {
 
     // A marker is written before each upload attempt...
     expect(pendingUploads.put).toHaveBeenCalledWith(
-      expect.objectContaining({ opfsFilename: 'mic.webm', filename: 'mic.webm', stream: 'mic' })
+      expect.objectContaining({ opfsFilename: 'mic.webm', filename: 'mic.webm', stream: 'mic', historyId: 'recording:1', jobId: 'job:1' })
     );
     expect(pendingUploads.put).toHaveBeenCalledWith(
-      expect.objectContaining({ opfsFilename: 'tab.webm', stream: 'tab' })
+      expect.objectContaining({ opfsFilename: 'tab.webm', stream: 'tab', historyId: 'recording:1', jobId: 'job:1' })
     );
     // ...and cleared whether the upload succeeds (mic) or falls back locally (tab).
     expect(pendingUploads.remove).toHaveBeenCalledWith('mic.webm');
@@ -294,8 +314,8 @@ describe('RecordingFinalizer', () => {
         { stream: 'mic', filename: 'mic.webm', bytes: 4, error: 'Error: folder lookup failed' },
       ],
     });
-    expect(deps.requestSave).toHaveBeenNthCalledWith(1, 'tab.webm', 'blob:4', 'tab.webm');
-    expect(deps.requestSave).toHaveBeenNthCalledWith(2, 'mic.webm', 'blob:4', 'mic.webm');
+    expect(deps.requestSave).toHaveBeenNthCalledWith(1, expect.objectContaining({ stream: 'tab', filename: 'tab.webm', blobUrl: 'blob:4', opfsFilename: 'tab.webm' }));
+    expect(deps.requestSave).toHaveBeenNthCalledWith(2, expect.objectContaining({ stream: 'mic', filename: 'mic.webm', blobUrl: 'blob:4', opfsFilename: 'mic.webm' }));
   });
 
   it('preserves deterministic summary order when parallel uploads finish with mixed outcomes', async () => {
@@ -336,7 +356,7 @@ describe('RecordingFinalizer', () => {
       ],
       folderWebViewLink: 'https://drive.google.com/drive/folders/folder-1',
     });
-    expect(deps.requestSave).toHaveBeenCalledWith('tab.webm', 'blob:4', 'tab.webm');
+    expect(deps.requestSave).toHaveBeenCalledWith(expect.objectContaining({ stream: 'tab', filename: 'tab.webm', blobUrl: 'blob:4', opfsFilename: 'tab.webm' }));
     expect(mic.cleanup).toHaveBeenCalledTimes(1);
     expect(tab.cleanup).not.toHaveBeenCalled();
   });
@@ -404,7 +424,7 @@ describe('RecordingFinalizer', () => {
     });
 
     expect(summary?.localFallbacks).toEqual([{ stream: 'tab', filename: 'tab.webm', bytes: 4, error: expect.any(String) }]);
-    expect(deps.requestSave).toHaveBeenCalledWith('tab.webm', expect.any(String), 'tab.webm');
+    expect(deps.requestSave).toHaveBeenCalledWith(expect.objectContaining({ stream: 'tab', filename: 'tab.webm', blobUrl: expect.any(String), opfsFilename: 'tab.webm' }));
   });
 
   it('skips the local-download failsafe on a retry (no duplicate copy)', async () => {

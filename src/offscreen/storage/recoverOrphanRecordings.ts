@@ -22,6 +22,8 @@
 import { describeRuntimeError } from '../errors';
 import { isRecordingFilename } from '../drive/folderNaming';
 import type { PendingUploadStore } from '../drive/PendingUploadStore';
+import type { LocalSaveRequest } from '../RecordingFinalizer';
+import type { RecordingStream } from '../../shared/recording';
 
 export type OrphanCandidate = { name: string; lastModifiedMs: number };
 
@@ -109,7 +111,7 @@ export async function recoverOrphanRecordings(deps: OrphanRecoveryDeps): Promise
 export function recoverOrphanRecordingsWithChrome(opts: {
   cutoffMs: number;
   pendingUploads: PendingUploadStore;
-  requestSave: (filename: string, blobUrl: string, opfsFilename?: string) => void;
+  requestSave: (request: LocalSaveRequest) => void;
   log: (...a: any[]) => void;
   warn: (...a: any[]) => void;
 }): Promise<void> {
@@ -159,7 +161,12 @@ export function recoverOrphanRecordingsWithChrome(opts: {
     },
     saveRecovered: (filename, file, opfsFilename) => {
       const blobUrl = URL.createObjectURL(file);
-      opts.requestSave(filename, blobUrl, opfsFilename);
+      opts.requestSave({
+        stream: streamFromRecordingFilename(filename),
+        filename,
+        blobUrl,
+        opfsFilename,
+      });
     },
     removeOpfsFile: async (name) => {
       try {
@@ -170,4 +177,10 @@ export function recoverOrphanRecordingsWithChrome(opts: {
       }
     },
   });
+}
+
+function streamFromRecordingFilename(filename: string): RecordingStream {
+  if (filename.endsWith('-mic.webm')) return 'mic';
+  if (filename.endsWith('-self-video.webm')) return 'self-video';
+  return 'tab';
 }

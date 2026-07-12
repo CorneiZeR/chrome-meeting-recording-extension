@@ -110,6 +110,30 @@ describe('registerSaveHandler', () => {
 
     expect(downloadFile).not.toHaveBeenCalled();
   });
+
+  it('creates the history row before starting a download that can settle immediately', async () => {
+    let releaseHistory!: () => void;
+    const history = {
+      createPending: jest.fn(() => new Promise<void>((resolve) => { releaseHistory = resolve; })),
+      localSaveSettled: jest.fn().mockResolvedValue(undefined),
+    };
+    registerSaveHandler(offscreen, L, history);
+
+    offscreen.onSaveRequested({ historyId: 'recording:1', stream: 'tab', filename: 'tab.webm', blobUrl: 'blob:1' });
+    await Promise.resolve();
+    expect(history.createPending).toHaveBeenCalledWith(
+      'recording:1',
+      [{ id: 'recording:1:tab', stream: 'tab', filename: 'tab.webm' }],
+      'local',
+    );
+    expect(downloadFile).not.toHaveBeenCalled();
+
+    releaseHistory();
+    await flushMicrotasks();
+
+    expect(downloadFile).toHaveBeenCalledTimes(1);
+    expect(history.localSaveSettled).toHaveBeenCalledWith('recording:1', 'tab', 1, 'complete');
+  });
 });
 
 describe('isFreshRecordingStart', () => {

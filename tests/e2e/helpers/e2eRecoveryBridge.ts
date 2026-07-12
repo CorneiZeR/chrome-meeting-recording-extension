@@ -35,7 +35,7 @@ export function installRecoveryTestBridge(): void {
       recoverOrphanRecordingsWithChrome({
         cutoffMs,
         pendingUploads: store,
-        requestSave: (filename: string, blobUrl: string) => {
+        requestSave: ({ filename, blobUrl }) => {
           // Record the recovery output (the assertable signal) and trigger a
           // real download so the end-to-end path is exercised.
           ((globalThis as any).__recoverySaves ??= []).push(filename);

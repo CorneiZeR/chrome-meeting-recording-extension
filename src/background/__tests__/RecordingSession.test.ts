@@ -31,13 +31,14 @@ describe('RecordingSession state machine', () => {
     expect(session.getSnapshot().runConfig?.micMode).toBe('separate');
   });
 
-  it('enters the starting phase and records the target tab and meeting', () => {
+  it('enters the starting phase and records the target tab and meeting', async () => {
     const snapshot = session.start(RUN_CONFIG, { targetTabId: 42, meetingSlug: 'abc-defg-hij' });
 
     expect(snapshot.phase).toBe('starting');
     expect(snapshot.runConfig).toEqual(RUN_CONFIG);
     expect(snapshot.targetTabId).toBe(42);
     expect(snapshot.meetingSlug).toBe('abc-defg-hij');
+    await session.flush();
     expect(persist).toHaveBeenCalledWith(snapshot);
     expect(onChanged).toHaveBeenCalledWith(snapshot);
   });
@@ -98,13 +99,23 @@ describe('RecordingSession state machine', () => {
     expect(restarted.error).toBeUndefined();
   });
 
-  it('commits (persists + notifies) on every transition', () => {
+  it('commits (persists + notifies) on every transition', async () => {
     session.start(RUN_CONFIG, { targetTabId: 42 });
     session.applyOffscreenPhase({ phase: 'recording' });
     session.markStopping();
 
+    await session.flush();
     expect(persist).toHaveBeenCalledTimes(3);
     expect(onChanged).toHaveBeenCalledTimes(3);
+  });
+
+  it('flushes writes in order and exposes a persistence failure to durable callers', async () => {
+    const writeFailure = new Error('session storage unavailable');
+    persist.mockRejectedValueOnce(writeFailure);
+
+    session.start(RUN_CONFIG, { targetTabId: 42 });
+
+    await expect(session.flush()).rejects.toThrow('session storage unavailable');
   });
 
   describe('run epoch (fencing token, ADR-0003)', () => {
@@ -208,10 +219,11 @@ describe('RecordingSession state machine', () => {
   });
 
   describe('hydrate', () => {
-    it('falls back to an idle snapshot for non-record input', () => {
+    it('falls back to an idle snapshot for non-record input', async () => {
       const snapshot = session.hydrate(null);
       expect(snapshot.phase).toBe('idle');
       expect(snapshot.runConfig).toBeNull();
+      await session.flush();
       expect(persist).toHaveBeenCalledWith(snapshot);
     });
 
@@ -234,10 +246,11 @@ describe('RecordingSession state machine', () => {
   });
 
   describe('mic mute', () => {
-    it('sets micMuted to true and clears it (never stores false)', () => {
+    it('sets micMuted to true and clears it (never stores false)', async () => {
       session.start(RUN_CONFIG, { targetTabId: 42 });
 
       expect(session.setMicMuted(true).micMuted).toBe(true);
+      await session.flush();
       expect(persist).toHaveBeenCalled();
       expect(session.setMicMuted(false).micMuted).toBeUndefined();
     });
@@ -383,7 +396,7 @@ describe('RecordingSession state machine', () => {
       ...over,
     });
 
-    it('inserts a new upload job and updates it by id', () => {
+    it('inserts a new upload job and updates it by id', async () => {
       const inserted = session.upsertUploadJob(job('j1'));
       expect(inserted.uploadJobs).toEqual([job('j1')]);
 
@@ -391,6 +404,7 @@ describe('RecordingSession state machine', () => {
       expect(updated.uploadJobs).toHaveLength(1);
       expect(updated.uploadJobs?.[0]).toMatchObject({ id: 'j1', progress: 0.5, status: 'completed' });
 
+      await session.flush();
       expect(persist).toHaveBeenCalledWith(updated);
       expect(onChanged).toHaveBeenCalledWith(updated);
     });

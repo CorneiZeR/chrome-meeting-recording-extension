@@ -25,6 +25,7 @@ import { describeRuntimeError } from './offscreen/errors';
 import { RecordingFinalizer } from './offscreen/RecordingFinalizer';
 import { UploadManager } from './offscreen/UploadManager';
 import { createChromePendingUploadStore } from './offscreen/drive/PendingUploadStore';
+import { createChromeUploadJobStateOutbox } from './offscreen/drive/UploadJobStateOutbox';
 import { resumePendingDriveUploadsWithChrome } from './offscreen/drive/resumePendingUploads';
 import { recoverOrphanRecordingsWithChrome } from './offscreen/storage/recoverOrphanRecordings';
 import { RuntimeSampler } from './offscreen/RuntimeSampler';
@@ -62,7 +63,6 @@ const perfRuntimeReady = configurePerfRuntime({
 
 let portRef: chrome.runtime.Port | null = null;
 let reconnectEnabled = true;
-let activeHistoryId = '';
 
 // ─── Runtime diagnostics ─────────────────────────────────────────────────────
 
@@ -106,14 +106,12 @@ function connectPort(retryDelay = 1_000): chrome.runtime.Port {
     currentPhase: controller.currentPhase,
     isFinalizing: controller.isFinalizing,
     clearWarnings: controller.clearWarnings,
-    onStartRequested: (runConfig, storageMode, epoch, historyId) => {
-      activeHistoryId = historyId;
-      controller.onStartRequested(runConfig, storageMode, epoch);
-    },
+    onStartRequested: controller.onStartRequested,
     onStopRequested: controller.onStopRequested,
     onDiscardRequested: controller.onDiscardRequested,
     retryUpload: (jobId) => uploadManager.retry(jobId),
     cancelUpload: (jobId) => uploadManager.cancel(jobId),
+    acknowledgeUploadState: (jobId) => uploadJobStateOutbox.remove(jobId),
     pushState: controller.pushState,
     log: L.log,
     error: L.error,
@@ -128,6 +126,7 @@ function connectPort(retryDelay = 1_000): chrome.runtime.Port {
     }
   });
 
+  portRef = port;
   port.postMessage({ type: 'OFFSCREEN_READY', version: getBuildId() });
   const warnings = controller.currentWarnings();
   port.postMessage({
@@ -137,7 +136,7 @@ function connectPort(retryDelay = 1_000): chrome.runtime.Port {
     ...(warnings.length ? { warnings } : {}),
   });
   L.log('READY signaled via Port');
-  portRef = port;
+  void replayUploadStates(port);
   return port;
 }
 
@@ -147,9 +146,8 @@ function getPort(): chrome.runtime.Port {
 
 // ─── State helpers ───────────────────────────────────────────────────────────
 
-function requestSave(filename: string, blobUrl: string, opfsFilename?: string) {
-  const stream = filename.endsWith('-mic.webm') ? 'mic' : filename.endsWith('-self-video.webm') ? 'self-video' : 'tab';
-  getPort().postMessage({ type: 'OFFSCREEN_SAVE', historyId: activeHistoryId, stream, filename, blobUrl, opfsFilename });
+function requestSave({ historyId, stream, filename, blobUrl, opfsFilename }: import('./offscreen/RecordingFinalizer').LocalSaveRequest) {
+  getPort().postMessage({ type: 'OFFSCREEN_SAVE', historyId: historyId ?? '', stream, filename, blobUrl, opfsFilename });
 }
 
 async function getDriveToken(options?: { refresh?: boolean }): Promise<string> {
@@ -161,6 +159,42 @@ async function getDriveToken(options?: { refresh?: boolean }): Promise<string> {
 // ─── Core services ───────────────────────────────────────────────────────────
 
 const pendingUploadStore = createChromePendingUploadStore();
+const uploadJobStateOutbox = createChromeUploadJobStateOutbox();
+
+async function reportUploadJob(job: import('./shared/recording').UploadJob): Promise<void> {
+  if (job.status !== 'uploading') {
+    try {
+      await uploadJobStateOutbox.put(job);
+    } catch (error) {
+      L.warn('Could not persist terminal upload state for replay', job.id, describeRuntimeError(error));
+    }
+  }
+  try {
+    getPort().postMessage({ type: 'OFFSCREEN_UPLOAD_STATE', job });
+  } catch (error) {
+    // The terminal outbox remains intact and is replayed when a later port connects.
+    L.warn('Could not send upload state to background', job.id, describeRuntimeError(error));
+  }
+}
+
+async function replayUploadStates(port: chrome.runtime.Port): Promise<void> {
+  const current = uploadManager.activeJobs();
+  let terminal: import('./shared/recording').UploadJob[] = [];
+  try {
+    terminal = await uploadJobStateOutbox.list();
+  } catch (error) {
+    L.warn('Could not load terminal upload state outbox', describeRuntimeError(error));
+  }
+  const byId = new Map(current.map((job) => [job.id, job]));
+  for (const job of terminal) byId.set(job.id, job);
+  for (const job of byId.values()) {
+    try {
+      port.postMessage({ type: 'OFFSCREEN_UPLOAD_STATE', job });
+    } catch {
+      return;
+    }
+  }
+}
 
 const finalizer = new RecordingFinalizer({
   log: L.log,
@@ -176,7 +210,7 @@ const finalizer = new RecordingFinalizer({
 // so a new recording can start while it finishes.
 const uploadManager = new UploadManager({
   finalizer,
-  report: (job) => getPort().postMessage({ type: 'OFFSCREEN_UPLOAD_STATE', job }),
+  report: reportUploadJob,
   warn: L.warn,
 });
 
@@ -214,7 +248,7 @@ const engine = new RecorderEngine({
   },
 });
 
-controller.attachServices(engine, finalizer, (artifacts) => uploadManager.enqueue(artifacts, activeHistoryId));
+controller.attachServices(engine, finalizer, (artifacts, context) => uploadManager.enqueue(artifacts, context.historyId));
 
 // Captured during synchronous module load — before any OFFSCREEN_START RPC can
 // create this session's recording files — so orphan recovery can tell a stale
@@ -237,6 +271,7 @@ void (async () => {
       getDriveToken,
       log: L.log,
       warn: L.warn,
+      reportJob: reportUploadJob,
     });
   } catch (e) {
     L.warn('Pending Drive upload recovery failed', describeRuntimeError(e));

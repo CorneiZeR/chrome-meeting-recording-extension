@@ -108,4 +108,50 @@ describe('resumePendingDriveUploads', () => {
     expect(store.remove).toHaveBeenCalledWith('b.webm');
     expect(store.remove).not.toHaveBeenCalledWith('a.webm');
   });
+
+  it('replays a recovered job with its original recording identity and Drive file metadata', async () => {
+    const owned: PendingUpload = {
+      ...entry('a.webm'),
+      historyId: 'recording:1',
+      jobId: 'job-1',
+    };
+    const reportJob = jest.fn();
+    const deps = makeDeps({
+      store: fakeStore([owned]),
+      uploadFile: jest.fn(async () => ({ id: 'drive-1', webViewLink: 'https://drive.example/file/1' })),
+      reportJob,
+    });
+
+    await resumePendingDriveUploads(deps);
+
+    expect(reportJob).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      id: 'job-1', historyId: 'recording:1', status: 'uploading',
+    }));
+    expect(reportJob).toHaveBeenLastCalledWith(expect.objectContaining({
+      id: 'job-1', historyId: 'recording:1', status: 'completed',
+      files: [expect.objectContaining({ stream: 'tab', status: 'uploaded', driveFileId: 'drive-1' })],
+    }));
+  });
+
+  it('reports a retained failed recovery as retry-pending, not as a local fallback', async () => {
+    const owned: PendingUpload = {
+      ...entry('a.webm'),
+      historyId: 'recording:1',
+      jobId: 'job-1',
+    };
+    const reportJob = jest.fn();
+    const deps = makeDeps({
+      store: fakeStore([owned]),
+      uploadFile: jest.fn(async () => { throw new Error('network down'); }),
+      reportJob,
+    });
+
+    await resumePendingDriveUploads(deps);
+
+    expect(reportJob).toHaveBeenLastCalledWith(expect.objectContaining({
+      id: 'job-1', status: 'failed', recoveryPending: true,
+      files: [expect.objectContaining({ status: 'retry-pending', error: 'Error: network down' })],
+    }));
+    expect((deps.store as any).remove).not.toHaveBeenCalled();
+  });
 });

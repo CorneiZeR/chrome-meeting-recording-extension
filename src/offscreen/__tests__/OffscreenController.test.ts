@@ -92,12 +92,12 @@ describe('OffscreenController', () => {
     it('saves locally without an uploading phase and returns to idle', async () => {
       const { controller, postMessage } = makeController();
       const { stop, finalize } = attach(controller, { artifacts: [artifact('tab')] });
-      controller.onStartRequested({ storageMode: 'local', micMode: 'off', recordSelfVideo: false }, 'local', 7);
+      controller.onStartRequested({ storageMode: 'local', micMode: 'off', recordSelfVideo: false }, 'local', 7, 'history-local');
 
       await controller.finalize();
 
       expect(stop).toHaveBeenCalledTimes(1);
-      expect(finalize).toHaveBeenCalledWith({ artifacts: [expect.objectContaining({ stream: 'tab' })], storageMode: 'local' });
+      expect(finalize).toHaveBeenCalledWith({ artifacts: [expect.objectContaining({ stream: 'tab' })], storageMode: 'local', historyId: 'history-local' });
       const phases = postMessage.mock.calls.map((c) => c[0].phase);
       expect(phases).not.toContain('uploading');
       expect(controller.currentPhase()).toBe('idle');
@@ -106,7 +106,7 @@ describe('OffscreenController', () => {
     it('does not signal uploading for a Drive run that produced no artifacts', async () => {
       const { controller, postMessage } = makeController();
       attach(controller, { artifacts: [] });
-      controller.onStartRequested({ storageMode: 'drive', micMode: 'off', recordSelfVideo: false }, 'drive', 7);
+      controller.onStartRequested({ storageMode: 'drive', micMode: 'off', recordSelfVideo: false }, 'drive', 7, 'history-empty');
 
       await controller.finalize();
 
@@ -120,11 +120,11 @@ describe('OffscreenController', () => {
       const finalize = jest.fn().mockResolvedValue(undefined);
       const enqueueUpload = jest.fn();
       controller.attachServices({ stop } as any, { finalize } as any, enqueueUpload);
-      controller.onStartRequested({ storageMode: 'drive', micMode: 'off', recordSelfVideo: false }, 'drive', 9);
+      controller.onStartRequested({ storageMode: 'drive', micMode: 'off', recordSelfVideo: false }, 'drive', 9, 'history-drive');
 
       await controller.finalize();
 
-      expect(enqueueUpload).toHaveBeenCalledWith([expect.objectContaining({ stream: 'tab' })]);
+      expect(enqueueUpload).toHaveBeenCalledWith([expect.objectContaining({ stream: 'tab' })], { historyId: 'history-drive' });
       expect(finalize).not.toHaveBeenCalled(); // upload is detached, not finalized inline
       const phases = postMessage.mock.calls.map((c) => c[0].phase);
       expect(phases).toEqual(['idle']); // never enters 'uploading'
@@ -137,12 +137,12 @@ describe('OffscreenController', () => {
       const finalize = jest.fn().mockResolvedValue(undefined);
       const enqueueUpload = jest.fn();
       controller.attachServices({ stop } as any, { finalize } as any, enqueueUpload);
-      controller.onStartRequested({ storageMode: 'local', micMode: 'off', recordSelfVideo: false }, 'local', 9);
+      controller.onStartRequested({ storageMode: 'local', micMode: 'off', recordSelfVideo: false }, 'local', 9, 'history-local-with-uploads');
 
       await controller.finalize();
 
       expect(enqueueUpload).not.toHaveBeenCalled();
-      expect(finalize).toHaveBeenCalledWith({ artifacts: [expect.objectContaining({ stream: 'tab' })], storageMode: 'local' });
+      expect(finalize).toHaveBeenCalledWith({ artifacts: [expect.objectContaining({ stream: 'tab' })], storageMode: 'local', historyId: 'history-local-with-uploads' });
     });
 
     it('shares one in-flight run across concurrent finalize calls', async () => {
@@ -220,7 +220,7 @@ describe('OffscreenController', () => {
         ]),
       } as any, {} as any);
 
-      await controller.discard();
+      await expect(controller.discard()).rejects.toThrow('Failed to delete 1 discarded recording artifact');
 
       expect(successfulCleanup).toHaveBeenCalledTimes(1);
       expect(error).toHaveBeenCalledWith('Discard pipeline failed', expect.stringContaining('OPFS remove failed'));

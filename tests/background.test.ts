@@ -647,6 +647,7 @@ describe('background runtime messages', () => {
 
     const onUpdate = (chrome.runtime.onUpdateAvailable.addListener as jest.Mock).mock.calls[0][0];
     onUpdate({ version: '2.0.0' });
+    await Promise.resolve();
 
     expect(chrome.runtime.reload).toHaveBeenCalledTimes(1);
   });
