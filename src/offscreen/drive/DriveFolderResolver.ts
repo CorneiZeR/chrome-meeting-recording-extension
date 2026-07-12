@@ -9,7 +9,7 @@
  */
 import { DRIVE_FILES_URL, DRIVE_FOLDER_MIME } from './constants';
 import { formatDriveError, readDriveErrorDetail } from './errors';
-import { driveFetch, fetchWithAuthRetry, type TokenProvider } from './request';
+import { fetchWithAuthRetry, fetchWithTimeout, type TokenProvider } from './request';
 
 export type DriveFolderHierarchy = {
   rootFolderName?: string;
@@ -27,39 +27,42 @@ export class DriveFolderResolver {
 
   constructor(private readonly getToken: TokenProvider) {}
 
-  async resolveUploadParentId(hierarchy: DriveFolderHierarchy): Promise<string | null> {
+  async resolveUploadParentId(hierarchy: DriveFolderHierarchy, signal?: AbortSignal): Promise<string | null> {
     if (this.resolvedUploadParentId) return this.resolvedUploadParentId;
-    if (this.resolvedUploadParentPromise) return await this.resolvedUploadParentPromise;
+    if (!this.resolvedUploadParentPromise) {
+      const resolution = (async () => {
+        const rootFolderName = hierarchy.rootFolderName?.trim();
+        if (!rootFolderName) return null;
 
-    this.resolvedUploadParentPromise = (async () => {
-      const rootFolderName = hierarchy.rootFolderName?.trim();
-      if (!rootFolderName) return null;
+        const rootFolderId = await this.getOrCreateFolder(rootFolderName, null);
+        const recordingFolderName = hierarchy.recordingFolderName?.trim();
+        if (!recordingFolderName) {
+          this.resolvedUploadParentId = rootFolderId;
+          return rootFolderId;
+        }
 
-      const rootFolderId = await this.getOrCreateFolder(rootFolderName, null);
-      const recordingFolderName = hierarchy.recordingFolderName?.trim();
-      if (!recordingFolderName) {
-        this.resolvedUploadParentId = rootFolderId;
-        return rootFolderId;
-      }
-
-    const cacheKey = `${rootFolderId}:${recordingFolderName}`;
-    let folderPromise = DriveFolderResolver.recordingFolderCache.get(cacheKey);
-    if (!folderPromise) {
-      folderPromise = this.getOrCreateFolder(recordingFolderName, rootFolderId).catch((error) => {
-        DriveFolderResolver.recordingFolderCache.delete(cacheKey);
-        throw error;
-      });
-      DriveFolderResolver.recordingFolderCache.set(cacheKey, folderPromise);
+        const cacheKey = `${rootFolderId}:${recordingFolderName}`;
+        let folderPromise = DriveFolderResolver.recordingFolderCache.get(cacheKey);
+        if (!folderPromise) {
+          folderPromise = this.getOrCreateFolder(recordingFolderName, rootFolderId).catch((error) => {
+            DriveFolderResolver.recordingFolderCache.delete(cacheKey);
+            throw error;
+          });
+          DriveFolderResolver.recordingFolderCache.set(cacheKey, folderPromise);
+        }
+        this.resolvedUploadParentId = await folderPromise;
+        return this.resolvedUploadParentId;
+      })();
+      this.resolvedUploadParentPromise = resolution;
+      void resolution.then(
+        () => { if (this.resolvedUploadParentPromise === resolution) this.resolvedUploadParentPromise = null; },
+        () => { if (this.resolvedUploadParentPromise === resolution) this.resolvedUploadParentPromise = null; },
+      );
     }
-      this.resolvedUploadParentId = await folderPromise;
-      return this.resolvedUploadParentId;
-    })();
-
-    try {
-      return await this.resolvedUploadParentPromise;
-    } finally {
-      this.resolvedUploadParentPromise = null;
-    }
+    // A job cancellation must not cancel this shared folder resolution: another
+    // file/job can still use it. It only stops the canceled caller from waiting;
+    // each network request below is independently hard-timed-out.
+    return await raceWithAbort(this.resolvedUploadParentPromise, signal);
   }
 
   private async getOrCreateFolder(name: string, parentId: string | null): Promise<string> {
@@ -81,7 +84,7 @@ export class DriveFolderResolver {
     const url = `${DRIVE_FILES_URL}&q=${q}&fields=files(id,name)&spaces=drive&includeItemsFromAllDrives=true&pageSize=1`;
 
     const res = await fetchWithAuthRetry(this.getToken, (token) =>
-      driveFetch(url, {
+      fetchWithTimeout(url, {
         method: 'GET',
         headers: { Authorization: `Bearer ${token}` },
       })
@@ -105,7 +108,7 @@ export class DriveFolderResolver {
     if (parentId) body.parents = [parentId];
 
     const res = await fetchWithAuthRetry(this.getToken, (token) =>
-      driveFetch(DRIVE_FILES_URL, {
+      fetchWithTimeout(DRIVE_FILES_URL, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
@@ -125,4 +128,17 @@ export class DriveFolderResolver {
     if (typeof id === 'string' && id) return id;
     throw new Error('Drive folder create succeeded but returned no folder id');
   }
+}
+
+function raceWithAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return promise;
+  if (signal.aborted) return Promise.reject(new DOMException('Upload canceled', 'AbortError'));
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(new DOMException('Upload canceled', 'AbortError'));
+    signal.addEventListener('abort', onAbort, { once: true });
+    promise.then(
+      (value) => { signal.removeEventListener('abort', onAbort); resolve(value); },
+      (error) => { signal.removeEventListener('abort', onAbort); reject(error); },
+    );
+  });
 }

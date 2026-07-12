@@ -29,11 +29,12 @@ export type RpcHandlerDeps = {
   isFinalizing: () => boolean;
   onStartRequested: (runConfig: RecordingRunConfig, storageMode: 'local' | 'drive', epoch: number, historyId: string) => void;
   onStopRequested: () => void;
-  onDiscardRequested: () => void;
+  onDiscardRequested: () => Promise<void>;
   /** Re-uploads a failed/partial background upload job; false when not retryable (ADR-0004). */
   retryUpload: (jobId: string) => boolean;
   /** Cancels an active/queued upload and starts local fallback downloads. */
   cancelUpload: (jobId: string) => boolean;
+  acknowledgeUploadState: (jobId: string) => Promise<void>;
   pushState: (
     phase: RecordingPhase,
     extra?: Pick<OffscreenPhaseUpdate, 'uploadSummary' | 'error' | 'tabResolution'>
@@ -99,7 +100,7 @@ async function handleOffscreenDiscard(
     return { ok: false, error: 'Discard requested but recorder is not active' };
   }
   deps.pushState('stopping');
-  void deps.onDiscardRequested();
+  await deps.onDiscardRequested();
   return { ok: true };
 }
 
@@ -178,6 +179,13 @@ async function handleRevokeBlobUrl(
   }
 }
 
+async function handleAcknowledgeUploadState(
+  msg: Extract<BgToOffscreenOneWay, { type: 'OFFSCREEN_ACK_UPLOAD_STATE' }>,
+  deps: RpcHandlerDeps,
+): Promise<void> {
+  if (typeof msg.jobId === 'string' && msg.jobId) await deps.acknowledgeUploadState(msg.jobId);
+}
+
 /** Registers RPC and one-way port handlers for background -> offscreen commands. */
 export function wirePortHandlers(port: chrome.runtime.Port, deps: RpcHandlerDeps) {
   createPortRpcServer(
@@ -193,6 +201,7 @@ export function wirePortHandlers(port: chrome.runtime.Port, deps: RpcHandlerDeps
       OFFSCREEN_RETRY_UPLOAD: (msg) => handleOffscreenRetryUpload(msg, deps),
       OFFSCREEN_CANCEL_UPLOAD: (msg) => handleOffscreenCancelUpload(msg, deps),
       REVOKE_BLOB_URL:   (msg) => handleRevokeBlobUrl(msg, deps),
+      OFFSCREEN_ACK_UPLOAD_STATE: (msg) => handleAcknowledgeUploadState(msg, deps),
     },
     (reqId, payload) => respond(deps.getPort, reqId, payload),
     deps.error

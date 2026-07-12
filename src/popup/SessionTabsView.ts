@@ -47,6 +47,16 @@ function uploadTabBadge(job: UploadJob): string {
 
 /** Headline status line for an upload job's view. */
 function uploadJobStatusText(job: UploadJob): string {
+  if (job.recoveryPending) {
+    return job.status === 'partial'
+      ? 'Partially uploaded — remaining files retry when the recorder starts'
+      : 'Upload paused — retrying when the recorder starts';
+  }
+  if (job.files.some((file) => file.status === 'unavailable')) {
+    return job.status === 'partial'
+      ? 'Partially uploaded — some recovery sources are unavailable'
+      : 'Upload failed — recovery source is unavailable';
+  }
   switch (job.status) {
     case 'completed': return 'Recording saved';
     case 'partial': return 'Uploaded — some files saved locally';
@@ -57,8 +67,12 @@ function uploadJobStatusText(job: UploadJob): string {
 }
 
 /** Per-file outcome label inside an upload job's view. */
-function uploadFileStatusText(status: UploadJobFile['status']): string {
-  return status === 'uploaded' ? 'Uploaded' : status === 'fallback' ? 'Saved locally' : 'Uploading…';
+function uploadFileStatusText(file: UploadJobFile): string {
+  if (file.status === 'uploaded') return 'Uploaded';
+  if (file.status === 'fallback') return 'Saved locally';
+  if (file.status === 'retry-pending') return 'Retry pending';
+  if (file.status === 'unavailable') return file.error || 'Recovery source unavailable';
+  return 'Uploading…';
 }
 
 /** Human label for a recording stream in an upload job's file list. */
@@ -354,7 +368,7 @@ export class SessionTabsView {
         name.textContent = file.filename;
         const status = document.createElement('div');
         status.className = 'file-sub';
-        const parts = [streamLabel(file.stream), uploadFileStatusText(file.status)];
+        const parts = [streamLabel(file.stream), uploadFileStatusText(file)];
         if (typeof file.bytes === 'number') parts.push(formatBytes(file.bytes));
         status.textContent = parts.join(' · ');
         main.append(name, status);
@@ -374,7 +388,9 @@ export class SessionTabsView {
     }
     // Retry is offered only for a job that ended with fallbacks.
     if (this.el.uploadJobRetry) {
-      this.el.uploadJobRetry.hidden = !(job.status === 'failed' || job.status === 'partial');
+      this.el.uploadJobRetry.hidden = job.recoveryPending
+        || job.files.some((file) => file.status === 'unavailable')
+        || !(job.status === 'failed' || job.status === 'partial');
       this.el.uploadJobRetry.dataset.jobId = job.id;
     }
     if (this.el.uploadJobCancel) {

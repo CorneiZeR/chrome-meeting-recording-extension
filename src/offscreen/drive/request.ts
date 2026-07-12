@@ -6,6 +6,7 @@
 
 import { sendRuntimeMessage } from '../../platform/chrome/runtime';
 import { isE2EMockDriveBuild } from '../../shared/build';
+import { DRIVE_REQUEST_TIMEOUT_MS } from './constants';
 
 export type TokenProvider = (options?: { refresh?: boolean }) => Promise<string>;
 
@@ -58,6 +59,21 @@ export async function driveFetch(
     statusText: response.statusText,
     headers: response.headers,
   });
+}
+
+/** Wraps any Drive HTTP request with a hard timeout and an optional job-cancel signal. */
+export async function fetchWithTimeout(url: string, init: RequestInit, cancelSignal?: AbortSignal): Promise<Response> {
+  const ac = new AbortController();
+  const timeout = setTimeout(() => ac.abort(), DRIVE_REQUEST_TIMEOUT_MS);
+  const onCancel = () => ac.abort();
+  cancelSignal?.addEventListener('abort', onCancel, { once: true });
+  if (cancelSignal?.aborted) ac.abort();
+  try {
+    return await driveFetch(url, { ...init, signal: ac.signal });
+  } finally {
+    clearTimeout(timeout);
+    cancelSignal?.removeEventListener('abort', onCancel);
+  }
 }
 
 /**

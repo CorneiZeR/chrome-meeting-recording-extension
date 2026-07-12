@@ -7,13 +7,12 @@
 
 import {
   DRIVE_MAX_RETRIES,
-  DRIVE_REQUEST_TIMEOUT_MS,
   DRIVE_RETRY_BASE_DELAY_MS,
   DRIVE_RETRY_BACKOFF_MAX_MULTIPLIER,
 } from './constants';
 import { formatDriveError, readDriveErrorDetail } from './errors';
 import type { TokenProvider } from './request';
-import { driveFetch } from './request';
+import { fetchWithTimeout } from './request';
 import { nowMs, roundMs } from '../../shared/perf';
 
 const delay = (ms: number, signal?: AbortSignal) => new Promise<void>((resolve, reject) => {
@@ -47,21 +46,6 @@ export type DriveUploadFile = {
   name?: string;
   webViewLink?: string;
 };
-
-/** Wraps a Drive PUT with a hard abort timeout. */
-export async function fetchWithTimeout(url: string, init: RequestInit, cancelSignal?: AbortSignal): Promise<Response> {
-  const ac = new AbortController();
-  const timeout = setTimeout(() => ac.abort(), DRIVE_REQUEST_TIMEOUT_MS);
-  const onCancel = () => ac.abort();
-  cancelSignal?.addEventListener('abort', onCancel, { once: true });
-  if (cancelSignal?.aborted) ac.abort();
-  try {
-    return await driveFetch(url, { ...init, signal: ac.signal });
-  } finally {
-    clearTimeout(timeout);
-    cancelSignal?.removeEventListener('abort', onCancel);
-  }
-}
 
 /** Returns true for error types that allow an immediate retry without backoff. */
 export function isTransientFetchError(err: unknown): boolean {

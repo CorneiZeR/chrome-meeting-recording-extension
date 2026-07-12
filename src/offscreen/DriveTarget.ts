@@ -18,10 +18,11 @@ import { type DriveFolderHierarchy, DriveFolderResolver } from './drive/DriveFol
 import { formatDriveError, readDriveErrorDetail } from './drive/errors';
 import {
   createCachedTokenProvider,
+  fetchWithTimeout,
   fetchWithAuthRetry,
   type TokenProvider,
 } from './drive/request';
-import { uploadChunk, fetchWithTimeout } from './drive/DriveChunkUploader';
+import { uploadChunk } from './drive/DriveChunkUploader';
 import type { DriveUploadFile, UploadChunkResult } from './drive/DriveChunkUploader';
 import { PERF_FLAGS, clamp, logPerf, nowMs, roundMs } from '../shared/perf';
 
@@ -132,7 +133,7 @@ export class DriveTarget {
   /** Starts a resumable upload session and stores the returned session URI. */
   private async initSession(): Promise<void> {
     this.throwIfCanceled();
-    const parentFolderId = await this.folderResolver.resolveUploadParentId(this.hierarchy);
+    const parentFolderId = await this.folderResolver.resolveUploadParentId(this.hierarchy, this.signal);
     const metadata: Record<string, any> = { name: this.filename, mimeType: 'video/webm' };
     if (parentFolderId) metadata.parents = [parentFolderId];
 

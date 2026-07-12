@@ -12,7 +12,7 @@ function setup(finalize: JobFinalizer['finalize'], over: Partial<ConstructorPara
   const reports: UploadJob[] = [];
   const manager = new UploadManager({
     finalizer: { finalize },
-    report: (job) => reports.push(structuredClone(job)),
+    report: (job) => { reports.push(structuredClone(job)); },
     now: () => 1000,
     genId: (() => { let n = 0; return () => `job-${(n += 1)}`; })(),
     ...over,
@@ -38,7 +38,7 @@ describe('UploadManager (ADR-0004)', () => {
     });
     const { manager, reports } = setup(finalize);
 
-    const id = manager.enqueue([artifact('tab', 'tab.webm')]);
+    const id = manager.enqueue([artifact('tab', 'tab.webm')], 'recording:n');
     expect(id).toBe('job-1');
     // The first report lands synchronously so a tab appears at once.
     expect(reports[0]).toMatchObject({
@@ -51,6 +51,7 @@ describe('UploadManager (ADR-0004)', () => {
     expect(typeof reports[0].label).toBe('string');
 
     await flush();
+    expect(finalize).toHaveBeenCalledWith(expect.objectContaining({ historyId: 'recording:n', uploadJobId: 'job-1' }));
     expect(reports.map((r) => r.progress)).toContain(0.5); // progress forwarded
     const last = reports[reports.length - 1];
     expect(last).toMatchObject({
@@ -148,7 +149,7 @@ describe('UploadManager (ADR-0004)', () => {
     expect(manager.hasActiveJobs()).toBe(false);
   });
 
-  it('cancels a queued upload without waiting for the active network job', async () => {
+  it('keeps a queued cancellation inside the bounded job scheduler', async () => {
     let release!: () => void;
     const gate = new Promise<void>((resolve) => { release = resolve; });
     const finalize = jest.fn(async (opts: any) => {
@@ -166,10 +167,11 @@ describe('UploadManager (ADR-0004)', () => {
 
     expect(manager.cancel(queuedId)).toBe(true);
     await flush();
-    expect(reports).toContainEqual(expect.objectContaining({ id: queuedId, status: 'canceled' }));
+    expect(reports).not.toContainEqual(expect.objectContaining({ id: queuedId, status: 'canceled' }));
 
     release();
     await flush();
+    expect(reports).toContainEqual(expect.objectContaining({ id: queuedId, status: 'canceled' }));
   });
 
   it('retries a failed job from the retained artifacts, under the same id', async () => {
@@ -254,5 +256,27 @@ describe('UploadManager (ADR-0004)', () => {
     manager.retry(id);
     await flush();
     expect(finalize.mock.calls[1][0].skipLocalFallback).toBe(true); // retry ⇒ no duplicate download
+  });
+
+  it('expires retry bytes after the retention window', async () => {
+    let now = 1_000;
+    const { manager } = setup(alwaysFails() as any, { now: () => now });
+    const id = manager.enqueue([artifact('tab', 'tab.webm')]);
+    await flush();
+
+    now += 5 * 60 * 1000;
+    expect(manager.retry(id)).toBe(false);
+  });
+
+  it('does not retain a retry payload above the memory budget', async () => {
+    const oversized = {
+      stream: 'tab',
+      artifact: { filename: 'large.webm', file: { size: 129 * 1024 * 1024 }, cleanup: jest.fn() },
+    } as any;
+    const { manager } = setup(alwaysFails() as any);
+    const id = manager.enqueue([oversized]);
+    await flush();
+
+    expect(manager.retry(id)).toBe(false);
   });
 });

@@ -18,6 +18,9 @@ import type { UploadJob, UploadJobFile, UploadJobStatus, UploadSummary } from '.
 import { inferDriveRecordingFolderName } from './drive/folderNaming';
 import { describeRuntimeError } from './errors';
 
+const MAX_RETRYABLE_BYTES = 128 * 1024 * 1024;
+const RETRY_RETENTION_MS = 5 * 60 * 1000;
+
 /** The slice of {@link RecordingFinalizer} the upload manager drives, per job. */
 export interface JobFinalizer {
   finalize(opts: {
@@ -26,13 +29,15 @@ export interface JobFinalizer {
     onUploadProgress?: (fraction: number) => void;
     skipLocalFallback?: boolean;
     signal?: AbortSignal;
+    historyId?: string;
+    uploadJobId?: string;
   }): Promise<UploadSummary | undefined>;
 }
 
 export type UploadManagerDeps = {
   finalizer: JobFinalizer;
   /** Sink for the job's latest state; the offscreen posts it as OFFSCREEN_UPLOAD_STATE. */
-  report: (job: UploadJob) => void;
+  report: (job: UploadJob) => void | Promise<void>;
   /** Max jobs uploading at once; default 1 so an upload never starves a live capture. */
   concurrency?: number;
   now?: () => number;
@@ -54,7 +59,8 @@ export class UploadManager {
    * in-memory) artifacts. Bounded to one: a newer failure or a successful retry
    * evicts it, so a failed recording can't pin its bytes in memory indefinitely.
    */
-  private lastFailed: { jobId: string; historyId?: string; artifacts: CompletedRecordingArtifact[] } | null = null;
+  private lastFailed: { jobId: string; historyId?: string; artifacts: CompletedRecordingArtifact[]; expiresAt: number } | null = null;
+  private retryExpiryTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(private readonly deps: UploadManagerDeps) {
     this.concurrency = Math.max(1, deps.concurrency ?? 1);
@@ -78,9 +84,10 @@ export class UploadManager {
    * offscreen restarted and lost the bytes).
    */
   retry(jobId: string): boolean {
+    this.clearExpiredRetry();
     if (this.lastFailed?.jobId !== jobId) return false;
     const { artifacts, historyId } = this.lastFailed;
-    this.lastFailed = null;
+    this.clearRetryable();
     // The original failure already saved a local copy, so suppress the download
     // failsafe on the retry — a re-failure must not duplicate it (ADR-0004).
     this.enqueueJob(jobId, artifacts, true, historyId);
@@ -92,17 +99,6 @@ export class UploadManager {
     const task = this.jobs.get(jobId);
     if (!task || task.controller.signal.aborted) return false;
     task.controller.abort();
-
-    // A queued canceled job does not need to wait behind network uploads: run its
-    // already-aborted finalizer immediately, which only executes local fallbacks.
-    const pendingIndex = this.pending.indexOf(task);
-    if (pendingIndex >= 0) {
-      this.pending.splice(pendingIndex, 1);
-      void this.run(task).finally(() => {
-        this.jobs.delete(task.job.id);
-        this.pump();
-      });
-    }
     return true;
   }
 
@@ -124,7 +120,7 @@ export class UploadManager {
     const task = { job, artifacts, skipLocalFallback, controller: new AbortController() };
     this.pending.push(task);
     this.jobs.set(id, task);
-    this.deps.report(job);
+    void this.emit(job);
     this.pump();
     return id;
   }
@@ -132,6 +128,11 @@ export class UploadManager {
   /** True while any job is queued or uploading; feeds the ADR-0004 "busy" check. */
   hasActiveJobs(): boolean {
     return this.jobs.size > 0;
+  }
+
+  /** Replays current in-flight work after a background reconnect. */
+  activeJobs(): UploadJob[] {
+    return [...this.jobs.values()].map((task) => structuredClone(task.job));
   }
 
   /** Starts queued jobs up to the concurrency limit, refilling as each settles. */
@@ -156,14 +157,18 @@ export class UploadManager {
         storageMode: 'drive',
         skipLocalFallback,
         signal: controller.signal,
+        historyId: job.historyId,
+        uploadJobId: job.id,
         onUploadProgress: (fraction) => {
           lastProgress = fraction;
-          this.deps.report({ ...job, status: 'uploading', progress: fraction });
+          const progress = { ...task.job, status: 'uploading' as const, progress: fraction };
+          task.job = progress;
+          void this.emit(progress);
         },
       });
       const settled = this.settle(job, summary, controller.signal.aborted);
       if (!controller.signal.aborted) this.rememberRetryable(settled, artifacts);
-      this.deps.report(settled);
+      await this.emit(settled);
     } catch (e) {
       // A thrown error (vs. a per-file fallback) means the whole job could not be
       // persisted; surface it as failed with the last progress we observed.
@@ -176,7 +181,7 @@ export class UploadManager {
         finishedAt: this.now(),
       };
       if (!controller.signal.aborted) this.rememberRetryable(failed, artifacts);
-      this.deps.report(failed);
+      await this.emit(failed);
     }
   }
 
@@ -185,10 +190,44 @@ export class UploadManager {
   private rememberRetryable(settled: UploadJob, artifacts: CompletedRecordingArtifact[]): void {
     const failedFiles = new Set(settled.files.filter((f) => f.status === 'fallback').map((f) => f.filename));
     if (failedFiles.size > 0) {
-      this.lastFailed = { jobId: settled.id, historyId: settled.historyId, artifacts: artifacts.filter((a) => failedFiles.has(a.artifact.filename)) };
+      const retryArtifacts = artifacts.filter((artifact) => failedFiles.has(artifact.artifact.filename));
+      const bytes = retryArtifacts.reduce((total, entry) => total + entry.artifact.file.size, 0);
+      if (bytes > MAX_RETRYABLE_BYTES) {
+        this.clearRetryable();
+        this.deps.warn?.(`Upload retry unavailable for ${settled.label}: ${bytes} bytes exceeds the ${MAX_RETRYABLE_BYTES}-byte retention budget`);
+        return;
+      }
+      this.clearRetryable();
+      this.lastFailed = {
+        jobId: settled.id,
+        historyId: settled.historyId,
+        artifacts: retryArtifacts,
+        expiresAt: this.now() + RETRY_RETENTION_MS,
+      };
+      this.retryExpiryTimer = setTimeout(() => this.clearExpiredRetry(), RETRY_RETENTION_MS);
     } else if (this.lastFailed?.jobId === settled.id) {
-      this.lastFailed = null;
+      this.clearRetryable();
     }
+  }
+
+  private async emit(job: UploadJob): Promise<void> {
+    try {
+      await this.deps.report(job);
+    } catch (error) {
+      // Transport failure must never change the completed upload outcome. The
+      // offscreen outbox retries terminal delivery after reconnect.
+      this.deps.warn?.('Could not report upload state', job.id, describeRuntimeError(error));
+    }
+  }
+
+  private clearExpiredRetry(): void {
+    if (this.lastFailed && this.lastFailed.expiresAt <= this.now()) this.clearRetryable();
+  }
+
+  private clearRetryable(): void {
+    if (this.retryExpiryTimer != null) clearTimeout(this.retryExpiryTimer);
+    this.retryExpiryTimer = null;
+    this.lastFailed = null;
   }
 
   /**

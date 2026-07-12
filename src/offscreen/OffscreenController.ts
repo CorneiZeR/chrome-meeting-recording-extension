@@ -14,6 +14,7 @@ import type { OffscreenPhaseUpdate } from '../shared/protocol';
 import {
   DEFAULT_RECORDING_RUN_CONFIG,
   type RecordingPhase,
+  type RecordingArtifactContext,
   type RecordingRunConfig,
   type StorageMode,
   type UploadSummary,
@@ -33,6 +34,7 @@ export interface ArtifactFinalizer {
   finalize(args: {
     artifacts: CompletedRecordingArtifact[];
     storageMode: StorageMode;
+    historyId?: string;
   }): Promise<UploadSummary | undefined>;
 }
 
@@ -50,12 +52,13 @@ export class OffscreenController {
   private phase: RecordingPhase = 'idle';
   private warnings: string[] = [];
   private storageMode: StorageMode = DEFAULT_RECORDING_RUN_CONFIG.storageMode;
+  private historyId: string | undefined;
   /** Run epoch from the latest OFFSCREEN_START; echoed in every OFFSCREEN_STATE (ADR-0003). */
   private epoch = 0;
   private finalizeRunPromise: Promise<void> | null = null;
   private engine: FinalizableEngine | null = null;
   private finalizer: ArtifactFinalizer | null = null;
-  private enqueueUpload: ((artifacts: CompletedRecordingArtifact[]) => void) | null = null;
+  private enqueueUpload: ((artifacts: CompletedRecordingArtifact[], context: RecordingArtifactContext) => void) | null = null;
   private readonly now: () => number;
 
   constructor(private readonly deps: OffscreenControllerDeps) {
@@ -70,7 +73,7 @@ export class OffscreenController {
   attachServices(
     engine: FinalizableEngine,
     finalizer: ArtifactFinalizer,
-    enqueueUpload?: (artifacts: CompletedRecordingArtifact[]) => void
+    enqueueUpload?: (artifacts: CompletedRecordingArtifact[], context: RecordingArtifactContext) => void
   ): void {
     this.engine = engine;
     this.finalizer = finalizer;
@@ -83,13 +86,14 @@ export class OffscreenController {
   isFinalizing = (): boolean => this.finalizeRunPromise !== null;
   clearWarnings = (): void => { this.warnings = []; };
 
-  onStartRequested = (_runConfig: RecordingRunConfig, storageMode: StorageMode, epoch: number): void => {
+  onStartRequested = (_runConfig: RecordingRunConfig, storageMode: StorageMode, epoch: number, historyId: string): void => {
     this.storageMode = storageMode;
     this.epoch = epoch;
+    this.historyId = historyId || undefined;
   };
 
   onStopRequested = (): void => { void this.finalize(); };
-  onDiscardRequested = (): void => { void this.discard(); };
+  onDiscardRequested = (): Promise<void> => this.discard();
 
   /** Advances the broadcast phase, rebaselining the lag clock on a new active phase. */
   pushState = (
@@ -137,10 +141,10 @@ export class OffscreenController {
           // ADR-0004: capture is sealed — hand it to the background upload manager
           // and return to idle at once so a new recording can start while it uploads.
           if (!this.enqueueUpload) throw new Error('Drive finalize requires an upload manager');
-          this.enqueueUpload(artifacts);
+          this.enqueueUpload(artifacts, { historyId: this.historyId });
         } else {
           // Local saves are instant; finalize inline.
-          await finalizer.finalize({ artifacts, storageMode: 'local' });
+          await finalizer.finalize({ artifacts, storageMode: 'local', historyId: this.historyId });
         }
       }
       this.pushState('idle');
@@ -187,6 +191,7 @@ export class OffscreenController {
       .catch((e) => {
         this.deps.error('Discard pipeline failed', describeRuntimeError(e));
         this.pushState('failed', { error: describeRuntimeError(e) });
+        throw e;
       })
       .finally(() => {
         this.finalizeRunPromise = null;
