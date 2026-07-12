@@ -8,11 +8,13 @@
 
 import { CameraPermissionService } from './CameraPermissionService';
 import { CaptionPoller } from './CaptionPoller';
+import { ConfirmDialog } from './ConfirmDialog';
 import { MicPermissionService } from './MicPermissionService';
 import { RecordingTimer } from './RecordingTimer';
 import { SessionTabsView } from './SessionTabsView';
 import { PopupStateController } from './controllers/PopupStateController';
 import {
+  buildDiscardConfirmMessage,
   buildLocalSaveFailedAlert,
   buildLocalSaveFailedToast,
   buildDiscardErrorAlert,
@@ -22,6 +24,7 @@ import {
   buildStopErrorAlert,
   buildTranscriptFilename,
   CAMERA_PERMISSION_ERROR,
+  DISCARD_CONFIRM_TEXT,
   POPUP_TOAST_DURATION_MS,
   POPUP_TOAST_TEXT,
 } from './popupMessages';
@@ -78,6 +81,7 @@ export class PopupController {
   private readonly timer: RecordingTimer;
   private readonly captionPoller: CaptionPoller;
   private readonly sessionTabs: SessionTabsView;
+  private readonly confirmDialog = new ConfirmDialog();
   private inFlight = false;
   private statusTimer: ReturnType<typeof setTimeout> | null = null;
   private persistentStatus = '';
@@ -137,6 +141,7 @@ export class PopupController {
     this.timer.stop();
     this.captionPoller.stop();
     this.sessionTabs.dispose();
+    this.confirmDialog.dispose();
   }
 
   /**
@@ -185,6 +190,10 @@ export class PopupController {
     } else {
       this.timer.stop();
       this.captionPoller.stop();
+      // The recording this prompt refers to is gone (it stopped on its own, or
+      // the tab closed); confirming it now would only produce a "no active
+      // session" error, so retract the question.
+      this.confirmDialog.dismiss();
       this.micMuted = this.cameraMuted = this.paused = false;
       if (view === 'finalizing') this.updateFinalizingView(phase, session);
       if (view === 'config' && this.el.startBtn) this.el.startBtn.disabled = false;
@@ -536,15 +545,33 @@ export class PopupController {
     stopBtn.addEventListener('click',  () => this.executeCommand(stopBtn,  'STOP_RECORDING',  () => this.stopRecording(),  buildStopErrorAlert));
   }
 
+  /**
+   * Discard destroys captured media with no undo, so it is gated behind an
+   * in-popup confirmation. The prompt runs *before* executeCommand takes the
+   * in-flight lock: a cancelled prompt must leave the popup exactly as it was,
+   * with the recording still running and every control still live.
+   */
   private wireDiscard() {
     const discardBtn = this.el.discardBtn;
     if (!discardBtn) return;
-    discardBtn.addEventListener('click', () => this.executeCommand(
-      discardBtn,
-      'DISCARD_RECORDING',
-      () => this.discardRecording(),
-      buildDiscardErrorAlert
-    ));
+    discardBtn.addEventListener('click', async () => {
+      if (this.inFlight || this.confirmDialog.isOpen()) return;
+      const confirmed = await this.confirmDialog.ask({
+        title: DISCARD_CONFIRM_TEXT.title,
+        message: buildDiscardConfirmMessage(this.el.recTimer?.textContent ?? undefined),
+        confirmLabel: DISCARD_CONFIRM_TEXT.confirmLabel,
+        cancelLabel: DISCARD_CONFIRM_TEXT.cancelLabel,
+        tone: 'danger',
+      });
+      if (!confirmed) return;
+
+      await this.executeCommand(
+        discardBtn,
+        'DISCARD_RECORDING',
+        () => this.discardRecording(),
+        buildDiscardErrorAlert
+      );
+    });
   }
 
   /**

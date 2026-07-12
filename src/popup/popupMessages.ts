@@ -63,6 +63,23 @@ export function buildDiscardErrorAlert(error: unknown): string {
   return `Failed to discard recording:\n${message}`;
 }
 
+export const DISCARD_CONFIRM_TEXT = {
+  title: 'Discard this recording?',
+  confirmLabel: 'Discard recording',
+  cancelLabel: 'Keep recording',
+} as const;
+
+/**
+ * Builds the discard confirmation body. The elapsed time makes the stakes
+ * concrete — it is the one number that tells the user how much they are about
+ * to lose — and is omitted when the timer has not produced one yet.
+ */
+export function buildDiscardConfirmMessage(elapsed?: string): string {
+  const captured = elapsed?.trim() ? ` (${elapsed.trim()})` : '';
+  return `Recording stops now and everything captured so far${captured} is permanently deleted. `
+    + 'No file is saved locally or uploaded to Drive, and this cannot be undone.';
+}
+
 /** Returns the user-facing mic-permission error for the active microphone mode. */
 export function buildMicPermissionError(micMode: MicMode): string {
   if (micMode === 'mixed') {

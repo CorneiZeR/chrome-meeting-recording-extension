@@ -55,6 +55,7 @@
   --danger-border: #e3a4a7;
   --danger-ink: #b52f36;
   --meter-idle: #b7d7bd;
+  --scrim: rgba(23, 26, 33, 0.42);
 }
 
 :root[data-theme="dark"] {
@@ -88,6 +89,7 @@
   --danger-border: #68353a;
   --danger-ink: #f08b8f;
   --meter-idle: #2f5f3a;
+  --scrim: rgba(0, 0, 0, 0.6);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -122,6 +124,7 @@
     --danger-border: #68353a;
     --danger-ink: #f08b8f;
     --meter-idle: #2f5f3a;
+  --scrim: rgba(0, 0, 0, 0.6);
   }
 }
 

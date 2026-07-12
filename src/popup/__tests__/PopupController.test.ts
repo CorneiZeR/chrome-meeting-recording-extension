@@ -14,6 +14,19 @@ const flush = async () => {
   for (let i = 0; i < 5; i++) await Promise.resolve();
 };
 
+/** Answers the in-popup discard confirmation, then drains the command it releases. */
+const confirmDiscard = async () => {
+  await flush();
+  document.querySelector<HTMLButtonElement>('[data-confirm-accept]')!.click();
+  await flush();
+};
+
+/** Pushes a background RECORDING_STATE into the controller's runtime listener. */
+const emitRecordingState = (session: Record<string, unknown>) => {
+  const calls = (chrome.runtime.onMessage.addListener as jest.Mock).mock.calls;
+  calls[calls.length - 1][0]({ type: 'RECORDING_STATE', session });
+};
+
 describe('PopupController', () => {
   let controller: PopupController;
   let elements: any;
@@ -765,11 +778,49 @@ describe('PopupController', () => {
       },
     });
     elements.discardBtn.click();
-    await flush();
+    await confirmDiscard();
 
     expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ type: 'DISCARD_RECORDING' });
     expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(101, { type: 'RESET_TRANSCRIPT' });
     expect(console.log).toHaveBeenCalledWith('[popup]', expect.stringContaining('Discarding recording'));
+  });
+
+  it('asks before discarding and sends nothing when the confirmation is cancelled', async () => {
+    mockSendMessage.mockResolvedValueOnce(recordingSession());
+    controller.init();
+    await flush();
+
+    mockSendMessage.mockClear();
+    elements.discardBtn.click();
+    await flush();
+
+    const message = document.querySelector('.modal-message')?.textContent ?? '';
+    expect(message).toContain('permanently deleted');
+    expect(chrome.runtime.sendMessage).not.toHaveBeenCalled();
+
+    document.querySelector<HTMLButtonElement>('[data-confirm-cancel]')!.click();
+    await flush();
+
+    expect(chrome.runtime.sendMessage).not.toHaveBeenCalled();
+    expect(document.querySelector<HTMLElement>('.modal-overlay')!.hidden).toBe(true);
+    expect(elements.viewRecording.hidden).toBe(false);
+    expect(elements.discardBtn.disabled).toBe(false);
+  });
+
+  it('retracts an open discard prompt when the recording ends on its own', async () => {
+    mockSendMessage.mockResolvedValueOnce(recordingSession());
+    controller.init();
+    await flush();
+
+    elements.discardBtn.click();
+    await flush();
+    expect(document.querySelector<HTMLElement>('.modal-overlay')!.hidden).toBe(false);
+
+    emitRecordingState({ phase: 'idle', runConfig: (global as any).__TEST_RUN_CONFIG__(), updatedAt: Date.now() });
+    await flush();
+
+    expect(document.querySelector<HTMLElement>('.modal-overlay')!.hidden).toBe(true);
+    expect(chrome.runtime.sendMessage).not.toHaveBeenCalledWith({ type: 'DISCARD_RECORDING' });
   });
 
   it('keeps the recording view and explains stale runtime code when discard gets no response', async () => {
@@ -782,7 +833,7 @@ describe('PopupController', () => {
       .mockResolvedValueOnce(undefined)
       .mockResolvedValueOnce(recordingSession());
     elements.discardBtn.click();
-    await flush();
+    await confirmDiscard();
 
     expect(window.alert).toHaveBeenCalledWith(expect.stringContaining('background runtime did not respond'));
     expect(window.alert).toHaveBeenCalledWith(expect.stringContaining('Reload the unpacked extension'));
