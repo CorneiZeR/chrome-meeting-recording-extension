@@ -4,6 +4,10 @@
  * @lifetime Lives as a regular browser tab until the user closes it.
  */
 
+import { initializeExtensionTheme } from './shared/theme';
+
+initializeExtensionTheme();
+
 document.addEventListener('DOMContentLoaded', () => {
   const btn = document.getElementById('enable') as HTMLButtonElement | null;
   const statusEl = document.getElementById('status') as HTMLParagraphElement | null;

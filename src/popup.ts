@@ -17,6 +17,9 @@
  * @see src/shared/protocol.ts         — all message type definitions
  */
 import { PopupController } from './popup/PopupController';
+import { initializeExtensionTheme } from './shared/theme';
+
+initializeExtensionTheme();
 
 const byId = <T extends HTMLElement>(id: string) => document.getElementById(id) as T | null;
 

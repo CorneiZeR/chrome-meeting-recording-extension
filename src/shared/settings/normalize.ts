@@ -17,6 +17,7 @@ import {
   RESOLUTION_PRESET_DIMENSIONS,
   RESOLUTION_PRESET_OPTIONS,
   TAB_CONTENT_TYPE_OPTIONS,
+  THEME_OPTIONS,
 } from './defaults';
 import {
   validateChunkingSettings,
@@ -74,7 +75,11 @@ export function normalizeLegacyVideoFormat(value: unknown): LegacyVideoFormat | 
 
 /** Clones settings so callers never mutate shared in-memory state by accident. */
 export function cloneSettings(settings: ExtensionSettings): ExtensionSettings {
-  return { basic: { ...settings.basic }, professional: { ...settings.professional } };
+  return {
+    appearance: { ...settings.appearance },
+    basic: { ...settings.basic },
+    professional: { ...settings.professional },
+  };
 }
 
 /** Clones a per-run recorder settings snapshot so callers can safely retain it. */
@@ -143,8 +148,15 @@ export function normalizeTabResolutionPreset(professionalCandidate: Record<strin
 /** Normalizes any persisted settings payload and migrates legacy field shapes. */
 export function normalizeExtensionSettings(value: unknown): ExtensionSettings {
   if (!isRecord(value)) return cloneSettings(DEFAULT_EXTENSION_SETTINGS);
+  const appearanceCandidate = isRecord(value.appearance) ? value.appearance : {};
   const basicCandidate = isRecord(value.basic) ? value.basic : {};
   const professionalCandidate = isRecord(value.professional) ? value.professional : {};
+
+  const appearance: ExtensionSettings['appearance'] = {
+    theme: hasAllowedString(appearanceCandidate.theme, THEME_OPTIONS)
+      ? appearanceCandidate.theme
+      : DEFAULT_EXTENSION_SETTINGS.appearance.theme,
+  };
 
   const basic: ExtensionSettings['basic'] = {
     recordingMode: hasAllowedString(basicCandidate.recordingMode, RECORDING_MODE_OPTIONS)
@@ -186,7 +198,7 @@ export function normalizeExtensionSettings(value: unknown): ExtensionSettings {
     professional.chunkExtendedTimesliceMs = professional.chunkDefaultTimesliceMs;
   }
 
-  return { basic, professional };
+  return { appearance, basic, professional };
 }
 
 /** Validates a frozen recorder snapshot received over RPC without applying defaults. */

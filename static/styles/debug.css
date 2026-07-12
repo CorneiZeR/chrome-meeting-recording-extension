@@ -1,10 +1,49 @@
 :root {
+  color-scheme: light dark;
   --bg: #f3f0e9;
+  --bg-top: #f7f3ec;
+  --glow: rgba(163, 79, 29, 0.12);
   --panel: #fffaf2;
+  --panel-translucent: rgba(255, 250, 242, 0.92);
+  --panel-opaque: rgba(255, 250, 242, 0.98);
   --ink: #1e1d18;
   --muted: #6f6756;
   --line: #d8cbb4;
   --accent: #a34f1d;
+  --accent-soft: rgba(163, 79, 29, 0.12);
+  --shadow: 0 12px 32px rgba(76, 46, 16, 0.05);
+}
+
+:root[data-theme="dark"] {
+  --bg: #121417;
+  --bg-top: #1a1d21;
+  --glow: rgba(224, 130, 72, 0.13);
+  --panel: #1d2025;
+  --panel-translucent: rgba(29, 32, 37, 0.94);
+  --panel-opaque: rgba(29, 32, 37, 0.99);
+  --ink: #eef0f3;
+  --muted: #aeb4bf;
+  --line: #343943;
+  --accent: #e28a54;
+  --accent-soft: rgba(226, 138, 84, 0.14);
+  --shadow: 0 14px 34px rgba(0, 0, 0, 0.28);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #121417;
+    --bg-top: #1a1d21;
+    --glow: rgba(224, 130, 72, 0.13);
+    --panel: #1d2025;
+    --panel-translucent: rgba(29, 32, 37, 0.94);
+    --panel-opaque: rgba(29, 32, 37, 0.99);
+    --ink: #eef0f3;
+    --muted: #aeb4bf;
+    --line: #343943;
+    --accent: #e28a54;
+    --accent-soft: rgba(226, 138, 84, 0.14);
+    --shadow: 0 14px 34px rgba(0, 0, 0, 0.28);
+  }
 }
 
 * {
@@ -16,8 +55,8 @@ body {
   font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
   color: var(--ink);
   background:
-    radial-gradient(circle at top left, rgba(163, 79, 29, 0.12), transparent 28%),
-    linear-gradient(180deg, #f7f3ec 0%, var(--bg) 100%);
+    radial-gradient(circle at top left, var(--glow), transparent 28%),
+    linear-gradient(180deg, var(--bg-top) 0%, var(--bg) 100%);
 }
 
 main {
@@ -49,7 +88,7 @@ main {
   display: inline-block;
   padding: 6px 10px;
   border-radius: 999px;
-  background: rgba(163, 79, 29, 0.12);
+  background: var(--accent-soft);
   color: var(--accent);
   font-size: 12px;
   font-weight: 700;
@@ -91,11 +130,11 @@ button:disabled {
 }
 
 .card {
-  background: rgba(255, 250, 242, 0.92);
+  background: var(--panel-translucent);
   border: 1px solid var(--line);
   border-radius: 18px;
   padding: 16px;
-  box-shadow: 0 12px 32px rgba(76, 46, 16, 0.05);
+  box-shadow: var(--shadow);
 }
 
 .card h2 {
@@ -146,7 +185,7 @@ th {
   font-weight: 600;
   position: sticky;
   top: 0;
-  background: rgba(255, 250, 242, 0.98);
+  background: var(--panel-opaque);
 }
 
 @media (max-width: 900px) {

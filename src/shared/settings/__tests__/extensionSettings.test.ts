@@ -12,6 +12,13 @@ import {
 } from '..';
 
 describe('settings', () => {
+  it('defaults to the system theme and accepts only supported preferences', () => {
+    expect(DEFAULT_EXTENSION_SETTINGS.appearance.theme).toBe('system');
+    expect(normalizeExtensionSettings({}).appearance.theme).toBe('system');
+    expect(normalizeExtensionSettings({ appearance: { theme: 'dark' } }).appearance.theme).toBe('dark');
+    expect(normalizeExtensionSettings({ appearance: { theme: 'sepia' } }).appearance.theme).toBe('system');
+  });
+
   it('uses preset-based defaults for camera and tab resolution', () => {
     expect(DEFAULT_EXTENSION_SETTINGS.basic.selfVideoResolutionPreset).toBe('1920x1080');
     expect(DEFAULT_EXTENSION_SETTINGS.professional.tabResolutionPreset).toBe('1920x1080');

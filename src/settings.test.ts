@@ -10,6 +10,9 @@ const settingsHtml = readFileSync(
 
 describe('settings page', () => {
   const savedSettings: ExtensionSettings = {
+    appearance: {
+      theme: 'dark',
+    },
     basic: {
       recordingMode: 'drive',
       microphoneRecordingMode: 'separate',
@@ -56,7 +59,10 @@ describe('settings page', () => {
 
     expect((document.getElementById('self-video-resolution-preset') as HTMLSelectElement).value).toBe('1280x720');
     expect((document.getElementById('tab-resolution-preset') as HTMLSelectElement).value).toBe('854x480');
+    expect((document.getElementById('theme') as HTMLSelectElement).value).toBe('dark');
+    expect(document.documentElement.dataset.theme).toBe('dark');
 
+    (document.getElementById('theme') as HTMLSelectElement).value = 'light';
     (document.getElementById('recording-mode') as HTMLSelectElement).value = 'opfs';
     (document.getElementById('mic-mode') as HTMLSelectElement).value = 'mixed';
     (document.getElementById('separate-camera') as HTMLInputElement).checked = false;
@@ -66,6 +72,9 @@ describe('settings page', () => {
     await Promise.resolve();
 
     expect(saveExtensionSettingsToStorage).toHaveBeenCalledWith({
+      appearance: {
+        theme: 'light',
+      },
       basic: {
         recordingMode: 'opfs',
         microphoneRecordingMode: 'mixed',
@@ -86,6 +95,7 @@ describe('settings page', () => {
       },
     });
     expect(document.getElementById('status')?.textContent).toBe('Saved');
+    expect(document.documentElement.dataset.theme).toBe('light');
   });
 
   it('toggles tooltips on click and closes them on outside click or Escape', async () => {

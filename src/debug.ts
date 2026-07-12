@@ -5,6 +5,9 @@
  */
 
 import { DebugDashboard } from './debug/DebugDashboard';
+import { initializeExtensionTheme } from './shared/theme';
+
+initializeExtensionTheme();
 
 const dashboard = new DebugDashboard({
   buildBadgeEl: document.getElementById('debug-build-badge'),

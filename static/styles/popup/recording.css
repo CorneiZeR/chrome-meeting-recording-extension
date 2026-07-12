@@ -26,7 +26,7 @@
 .rec-label {
   font-size: 13px;
   font-weight: 700;
-  color: #f0b6b8;
+  color: var(--rec-label);
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
@@ -47,7 +47,7 @@
 }
 
 .rec-status.paused .rec-label {
-  color: #d6bd94;
+  color: var(--warn-label);
 }
 
 .rec-status.paused .rec-timer {
@@ -78,12 +78,12 @@
   width: 28px;
   height: 28px;
   border-radius: 8px;
-  background: #22252c;
+  background: var(--control-bg);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  color: #9aa0ab;
+  color: var(--control-ink);
 }
 
 .srow-ico svg {
@@ -99,17 +99,17 @@
 .srow-title {
   font-size: 12.5px;
   font-weight: 600;
-  color: #e8eaed;
+  color: var(--ink);
 }
 
 .srow-mode {
   font-weight: 400;
-  color: #7a7f8c;
+  color: var(--ink-3);
 }
 
 .srow-sub {
   font-size: 10.5px;
-  color: #7a7f8c;
+  color: var(--ink-3);
 }
 
 .srow-recdot {
@@ -133,7 +133,7 @@
 .meter span {
   width: 3px;
   border-radius: 1px;
-  background: #2f5f3a;
+  background: var(--meter-idle);
 }
 
 .meter span.lit {
@@ -148,7 +148,7 @@
   width: 34px;
   height: 20px;
   border-radius: 999px;
-  background: #3a3d44;
+  background: var(--control-bg-strong);
   position: relative;
   border: 0;
   padding: 0;
@@ -164,7 +164,7 @@
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  background: #fff;
+  background: var(--on-accent);
   transition: transform 0.15s;
 }
 

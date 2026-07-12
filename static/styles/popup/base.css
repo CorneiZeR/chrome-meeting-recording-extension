@@ -24,11 +24,50 @@
 }
 
 :root {
+  color-scheme: light dark;
+  --accent: #4c7fe3;
+  --accent-hi: #315fbd;
+  --accent-hover: #3a6fd4;
+  --accent-soft: #e6edfb;
+  --ready: #238636;
+  --rec: #cf3f45;
+  --rec-hover: #b9343a;
+  --rec-label: #a92f35;
+  --warn: #8b672d;
+  --warn-label: #80632f;
+  --surface: #f4f6fa;
+  --list-border: #d7dce6;
+  --list-top: #fff;
+  --list-bottom: #f8f9fc;
+  --divider: #e2e6ed;
+  --ink: #171a21;
+  --ink-2: #424957;
+  --ink-3: #697180;
+  --ink-4: #8b93a3;
+  --control-bg: #e8ebf1;
+  --control-bg-strong: #d7dce5;
+  --control-ink: #5f6877;
+  --secondary-bg: #fff;
+  --secondary-hover: #eef1f6;
+  --secondary-border: #cfd5df;
+  --on-accent: #fff;
+  --danger-soft: #fff1f1;
+  --danger-border: #e3a4a7;
+  --danger-ink: #b52f36;
+  --meter-idle: #b7d7bd;
+}
+
+:root[data-theme="dark"] {
   --accent: #4c7fe3;
   --accent-hi: #7da4f5;
+  --accent-hover: #3a6fd4;
+  --accent-soft: #25304a;
   --ready: #3fb950;
   --rec: #e5484d;
+  --rec-hover: #d23b40;
+  --rec-label: #f0b6b8;
   --warn: #c69a5a;
+  --warn-label: #d6bd94;
   --surface: #131417;
   --list-border: #262a31;
   --list-top: #1b1d23;
@@ -38,6 +77,52 @@
   --ink-2: #c4c9d2;
   --ink-3: #8b909c;
   --ink-4: #6b7080;
+  --control-bg: #22252c;
+  --control-bg-strong: #3a3d44;
+  --control-ink: #9aa0ab;
+  --secondary-bg: #1a1c21;
+  --secondary-hover: #21242a;
+  --secondary-border: #2b2f37;
+  --on-accent: #fff;
+  --danger-soft: #382025;
+  --danger-border: #68353a;
+  --danger-ink: #f08b8f;
+  --meter-idle: #2f5f3a;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --accent: #4c7fe3;
+    --accent-hi: #7da4f5;
+    --accent-hover: #3a6fd4;
+    --accent-soft: #25304a;
+    --ready: #3fb950;
+    --rec: #e5484d;
+    --rec-hover: #d23b40;
+    --rec-label: #f0b6b8;
+    --warn: #c69a5a;
+    --warn-label: #d6bd94;
+    --surface: #131417;
+    --list-border: #262a31;
+    --list-top: #1b1d23;
+    --list-bottom: #17181d;
+    --divider: #23262c;
+    --ink: #eef0f3;
+    --ink-2: #c4c9d2;
+    --ink-3: #8b909c;
+    --ink-4: #6b7080;
+    --control-bg: #22252c;
+    --control-bg-strong: #3a3d44;
+    --control-ink: #9aa0ab;
+    --secondary-bg: #1a1c21;
+    --secondary-hover: #21242a;
+    --secondary-border: #2b2f37;
+    --on-accent: #fff;
+    --danger-soft: #382025;
+    --danger-border: #68353a;
+    --danger-ink: #f08b8f;
+    --meter-idle: #2f5f3a;
+  }
 }
 
 /* The `hidden` attribute must win over component display rules (.btn, .srow,
@@ -134,8 +219,8 @@ body {
 }
 
 .icon-button:hover {
-  background: #1e2126;
-  color: #9aa0ab;
+  background: var(--secondary-hover);
+  color: var(--control-ink);
 }
 
 .icon-button svg {

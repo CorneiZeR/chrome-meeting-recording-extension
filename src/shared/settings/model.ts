@@ -10,6 +10,7 @@ import type { MicMode } from '../recordingTypes';
 
 export type RecordingModeDefault = 'opfs' | 'drive';
 export type ResolutionPreset = '640x360' | '854x480' | '1280x720' | '1920x1080';
+export type ThemePreference = 'system' | 'light' | 'dark';
 
 export type LegacyVideoFormat = 1080 | 720 | 480 | 360;
 export type ResolutionDimensions = {
@@ -18,6 +19,9 @@ export type ResolutionDimensions = {
 };
 
 export type ExtensionSettings = {
+  appearance: {
+    theme: ThemePreference;
+  };
   basic: {
     recordingMode: RecordingModeDefault;
     microphoneRecordingMode: MicMode;

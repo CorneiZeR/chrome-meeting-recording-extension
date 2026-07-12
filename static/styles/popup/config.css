@@ -155,14 +155,14 @@
   justify-content: space-between;
   gap: 8px;
   padding: 0 5px 0 12px;
-  background: #22252c;
+  background: var(--control-bg);
   transition: background 0.15s;
 }
 
 .cam-pill-text {
   font-size: 12.5px;
   font-weight: 600;
-  color: #9aa0ab;
+  color: var(--control-ink);
   white-space: nowrap;
 }
 
@@ -170,7 +170,7 @@
   width: 24px;
   height: 24px;
   border-radius: 7px;
-  background: #363a42;
+  background: var(--control-bg-strong);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -192,11 +192,11 @@
 }
 
 .cam-toggle input:checked ~ .cam-pill .cam-pill-text {
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .cam-toggle input:checked ~ .cam-pill .cam-pill-knob {
-  background: #fff;
+  background: var(--on-accent);
 }
 
 .cam-toggle input:checked ~ .cam-pill .cam-pill-knob .on-check {
@@ -216,7 +216,7 @@
   display: flex;
   width: 108px;
   background: var(--surface);
-  border: 1px solid #2b2f37;
+  border: 1px solid var(--secondary-border);
   border-radius: 8px;
   padding: 2px;
 }
@@ -248,7 +248,7 @@
 
 .seg input:checked + span {
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   font-weight: 700;
 }
 
@@ -272,7 +272,7 @@
 
 .cam-warn-text {
   font-size: 10.5px;
-  color: #9a8460;
+  color: var(--warn-label);
 }
 
 .cam-warn-text b {
@@ -304,44 +304,44 @@
 
 .btn-primary {
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   box-shadow: 0 8px 20px -8px rgba(76, 127, 227, 0.7);
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: #3a6fd4;
+  background: var(--accent-hover);
 }
 
 .btn-danger {
   background: var(--rec);
-  color: #fff;
+  color: var(--on-accent);
   box-shadow: 0 8px 20px -8px rgba(229, 72, 77, 0.7);
 }
 
 .btn-danger:hover:not(:disabled) {
-  background: #d23b40;
+  background: var(--rec-hover);
 }
 
 .btn-discard {
   background: transparent;
-  color: #f08b8f;
-  border: 1px solid #68353a;
+  color: var(--danger-ink);
+  border: 1px solid var(--danger-border);
 }
 
 .btn-discard:hover:not(:disabled) {
-  background: #382025;
-  border-color: #a64a52;
+  background: var(--danger-soft);
+  border-color: var(--rec);
 }
 
 .btn-secondary {
-  background: #1a1c21;
-  color: #dfe2e8;
-  border: 1px solid #2b2f37;
+  background: var(--secondary-bg);
+  color: var(--ink-2);
+  border: 1px solid var(--secondary-border);
   font-weight: 700;
 }
 
 .btn-secondary:hover:not(:disabled) {
-  background: #21242a;
+  background: var(--secondary-hover);
 }
 
 .btn:disabled {
@@ -370,7 +370,7 @@
 .link-btn {
   border: 0;
   background: transparent;
-  color: #9aa0ab;
+  color: var(--control-ink);
   font-family: inherit;
   font-size: 11.5px;
   font-weight: 600;

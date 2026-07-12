@@ -15,9 +15,11 @@ import type {
   ResolutionDimensions,
   ResolutionPreset,
   TabContentType,
+  ThemePreference,
 } from './model';
 
 export const EXTENSION_SETTINGS_STORAGE_KEY = 'extensionSettings';
+export const THEME_OPTIONS = ['system', 'light', 'dark'] as const satisfies readonly ThemePreference[];
 export const RECORDING_MODE_OPTIONS = ['opfs', 'drive'] as const;
 export const MICROPHONE_MODE_OPTIONS = ['off', 'mixed', 'separate'] as const;
 export const RESOLUTION_PRESET_OPTIONS = [
@@ -82,6 +84,9 @@ export const defaultMicMode: MicMode =
   EXTENSION_DEFAULTS.configurable.microphoneRecordingMode;
 
 export const DEFAULT_EXTENSION_SETTINGS: Readonly<ExtensionSettings> = Object.freeze({
+  appearance: Object.freeze({
+    theme: 'system' as ThemePreference,
+  }),
   basic: Object.freeze({
     recordingMode: defaultRecordingMode,
     microphoneRecordingMode: defaultMicMode,

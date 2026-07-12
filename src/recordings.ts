@@ -1,5 +1,8 @@
 import { RecordingsController } from './recordings/RecordingsController';
 import { RecordingsView } from './recordings/RecordingsView';
+import { initializeExtensionTheme } from './shared/theme';
+
+initializeExtensionTheme();
 
 const get = (id: string) => document.getElementById(id);
 const list = get('recordings-list');

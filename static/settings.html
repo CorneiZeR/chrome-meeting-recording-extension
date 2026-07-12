@@ -14,6 +14,24 @@
     </p>
 
     <section class="section">
+      <h2>Appearance</h2>
+      <div class="field-grid">
+        <div class="field-label">
+          <label for="theme">Theme</label>
+          <span class="tooltip-shell">
+            <button class="tooltip-toggle" type="button" aria-label="Explain theme setting" aria-controls="tooltip-theme" aria-expanded="false">?</button>
+            <span id="tooltip-theme" class="tooltip-bubble" role="tooltip" hidden>Follow your operating system by default, or keep the extension in light or dark mode.</span>
+          </span>
+        </div>
+        <select id="theme">
+          <option value="system">System</option>
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+        </select>
+      </div>
+    </section>
+
+    <section class="section">
       <h2>Basic</h2>
       <div class="field-grid">
         <div class="field-label">

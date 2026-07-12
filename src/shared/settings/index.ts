@@ -56,6 +56,7 @@ export type {
   MicrophoneCaptureSettings,
   ChunkingSettings,
   ResolutionPreset,
+  ThemePreference,
 } from './model';
 
 /**

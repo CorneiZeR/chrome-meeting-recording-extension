@@ -10,8 +10,12 @@
  */
 
 import { SettingsController, type SettingsElements } from './settings/SettingsController';
+import { initializeExtensionTheme } from './shared/theme';
+
+initializeExtensionTheme();
 
 const el: SettingsElements = {
+  theme: document.getElementById('theme') as HTMLSelectElement | null,
   recordingMode: document.getElementById('recording-mode') as HTMLSelectElement | null,
   micMode: document.getElementById('mic-mode') as HTMLSelectElement | null,
   separateCamera: document.getElementById('separate-camera') as HTMLInputElement | null,

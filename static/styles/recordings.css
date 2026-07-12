@@ -1,4 +1,57 @@
-:root { color-scheme: light; font-family: Arial, sans-serif; color: #202124; background:#f8f9fb; }
-body { margin:0; } main { max-width:760px; margin:0 auto; padding:24px; }
-header { display:flex; gap:16px; align-items:flex-start; margin-bottom:20px; } header a { font-size:28px; color:#4c7fe3; text-decoration:none; } h1 { margin:0; font-size:24px; } header p { margin:5px 0 0; color:#667085; }
-.recording-card { background:#fff; border:1px solid #dde3ee; border-radius:10px; padding:16px; margin:12px 0; box-shadow:0 1px 2px #0000000a; }.recording-top { display:flex; gap:12px; }.recording-name { flex:1; border:0; font-size:16px; font-weight:600; min-width:0; }.delete-recording { color:#b42318; border:0; background:transparent; cursor:pointer; }.recording-meta,.file-status { color:#667085; font-size:13px; }.recording-files { list-style:none; padding:0; margin:12px 0 0; }.recording-files li { display:flex; gap:12px; justify-content:space-between; align-items:center; padding:8px 0; border-top:1px solid #eef1f5; }.recording-files a,.recording-files button { color:#275db7; background:transparent; border:0; cursor:pointer; text-decoration:none; white-space:nowrap; }.error { color:#b42318; }.empty { color:#667085; padding:24px 0; }.load-more { display:block; margin:20px auto; padding:9px 14px; border:1px solid #b9c6dc; border-radius:7px; background:#fff; color:#275db7; cursor:pointer; }
+:root {
+  color-scheme: light dark;
+  font-family: Arial, sans-serif;
+  --page-bg: #f8f9fb;
+  --card-bg: #fff;
+  --text: #202124;
+  --muted: #667085;
+  --border: #dde3ee;
+  --divider: #eef1f5;
+  --accent: #275db7;
+  --danger: #b42318;
+  --shadow: 0 1px 2px #0000000a;
+}
+
+:root[data-theme="dark"] {
+  --page-bg: #131519;
+  --card-bg: #1d2026;
+  --text: #eef0f3;
+  --muted: #a4abb7;
+  --border: #353b46;
+  --divider: #2a2f38;
+  --accent: #82aaff;
+  --danger: #ff8b85;
+  --shadow: 0 8px 22px rgba(0, 0, 0, 0.24);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --page-bg: #131519;
+    --card-bg: #1d2026;
+    --text: #eef0f3;
+    --muted: #a4abb7;
+    --border: #353b46;
+    --divider: #2a2f38;
+    --accent: #82aaff;
+    --danger: #ff8b85;
+    --shadow: 0 8px 22px rgba(0, 0, 0, 0.24);
+  }
+}
+
+body { margin: 0; color: var(--text); background: var(--page-bg); }
+main { max-width: 760px; margin: 0 auto; padding: 24px; }
+header { display: flex; gap: 16px; align-items: flex-start; margin-bottom: 20px; }
+header a { font-size: 28px; color: var(--accent); text-decoration: none; }
+h1 { margin: 0; font-size: 24px; }
+header p { margin: 5px 0 0; color: var(--muted); }
+.recording-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin: 12px 0; box-shadow: var(--shadow); }
+.recording-top { display: flex; gap: 12px; }
+.recording-name { flex: 1; border: 0; font-size: 16px; font-weight: 600; min-width: 0; color: var(--text); background: transparent; }
+.delete-recording { color: var(--danger); border: 0; background: transparent; cursor: pointer; }
+.recording-meta, .file-status { color: var(--muted); font-size: 13px; }
+.recording-files { list-style: none; padding: 0; margin: 12px 0 0; }
+.recording-files li { display: flex; gap: 12px; justify-content: space-between; align-items: center; padding: 8px 0; border-top: 1px solid var(--divider); }
+.recording-files a, .recording-files button { color: var(--accent); background: transparent; border: 0; cursor: pointer; text-decoration: none; white-space: nowrap; }
+.error { color: var(--danger); }
+.empty { color: var(--muted); padding: 24px 0; }
+.load-more { display: block; margin: 20px auto; padding: 9px 14px; border: 1px solid var(--border); border-radius: 7px; background: var(--card-bg); color: var(--accent); cursor: pointer; }

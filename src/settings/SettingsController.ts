@@ -14,8 +14,10 @@ import {
   saveExtensionSettingsToStorage,
   type ExtensionSettings,
 } from '../shared/settings';
+import { applyThemePreference } from '../shared/theme';
 
 export type SettingsElements = {
+  theme: HTMLSelectElement | null;
   recordingMode: HTMLSelectElement | null;
   micMode: HTMLSelectElement | null;
   separateCamera: HTMLInputElement | null;
@@ -84,12 +86,14 @@ export class SettingsController {
   private setStatus(text: string, isError = false): void {
     if (!this.el.status) return;
     this.el.status.textContent = text;
-    this.el.status.style.color = isError ? '#8b0000' : '#145a00';
+    this.el.status.style.color = isError ? 'var(--error)' : 'var(--success)';
   }
 
   /** Mirrors normalized settings into the current form controls. */
   private applySettings(settings: Readonly<ExtensionSettings>): void {
     const el = this.el;
+    if (el.theme) el.theme.value = settings.appearance.theme;
+    applyThemePreference(settings.appearance.theme);
     if (el.recordingMode) el.recordingMode.value = settings.basic.recordingMode;
     if (el.micMode) el.micMode.value = settings.basic.microphoneRecordingMode;
     if (el.separateCamera) el.separateCamera.checked = settings.basic.separateCameraCapture;
@@ -116,6 +120,9 @@ export class SettingsController {
   private readSettingsFromForm(): unknown {
     const el = this.el;
     return {
+      appearance: {
+        theme: el.theme?.value,
+      },
       basic: {
         recordingMode: el.recordingMode?.value,
         microphoneRecordingMode: el.micMode?.value,
