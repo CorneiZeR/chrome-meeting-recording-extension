@@ -48,7 +48,6 @@ export type PopupElements = {
   chipStorageLabel: HTMLElement | null;
   micRow: HTMLElement | null;
   micModeLabel: HTMLElement | null;
-  micMeterBars: HTMLElement[];
   muteMicBtn: HTMLButtonElement | null;
   cameraRow: HTMLElement | null;
   hideCameraBtn: HTMLButtonElement | null;

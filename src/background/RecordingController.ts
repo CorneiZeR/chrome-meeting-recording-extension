@@ -266,32 +266,6 @@ export class RecordingController {
   }
 
   /**
-   * Returns the current microphone level for the popup meter. This is strictly
-   * observational: when there is no active, unmuted mic run we return zero
-   * without touching the offscreen recorder.
-   */
-  async getMicLevel(): Promise<{ level: number }> {
-    const snapshot = this.session.getSnapshot();
-    if (snapshot.phase !== 'recording' || snapshot.paused === true || snapshot.micMuted === true) {
-      return { level: 0 };
-    }
-    const micMode = snapshot.runConfig?.micMode;
-    if (micMode !== 'mixed' && micMode !== 'separate') return { level: 0 };
-
-    try {
-      await this.offscreen.ensureReady();
-      const r = await this.offscreen.rpc<{ level?: number }>({ type: 'OFFSCREEN_GET_MIC_LEVEL' });
-      const level = typeof r?.level === 'number' && Number.isFinite(r.level)
-        ? Math.max(0, Math.min(1, r.level))
-        : 0;
-      return { level };
-    } catch (e: any) {
-      this.L.warn('GET_MIC_LEVEL failed:', e?.message || e);
-      return { level: 0 };
-    }
-  }
-
-  /**
    * Hides/shows the camera on the live self-video recording. Same shape as
    * {@link setMicMuted}: guards that capture is active and the run records a
    * camera, relays to the offscreen engine, and mirrors the flag onto the

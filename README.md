@@ -1069,7 +1069,6 @@ flowchart LR
 | `STOP_RECORDING` | none | `CommandResult` with session snapshot |
 | `DISCARD_RECORDING` | none | `CommandResult`; deletes temporary artifacts without delivery |
 | `GET_RECORDING_STATUS` | none | current session snapshot |
-| `GET_MIC_LEVEL` | none | read-only normalized live mic level when an unmuted mic is active |
 | `RETRY_UPLOAD_JOB` / `CANCEL_UPLOAD_JOB` | `jobId` | `CommandResult`; retry is bounded by retained artifact availability, cancel falls back locally |
 | `GET_DRIVE_TOKEN` | optional `refresh` | token or error |
 | `LIST_RECORDING_HISTORY` | optional `(createdAt, id)` cursor | cursor page of history entries |

@@ -60,7 +60,6 @@ const controller = new PopupController({
   chipStorageLabel: byId('chip-storage-label'),
   micRow: byId('row-mic'),
   micModeLabel: byId('mic-mode-label'),
-  micMeterBars: Array.from(document.querySelectorAll<HTMLElement>('#row-mic .meter span')),
   muteMicBtn: byId<HTMLButtonElement>('mute-mic'),
   cameraRow: byId('row-camera'),
   hideCameraBtn: byId<HTMLButtonElement>('hide-camera'),

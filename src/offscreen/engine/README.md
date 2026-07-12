@@ -6,7 +6,7 @@
 
 ## Purpose & mental model
 
-Turn one tab-capture stream id (plus optional mic and camera) into one-to-three encoded WebM artifacts. The mental model is **N independent per-stream recorders started in parallel, with one load-bearing stream**: the **tab** recorder is required (its failure aborts the run); the **separate mic** and **self-video** recorders are optional (their failures are warned and degraded, never fatal). The engine owns stream lifetimes, live actuation (mute/hide/pause), actual tab-resolution reporting, and the read-only mic-level source; it does *not* decide policy (that's the [background](../../background/README.md)) or persist bytes (that's [storage](../storage/README.md)).
+Turn one tab-capture stream id (plus optional mic and camera) into one-to-three encoded WebM artifacts. The mental model is **N independent per-stream recorders started in parallel, with one load-bearing stream**: the **tab** recorder is required (its failure aborts the run); the **separate mic** and **self-video** recorders are optional (their failures are warned and degraded, never fatal). The engine owns stream lifetimes, live actuation (mute/hide/pause), and actual tab-resolution reporting; it does *not* decide policy (that's the [background](../../background/README.md)) or persist bytes (that's [storage](../storage/README.md)).
 
 ## The capture → encode pipeline
 
@@ -20,7 +20,6 @@ flowchart TD
     MIX --> TR["tab MediaRecorder (extended timeslice)"]
     TABS --> TR
     MICSEP["separate mic getUserMedia"] --> MR["mic MediaRecorder (default timeslice)"]
-    MICSEP --> METER["MicLevelMonitor → read-only popup meter"]
     CAM["self-video getUserMedia (constraint ladder)"] --> RS["resize if delivered != preset"]
     RS --> SVR["self-video MediaRecorder (extended timeslice)"]
     TR --> CH["ondataavailable → makeChunkHandler → storage"]
@@ -70,7 +69,6 @@ flowchart LR
 - **`separate`** records the mic as its own audio-only file (its own `MediaRecorder`).
 - **`off`** acquires no mic.
 
-`MicLevelMonitor` is a separate analyser-only branch over the acquired mic stream. `getMicLevel()` returns zero when the mic is muted or unavailable; it never connects to a destination, changes gain, or feeds a recorder, so the popup meter cannot change recorded audio.
 
 **`ensureAudiblePlayback`** (the `AudioPlaybackBridge`) replays the captured tab audio back to the speakers — `tabCapture` mutes the tab locally while capturing, so without this the user hears nothing during recording.
 
@@ -107,7 +105,6 @@ The popup toggles, the background commands, the engine **actuates** — never in
 | File | Role |
 | :--- | :--- |
 | `../RecorderEngine.ts` | the orchestrator: acquire → parallel start → stop → seal; live-control actuation |
-| `../MicLevelMonitor.ts` | read-only `AnalyserNode` mic-level observer used by `getMicLevel()` |
 | `TabRecorderTask.ts`, `MicRecorderTask.ts`, `SelfVideoRecorderTask.ts` | per-stream start/stop, each owning its `MediaRecorder` + storage target |
 | `RecorderEngineSetup.ts`, `RecorderTaskUtils.ts` | start-task helpers, `openStorageTarget` + `makeChunkHandler` (the storage seam) |
 | `RecorderEngineTypes.ts` | `StorageTarget`, `SealedStorageFile`, `CompletedRecordingArtifact`, `InMemoryStorageTarget`, `RecorderEngineDeps` |

@@ -46,7 +46,7 @@ flowchart TD
 
 ## The command/status protocol (offscreen side)
 
-- **Commands in (RPC over a `chrome.runtime.Port`):** `OFFSCREEN_START` (validate → busy-check → `clearWarnings` → `applyPerfSettings` → freeze `epoch`/`storageMode` → `pushState('starting')` → `engine.startFromStreamId`), `OFFSCREEN_STOP`, `OFFSCREEN_DISCARD`, `OFFSCREEN_SET_MIC_MUTED` / `_CAMERA_MUTED` / `_PAUSED`, `OFFSCREEN_GET_MIC_LEVEL`, `OFFSCREEN_RETRY_UPLOAD`, `OFFSCREEN_CANCEL_UPLOAD`, and `REVOKE_BLOB_URL`.
+- **Commands in (RPC over a `chrome.runtime.Port`):** `OFFSCREEN_START` (validate → busy-check → `clearWarnings` → `applyPerfSettings` → freeze `epoch`/`storageMode` → `pushState('starting')` → `engine.startFromStreamId`), `OFFSCREEN_STOP`, `OFFSCREEN_DISCARD`, `OFFSCREEN_SET_MIC_MUTED` / `_CAMERA_MUTED` / `_PAUSED`, `OFFSCREEN_RETRY_UPLOAD`, `OFFSCREEN_CANCEL_UPLOAD`, and `REVOKE_BLOB_URL`.
 - **Status out:** `pushState` broadcasts `OFFSCREEN_STATE { phase, epoch, warnings? }`. The offscreen **self-derives** its capture phase from engine events and **echoes** the run `epoch` from `OFFSCREEN_START` — it never reads the background's phase. `UploadManager` independently broadcasts `OFFSCREEN_UPLOAD_STATE { job }`; job state is not a recording phase. (The echoed epoch is what the background's [fence](../shared/README.md) matches against; see ADR-0003.)
 - **Readiness & reconnect:** on connect it posts `OFFSCREEN_READY { version }` (the build id — the **version handshake** that lets the background detect and heal SW/offscreen code skew), current capture state, and any active upload jobs. A dropped port reconnects with exponential backoff (1 s → 30 s cap). Terminal jobs are first written to `UploadJobStateOutbox` in `chrome.storage.local`; the entry is replayed until `OFFSCREEN_ACK_UPLOAD_STATE { jobId }` arrives after the background has persisted it.
 
@@ -71,7 +71,7 @@ flowchart TD
 | `rpcHandlers.ts` | background→offscreen command handlers, upload-state acknowledgement, and reconnect runtime listener |
 | `RuntimeSampler.ts` | samples event-loop lag / long-tasks / heap for the perf snapshot |
 
-Subsystems (own READMEs): [`engine/`](./engine/README.md), [`storage/`](./storage/README.md), [`drive/`](./drive/README.md). Support modules (`RecorderAudio`, `RecorderCapture` — its e2e-only synthetic tab stream lives in the sibling `RecorderCaptureE2EMock` so the production capture path carries no test scaffolding — `RecorderProfiles`, `DriveTarget`, `LocalFileTarget`, `MicLevelMonitor`) sit at this root and are documented by the subsystem that owns them.
+Subsystems (own READMEs): [`engine/`](./engine/README.md), [`storage/`](./storage/README.md), [`drive/`](./drive/README.md). Support modules (`RecorderAudio`, `RecorderCapture` — its e2e-only synthetic tab stream lives in the sibling `RecorderCaptureE2EMock` so the production capture path carries no test scaffolding — `RecorderProfiles`, `DriveTarget`, `LocalFileTarget`) sit at this root and are documented by the subsystem that owns them.
 
 ## Observability
 

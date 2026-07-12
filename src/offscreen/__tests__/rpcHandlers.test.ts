@@ -366,18 +366,6 @@ describe('offscreen rpc handlers', () => {
     });
   });
 
-  describe('OFFSCREEN_GET_MIC_LEVEL', () => {
-    it('returns the current engine microphone level', async () => {
-      const engine = { getMicLevel: jest.fn().mockReturnValue(0.42) };
-      const { port, listener } = wire({ engine });
-
-      await listener({ __id: 'level-1', type: 'OFFSCREEN_GET_MIC_LEVEL' });
-
-      expect(engine.getMicLevel).toHaveBeenCalledTimes(1);
-      expect(responseFor(port, 'level-1')).toEqual({ level: 0.42 });
-    });
-  });
-
   describe('OFFSCREEN_RETRY_UPLOAD', () => {
     it('retries the job and responds ok when it is still retryable', async () => {
       const retryUpload = jest.fn().mockReturnValue(true);

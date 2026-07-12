@@ -12,7 +12,6 @@ import { DEFAULT_RECORDING_RUN_CONFIG, isStoppablePhase, type CapturedTabResolut
 import { describeMediaError } from './RecorderSupport';
 import type { MixedAudioMixer } from './RecorderAudio';
 import type { AudioPlaybackBridge } from './RecorderAudio';
-import { MicLevelMonitor } from './MicLevelMonitor';
 
 import { startTabRecorder } from './engine/TabRecorderTask';
 import { startMicRecorder } from './engine/MicRecorderTask';
@@ -53,7 +52,6 @@ export class RecorderEngine {
   private tabRecordingStream: MediaStream | null = null;
   private micStream: MediaStream | null = null;
   private tabResolution: CapturedTabResolution | undefined;
-  private readonly micLevelMonitor = new MicLevelMonitor();
 
   private suffix = '';
   private micMode: MicMode = DEFAULT_RECORDING_RUN_CONFIG.micMode;
@@ -86,7 +84,6 @@ export class RecorderEngine {
 
   getActiveRecorderCount(): number { return this.activeRecorders; }
   getDebugState(): EngineState { return this.state; }
-  getMicLevel(): number { return this.micMuted ? 0 : this.micLevelMonitor.level(); }
 
   /**
    * Mutes or unmutes the live microphone. Silence-in-place: `track.enabled =
@@ -239,7 +236,6 @@ export class RecorderEngine {
     if (options.micMode === 'mixed' || options.micMode === 'separate') {
       this.micStream = await acquireMicStream(runId, () => this.runId, () => this.state, options.micMode, recorderSettings, this.deps);
       this.applyMicMuteState();
-      this.micLevelMonitor.start(this.micStream);
     }
 
     if (options.micMode === 'mixed') {
@@ -281,7 +277,6 @@ export class RecorderEngine {
             // cleanup runs would leave the device open — the mic indicator stays lit
             // after the recording ends. safeStopStream is idempotent, so this is safe
             // even when stopStream() already released it.
-            this.micLevelMonitor.stop();
             this.safeStopStream(this.micStream);
             this.micStream = null;
             this.onTrackStopped('mic', artifact);
@@ -383,7 +378,6 @@ export class RecorderEngine {
     // Separate mic owns no `stopStream`; release its source here so the mic device
     // is freed when the recorder stops mid-session (mixed mic has no own target).
     if (stream === 'mic') {
-      this.micLevelMonitor.stop();
       this.safeStopStream(this.micStream);
     }
     try { track.recorder.stop(); } catch (e) { this.deps.error(`${stream} stop error`, describeMediaError(e)); }
@@ -430,7 +424,6 @@ export class RecorderEngine {
     this.micStream = null;
     this.playback?.stop(); this.playback = null;
     this.mixedAudio?.stop(); this.mixedAudio = null;
-    this.micLevelMonitor.stop();
     this.finalizedArtifacts = [];
 
     const resolveStop = this.resolveStop;
@@ -450,7 +443,6 @@ export class RecorderEngine {
     this.safeStopStream(this.tabCaptureStream);
     this.safeStopStream(this.tabRecordingStream);
     this.safeStopStream(this.micStream);
-    this.micLevelMonitor.stop();
     this.tabCaptureStream = null; this.tabRecordingStream = null; this.micStream = null;
     this.tabResolution = undefined;
     this.playback?.stop(); this.playback = null;

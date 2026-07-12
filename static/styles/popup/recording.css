@@ -121,25 +121,6 @@
   animation: mrPulse 1.6s ease-in-out infinite;
 }
 
-/* Live mic level meter; PopupController toggles `.lit` on the existing bars. */
-.meter {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  margin-top: 4px;
-  height: 11px;
-}
-
-.meter span {
-  width: 3px;
-  border-radius: 1px;
-  background: var(--meter-idle);
-}
-
-.meter span.lit {
-  background: var(--ready);
-}
-
 /* ── Toggle switch (mic-mute / camera-hide) ──
    PopupController.renderTogglePill toggles `.on`/`.off` on the button and
    writes "on"/"off" into the [data-*-label] span (kept for a11y, visually

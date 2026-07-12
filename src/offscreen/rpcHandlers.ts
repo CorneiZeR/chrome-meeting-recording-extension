@@ -137,12 +137,6 @@ async function handleOffscreenSetPaused(
   return { ok: true };
 }
 
-async function handleOffscreenGetMicLevel(
-  deps: RpcHandlerDeps
-): Promise<{ level: number }> {
-  return { level: deps.engine.getMicLevel() };
-}
-
 async function handleOffscreenRetryUpload(
   msg: Extract<BgToOffscreenRpc, { type: 'OFFSCREEN_RETRY_UPLOAD' }>,
   deps: RpcHandlerDeps
@@ -197,7 +191,6 @@ export function wirePortHandlers(port: chrome.runtime.Port, deps: RpcHandlerDeps
       OFFSCREEN_SET_MIC_MUTED: (msg) => handleOffscreenSetMicMuted(msg, deps),
       OFFSCREEN_SET_CAMERA_MUTED: (msg) => handleOffscreenSetCameraMuted(msg, deps),
       OFFSCREEN_SET_PAUSED: (msg) => handleOffscreenSetPaused(msg, deps),
-      OFFSCREEN_GET_MIC_LEVEL: () => handleOffscreenGetMicLevel(deps),
       OFFSCREEN_RETRY_UPLOAD: (msg) => handleOffscreenRetryUpload(msg, deps),
       OFFSCREEN_CANCEL_UPLOAD: (msg) => handleOffscreenCancelUpload(msg, deps),
       REVOKE_BLOB_URL:   (msg) => handleRevokeBlobUrl(msg, deps),
