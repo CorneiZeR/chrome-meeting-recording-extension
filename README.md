@@ -6,7 +6,7 @@ No permission is granted to use, copy, modify, merge, publish, distribute, subli
 
 ---
 
-Scrape live captions from a Google Meet into a timestamped `.txt` transcript, or record the current Meet tab (video + system audio) — plus an optional microphone and camera — to `.webm` files. Save locally or straight to Google Drive.
+Scrape live captions from a Google Meet into a timestamped `.txt` transcript, or record the current Meet tab (video + system audio) — plus an optional microphone and camera — to `.webm` files. Save locally or straight to Google Drive, and browse the resulting local/Drive artifacts from a durable recording history.
 
 Everything runs in your browser. Capture is **local-first**: recording data streams to the Origin Private File System (OPFS) during the call and is finalized to a download or Drive only after you stop. No audio or video leaves your device while you're recording.
 
@@ -17,7 +17,7 @@ Everything runs in your browser. Capture is **local-first**: recording data stre
 - **Efficient encoding** — the camera bitrate adapts to the frame Chrome actually delivers (and defaults to 24 fps for a talking head), and the tab bitrate follows its content type — so files and CPU stay low with no visible quality loss.
 - **Flexible per run** — microphone off / mixed / separate, optional camera, screen-vs-video tab quality, and local-or-Drive, all chosen per recording.
 - **Adjust without stopping** — mute the mic, hide the camera, or pause/resume the whole recording mid-call; paused spans are cut so the files resume as a seamless join.
-- **Resilient** — survives service-worker eviction, and recovers the captured file (and resumes interrupted Drive uploads) on the next launch after a crash or power loss.
+- **Resilient** — survives service-worker eviction, recovers captured files, and retries interrupted Drive delivery on the next launch after a crash or power loss without losing the recording's history identity.
 
 ---
 
@@ -43,9 +43,11 @@ Everything runs in your browser. Capture is **local-first**: recording data stre
 - **Hide / show the camera** — records black frames while hidden, on the separate self-video file.
 - **Pause / resume the whole recording** — pauses every stream (tab, mic, camera) at once. The paused span is **not** written, so the files resume as a **seamless join** — before and after are stitched directly together, with no black/blank/frozen filler. Tracks stay live so resume is instant.
 
-**State-driven popup** — a different layout per phase: a clean **configuration** screen before recording, a **recording** screen with a red banner, a pause-aware elapsed **timer** (counts recorded time only — it freezes on pause and equals the saved file's duration), live **status chips** (a Transcript indicator that tracks whether Meet captions are actually on, plus the storage target), mic/camera **toggle rows**, and a **finalizing** screen with the run summary.
+**State-driven popup** — a different layout per capture phase: a clean **configuration** screen before recording, a **recording** screen with a red banner, a pause-aware elapsed **timer** (counts recorded time only — it freezes on pause and equals the saved file's duration), a read-only live **mic meter**, status chips (a Transcript indicator that tracks whether Meet captions are actually on, plus the storage target), mic/camera **toggle rows**, and a short **finalizing** screen while capture seals.
 
-**Local or Google Drive output** — finalized files download locally or upload to `Google Meet Records/<meeting-id>-<timestamp>/` in your Drive, with an upload progress indicator. Drive uploads use resumable sessions and fall back per-file to a local download if an individual upload fails.
+**Local or Google Drive output** — finalized files download locally or enter a detached background upload to `Google Meet Records/<meeting-id>-<timestamp>/` in Drive. Capture returns to idle as soon as a Drive job is queued, so another recording can start; the job has its own progress tab, is retryable briefly after a fallback, and falls back per file to a local download on failure or cancellation.
+
+**Recording history** — the popup opens a paginated, IndexedDB-backed history page for local and Drive artifacts. Rename an entry, open a confirmed local download or Drive file, or hide its history entry without deleting the underlying file. Pending and unavailable recovery outcomes are shown honestly rather than reported as saved.
 
 **MV3 / offscreen architecture** — recording runs in a hidden offscreen document, the only MV3 context Chrome allows `MediaRecorder` and `AudioContext`. The background service worker keeps the run alive and rehydrates session state from `chrome.storage.session` after Chrome suspends and restarts it.
 
@@ -55,7 +57,7 @@ Everything runs in your browser. Capture is **local-first**: recording data stre
 
 ## Requirements
 
-- **Google Chrome** (or Chromium-based browser) with Manifest V3 and the Offscreen API. Chrome 116+ is sufficient.
+- **Google Chrome** (or the supported Chromium-based browsers: Edge, Brave, Opera, Vivaldi, and Arc) with Manifest V3, `tabCapture`, and the Offscreen API. Chrome 116+ is sufficient. Firefox is not currently supported because its capture/media-host adapters have not been implemented.
 - **Node.js 18+** and **npm** to build the extension.
 - **FFmpeg and FFprobe** for performance E2E artifact analysis.
 
@@ -108,7 +110,7 @@ npm run dev         # development build — unminified, with source maps
 npm run watch       # rebuild on every file change (development)
 ```
 
-All three commands compile TypeScript via `ts-loader`, copy HTML shells and the manifest from `static/`, and emit a flat extension layout to `dist/`.
+All three commands compile TypeScript via `ts-loader`, copy HTML shells, styles, fonts, and the manifest from `static/`, copy public icons, and emit a flat extension layout to `dist/`. Finder metadata is ignored so it cannot leak into an extension package.
 
 ### 4. Load the extension
 
@@ -140,25 +142,30 @@ All three commands compile TypeScript via `ts-loader`, copy HTML shells and the 
 - `Mix into tab recording` — your mic is blended into the main tab recording via an audio graph. No separate mic file is created.
 - `Save separately` — a second `.webm` artifact is created for the mic stream only.
 
-**Storage Mode** — `Local Disk` or `Google Drive`. Drive uploads happen after you stop recording, not during capture.
+**Storage Mode** — `Local Disk` or `Google Drive`. Drive uploads happen after capture stops, not during capture. In Drive mode the recording returns to idle once its sealed artifacts are queued; upload progress, retry, and cancellation live in a separate session tab.
 
 **Record my camera separately** — if checked, starts an additional camera-only recorder. If camera permission is missing when you click Start, a `camsetup.html` tab opens so you can grant access. Camera quality is controlled by the extension settings page, not Google Meet's own video setting.
 
 **Start Recording** — begins capturing the current tab (video + system audio). The extension asks Chrome for the selected tab resolution preset as the capture ceiling. Actual resolution still depends on Chrome tab-capture behavior and what Meet renders into the tab.
 
-**Stop Recording** — releases the extension-owned camera immediately, seals all active recorders, and runs the finalization pipeline. The extension also stops the active run if the recorded tab closes, navigates away from the meeting, or the Meet page stays in an ended-call state for 30 seconds. In local mode a file download begins. In Drive mode the popup passes through an `uploading` phase before returning to idle.
+**Stop Recording** — releases the extension-owned camera immediately, seals all active recorders, and runs the delivery handoff. The extension also stops the active run if the recorded tab closes, navigates away from the meeting, or the Meet page stays in an ended-call state for 30 seconds. In local mode a file download begins; in Drive mode a detached upload job starts and capture returns to idle immediately.
+
+**Discard Recording** — stops the active capture and deletes its temporary artifacts instead of downloading or uploading them. The action waits for cleanup; if cleanup fails, the popup reports the error and does not claim the recording was discarded.
 
 ### The popup is state-driven
 
-The popup renders one of three layouts depending on the current recording phase, so each screen only shows the controls that make sense for that state:
+The popup renders one of three **capture** layouts depending on the current recording phase, so each screen only shows the controls that make sense for that state. A separate upload tab is overlaid when a detached Drive job is selected:
 
 - **Configuration** (idle) — the setup screen above: microphone mode, storage, "record my camera separately", Download Transcript, Enable Mic, and **Start Recording**. None of the in-recording controls appear here.
-- **Recording** (recording / paused) — a red **Recording** banner (amber **Paused** when paused) with a live elapsed **timer**, two status chips (**Transcript on/off** and the storage target), a **Microphone** row and a **Camera** row each with an on/off toggle, and **Pause** + **Stop**.
-- **Finalizing** (stopping / uploading) — a spinner with the run summary: storage target, recorded duration, microphone mode, and whether the camera was separate, plus "you can close this popup".
+- **Recording** (recording / paused) — a red **Recording** banner (amber **Paused** when paused) with a live elapsed **timer**, a read-only **mic meter**, two status chips (**Transcript on/off** and the storage target), a **Microphone** row and a **Camera** row each with an on/off toggle, and **Pause**, **Stop**, and **Discard**.
+- **Finalizing** (stopping) — a spinner with the run summary: storage target, recorded duration, microphone mode, and whether the camera was separate, plus "you can close this popup".
+- **Upload tab** (independent of capture phase) — the progress and per-file results of one background Drive job. It may continue while the setup screen starts another recording; retry is available only while its failed artifacts remain temporarily retained, and cancel saves unfinished files locally.
 
 **The live timer is pause-aware.** It counts only *recorded* time: it freezes while paused and stops at stop, so the number you see equals the duration of the saved file. It is computed from authoritative timing on the session, so reopening the popup mid-recording shows the correct elapsed time.
 
 **The Transcript chip reflects live captions.** While recording, the popup polls the active Meet tab and shows *Transcript on* only while Google Meet's captions region is actually present (dimmed *Transcript off* otherwise).
+
+**The mic meter is observational.** While an unmuted mic is active, it samples the live input at 100 ms intervals through a read-only analyser. It does not alter gain, create an output, or affect what is recorded.
 
 **Live controls (recording view)** — these act on the running recording in place and never interrupt it:
 
@@ -166,7 +173,11 @@ The popup renders one of three layouts depending on the current recording phase,
 - **Camera toggle** — shown when the run records the camera separately. Off records black frames; on resumes the live camera.
 - **Pause / Resume** — pauses the entire recording (tab + mic + camera). While paused nothing is recorded — the banner reads **Paused**, the timer freezes, and **Stop** still works — and on Resume the files continue as a seamless join, with the paused time absent rather than filled with a blank or frozen gap. Reopening the popup while paused still shows **Resume**.
 
-> The extension badge shows `REC` while recording and `UP` while uploading to Drive.
+> The extension badge shows `REC` while recording and `UP` while any detached Drive job is still active.
+
+### Recording history
+
+Use the history icon in the popup header to open the **Recordings** page. It is paginated; select **Load more** to append older entries. Each recording shows the tab, mic, and self-video artifacts with their current delivery state. Local files can be opened only after Chrome confirms their download; Drive files expose their Drive link after upload. **Delete history** hides the entry only — it never deletes the saved local or Drive files.
 
 ---
 
@@ -181,7 +192,7 @@ Open the settings page by clicking the gear icon in the popup. Settings persist 
 | Camera capture preset | Output resolution for the self-video recording, same preset options |
 | Prefer the automatically selected resolution | When on, the camera is recorded at whatever resolution Chrome/Meet already selected instead of re-encoding it to the camera preset above — skips the per-frame resize work. Off by default |
 
-The tab and camera capture presets control what size the final file targets, not what resolution Chrome delivers from the source. Actual resolution depends on Chrome, camera hardware, and sharing limits. The popup and debug dashboard warn when the delivered profile differs from the requested one.
+The tab and camera capture presets control what size the final file targets, not what resolution Chrome delivers from the source. Actual resolution depends on Chrome, camera hardware, and sharing limits. During recording, the popup labels the tab source with the reported delivered height when Chrome exposes it; the diagnostics data records requested-versus-delivered profiles. Separately, selecting separate camera capture with a sub-1080p **configured** preset shows a non-blocking setup nudge to raise that setting. That nudge is profile guidance, not a guarantee of the camera's delivered resolution.
 
 Every settings field shows a tooltip (click the label) with a short operational explanation.
 
@@ -200,7 +211,7 @@ All filenames include the Google Meet meeting ID suffix and a UTC timestamp.
 | Self-video | `google-meet-self-video-<meet-suffix>-<timestamp>.webm` |
 | Transcript | `google-meet-transcript-<meet-suffix>-<timestamp>.txt` |
 
-In Drive mode, all artifacts for one recording session are uploaded to a per-recording folder: `Google Meet Records/<meeting-id>-<timestamp>/`.
+In Drive mode, all artifacts for one recording session are uploaded to a per-recording folder: `Google Meet Records/<meeting-id>-<timestamp>/`. The detached upload tab and recording history expose the folder and per-file Drive links once Drive returns them.
 
 ---
 
@@ -226,7 +237,7 @@ Drive mode requires a **Chrome Extension** OAuth 2.0 client. A Desktop or Web cl
 
 ### Other Chromium browsers (Edge, Brave, Opera, …)
 
-`chrome.identity.getAuthToken` is Chrome-only, so the rest of the Chromium family signs in via `chrome.identity.launchWebAuthFlow` against a **Web application** OAuth client (ADR-0002). Build per target — `npm run build:brave`, `build:edge`, `build:opera` — which emit to `dist-<target>/`. All Chromium targets keep the **same `key`**, so they share one extension ID and therefore **one redirect URI**.
+`chrome.identity.getAuthToken` is Chrome-only, so the other supported Chromium browsers sign in via `chrome.identity.launchWebAuthFlow` against a **Web application** OAuth client (ADR-0002). Build per target — `npm run build:brave`, `build:edge`, `build:opera`, or `npm exec -- webpack --mode=production --env target=<vivaldi|arc>` — which emit to `dist-<target>/`. All supported Chromium targets keep the **same `key`**, so they share one extension ID and therefore **one redirect URI**. Firefox has no build target yet because the recording runtime also depends on Chromium capture and offscreen-media APIs.
 
 1. Create an **OAuth 2.0 client** with **Application type: Web application**, enable the Drive API, and add the `drive.file` scope on the consent screen (add yourself as a test user while the app is unverified).
 2. Get the redirect URI to register: `npm run redirect-uri` prints `https://<id>.chromiumapp.org/`. Add that exact value (trailing `/` included) to the client's **Authorized redirect URIs**.
@@ -247,7 +258,8 @@ Each **store-published** build (Chrome Web Store, Edge Add-ons) gets its own sto
 | Command | Description |
 | :--- | :--- |
 | `npm run build` | Production build to `dist/` (minified, Chrome target) |
-| `npm run build:edge` / `build:brave` / `build:opera` | Per-browser production build to `dist-<target>/` (drops Chrome-only `oauth2`/`key`; auth via `launchWebAuthFlow`) |
+| `npm run build:edge` / `build:brave` / `build:opera` | Per-browser production build to `dist-<target>/` (drops Chrome-only `oauth2`, **keeps** the stable `key`, and authenticates via `launchWebAuthFlow`) |
+| `npm exec -- webpack --mode=production --env target=vivaldi` / `target=arc` | Build either additional supported Chromium profile to `dist-<target>/` |
 | `npm run dev` | Development build to `dist/` (unminified, source maps) |
 | `npm run watch` | Rebuild on every file save (development) |
 | `npm run typecheck` | Strict TypeScript check across `src/` without emitting |
@@ -313,7 +325,8 @@ User
  ├─ Popup ────────────────────────────────► Background Service Worker
  │    START_RECORDING / STOP_RECORDING        │   canonical state owner · MV3 keep-alive · re-hydrates after suspend
  │    GET_TRANSCRIPT → Content Script          ├─ RecordingController    single start/stop orchestrator (one seam)
- │                                             ├─ RecordingSession       phase state machine (idle…uploading…failed)
+ │                                             ├─ RecordingSession       capture state machine + detached upload-job views
+ │                                             ├─ RecordingHistoryService IndexedDB history transitions / pages
  │                                             ├─ OffscreenManager       reconnecting Port RPC + action badge
  │                                             ├─ recordingAutoStop      tab closed / navigated / MEETING_ENDED
  │                                             ├─ driveAuth              OAuth token (silent → interactive)
@@ -326,9 +339,9 @@ User
  │                                                 │   ├─ SelfVideoRecorderTask ◄── getUserMedia(camera)
  │                                                 │   └─ MixedAudioMixer / AudioPlaybackBridge (AudioContext audio graph)
  │                                                 ├─ StorageTarget: WorkerStorageTarget (OPFS sync-handle worker) ▸ LocalFileTarget (OPFS) ▸ InMemory fallback
- │                                                 └─ RecordingFinalizer (runs only after capture stops)
- │                                                     ├─ local : blob URL ─OFFSCREEN_SAVE→ Chrome Downloads API
- │                                                     └─ drive : DriveTarget ─resumable upload→ Google Drive API
+ │                                                 └─ OffscreenController (runs only after capture stops)
+ │                                                     ├─ local : RecordingFinalizer → blob URL ─OFFSCREEN_SAVE→ Chrome Downloads API
+ │                                                     └─ drive : UploadManager → DriveTarget ─resumable upload→ Google Drive API
  │
  ├─ Content Script (meet.google.com tab)
  │    ├─ GoogleMeetAdapter → CaptionBuffer ─(GET_TRANSCRIPT)→ Popup
@@ -336,13 +349,13 @@ User
  │
  └─ Debug Dashboard (dev builds) ─reads aggregated perf snapshot→ Background
 
-State persistence:  chrome.storage.session → RecordingSessionSnapshot + perf snapshot   ·   chrome.storage.local → user settings
+State persistence:  chrome.storage.session → RecordingSessionSnapshot + detached job views + perf snapshot   ·   IndexedDB → recording history   ·   chrome.storage.local → user settings + recovery markers/outbox
 ```
 
 1. **Content script** observes the Google Meet caption DOM, debounces speech fragments into committed transcript lines, and serves them on demand.
 2. **Popup** collects user intent (run config), checks permissions, and sends commands to the background worker.
 3. **Background service worker** owns session state, coordinates the offscreen document, acquires the tab capture stream ID, and handles local downloads.
-4. **Offscreen document** runs the recorder engine, streams chunks to OPFS, and drives the post-stop finalization pipeline (local save or Drive upload).
+4. **Offscreen document** runs the recorder engine, streams chunks to OPFS, and drives the post-stop handoff (local save or detached Drive job). The background persists the job and its durable history transitions.
 
 ---
 
@@ -486,6 +499,7 @@ Per-module documentation lives in each module's `README.md` — the *why*, invar
 | Shared kernel | [`src/shared`](src/shared/README.md) | recording state model + `projectPhase`, messaging substrate |
 | &nbsp;&nbsp;└ Settings | [`src/shared/settings`](src/shared/settings/README.md) | the config schema + derive pipeline |
 | Popup | [`src/popup`](src/popup/README.md) | state-driven control UI, permission readiness |
+| Recordings | [`src/recordings`](src/recordings/README.md) | paginated recording history UI |
 | Content | [`src/content`](src/content/README.md) | Meet transcript scraping, meeting-end detection |
 | Debug | [`src/debug`](src/debug/README.md) | the diagnostics dashboard |
 | Platform | [`src/platform`](src/platform/README.md) | browser-abstraction layer ([chrome seam](src/platform/chrome/README.md), [auth capability](src/platform/capabilities/README.md)) |
@@ -499,7 +513,7 @@ Also: [`tests/`](tests/README.md) · [`scripts/`](scripts/README.md) · [`static
 - **Single active session** — one canonical session snapshot is persisted in `chrome.storage.session`. There is no distributed state across context globals.
 - **Typed contracts** — popup/background/offscreen/content communication is defined in shared protocol types. Untyped message passing is not used.
 - **Extension-first boundaries** — Chrome APIs are wrapped behind small platform adapters in `src/platform/chrome/*`. Business modules do not call `chrome.*` directly.
-- **Post-stop persistence** — Google Drive upload begins only after `RecorderEngine.stop()` returns sealed artifacts. Real-time capture stability is never coupled to network conditions.
+- **Detached post-stop delivery** — Google Drive upload begins only after `RecorderEngine.stop()` returns sealed artifacts, then runs as a job independent of capture phase. Real-time capture stability is never coupled to network conditions, and a new recording need not wait for the network.
 
 ---
 
@@ -521,7 +535,7 @@ Files: `src/background.ts`, `src/background/*`
 
 - Maintains the canonical `RecordingSession`.
 - Persists the session snapshot under `recordingSession` in `chrome.storage.session`.
-- Keeps the worker alive while a session is in a busy phase (`starting`, `recording`, `stopping`, `uploading`).
+- Keeps the worker alive while capture is busy (`starting`, `recording`, `stopping`) or a detached upload job remains active.
 - Bridges offscreen events into popup updates.
 - Handles `OFFSCREEN_SAVE` by triggering `chrome.downloads.download`.
 - Hydrates legacy session keys (`phase`, `activeRunConfig`) when present so old in-session state is not lost during migration.
@@ -553,9 +567,9 @@ Files: `static/offscreen.html`, `src/offscreen.ts`, `src/offscreen/rpcHandlers.t
 - Maintains a reconnecting `chrome.runtime.Port` to background.
 - Runs `RecorderEngine`.
 - Streams chunks to a storage target during capture — by default an OPFS sync-access-handle Worker, so disk writes stay off the offscreen main thread.
-- Runs `RecordingFinalizer` after stop.
-- On startup (while idle), runs crash recovery — resumes interrupted Drive uploads and recovers orphaned recordings left by a previous crash (see [6.1 Resilience and crash recovery](#61-resilience-and-crash-recovery)).
-- Emits explicit runtime phase updates back to background: `starting`, `recording`, `stopping`, `uploading`, `failed`, `idle`.
+- Runs local delivery or queues detached Drive delivery after stop.
+- On startup (while idle), runs crash recovery — re-uploads interrupted Drive artifacts through fresh resumable sessions and recovers orphaned recordings left by a previous crash (see [6.1 Resilience and crash recovery](#61-resilience-and-crash-recovery)).
+- Emits explicit capture-phase updates back to background: `starting`, `recording`, `stopping`, `failed`, `idle`; detached Drive work reports upload-job state separately.
 
 **Entrypoint decomposition:**
 
@@ -689,10 +703,9 @@ The long-meeting safety mechanism: chunks stream straight to OPFS (default off t
 3. Background sends `OFFSCREEN_STOP`.
 4. Offscreen transitions to `stopping` and starts finalize orchestration.
 5. `RecorderEngine.stop()` releases the extension-owned camera immediately, then seals artifacts.
-6. If storage mode is `drive`, offscreen transitions to `uploading`.
-7. `RecordingFinalizer` either saves locally or uploads to Drive.
-8. Offscreen emits `OFFSCREEN_STATE(phase='idle', uploadSummary?)` or `OFFSCREEN_STATE(phase='failed', error)`.
-9. Background persists the final session state and broadcasts it to popup.
+6. Local mode calls `RecordingFinalizer` to request downloads; Drive mode enqueues a detached `UploadManager` job with the recording history id.
+7. Offscreen emits `OFFSCREEN_STATE(phase='idle')` once capture is settled. Drive job progress and terminal outcomes travel separately as `OFFSCREEN_UPLOAD_STATE`.
+8. Background persists the final capture state, upload job, and history outcome, then broadcasts the updated popup view. It acknowledges terminal job state only after that persistence completes.
 
 ### Transcript Download
 
@@ -721,6 +734,7 @@ graph TB
 
     subgraph EXT["Chrome Extension (Manifest V3)"]
         P["Popup<br/><i>disposable UI · owns no state</i>"]
+        RH["Recordings Page<br/><i>cursor-paged history UI</i>"]
         SET["Settings Page<br/><i>presets + tooltips</i>"]
         MIC["micsetup.html"]
         CAM["camsetup.html"]
@@ -737,8 +751,9 @@ graph TB
     end
 
     subgraph PERSIST["Persistence & sinks"]
-        SES["chrome.storage.session<br/>session + perf snapshot"]
-        LOC["chrome.storage.local<br/>user settings"]
+        SES["chrome.storage.session<br/>session + detached jobs + perf snapshot"]
+        HIST["IndexedDB<br/>recording history"]
+        LOC["chrome.storage.local<br/>settings + recovery markers/outbox"]
         OPFS["OPFS temp files<br/>(live capture buffer)"]
         DL["Chrome Downloads"]
         Drive["Google Drive API"]
@@ -747,17 +762,20 @@ graph TB
     U -->|click action| P
     U -->|dev link| Dbg
     P -->|gear| SET
+    P -->|history| RH
     P -.->|on denied mic| MIC
     P -.->|on denied camera| CAM
 
-    P -->|"START/STOP · GET_DRIVE_TOKEN"| B
+    P -->|"START/STOP/DISCARD · upload controls"| B
+    RH -->|"list/rename/remove/open"| B
     P -->|"GET/RESET_TRANSCRIPT"| C
     C -->|observe captions DOM| T
     C -->|"MEETING_ENDED"| B
 
-    B <-->|"Port RPC + OFFSCREEN_STATE/SAVE"| O
+    B <-->|"Port RPC + capture/upload state/save"| O
     B -->|"acquire streamId"| T
     B <-->|persist / hydrate| SES
+    B <-->|history transitions| HIST
     SET <-->|load / save| LOC
     B -->|"download (local mode)"| DL
 
@@ -783,6 +801,7 @@ graph TD
         bg["background.ts"]
         off["offscreen.ts"]
         pop["popup.ts"]
+        rec["recordings.ts"]
         scr["scrapingScript.ts"]
         setp["settings.ts"]
         dbg["debug.ts"]
@@ -792,6 +811,7 @@ graph TD
         bgmod["background/*<br/>Controller · Session · OffscreenManager"]
         offmod["offscreen/*<br/>RecorderEngine · Finalizer · Drive"]
         popmod["popup/*<br/>controllers · permission services"]
+        recmod["recordings/*<br/>history controller · view"]
         cont["content/*<br/>adapter · buffer · end detector"]
     end
 
@@ -811,6 +831,7 @@ graph TD
     bg --> bgmod
     off --> offmod
     pop --> popmod
+    rec --> recmod
     scr --> cont
     setp --> sh
     dbg --> sh
@@ -818,11 +839,13 @@ graph TD
     bgmod --> sh
     offmod --> sh
     popmod --> sh
+    recmod --> sh
     cont --> sh
 
     bgmod --> pl
     offmod --> pl
     popmod --> pl
+    recmod --> pl
     cont --> pl
 
     pl --> ch
@@ -885,12 +908,15 @@ sequenceDiagram
     O->>E: stop()
     E->>E: release camera eagerly, seal tab / mic / self-video
     O-->>B: OFFSCREEN_STATE(stopping, epoch)
-    opt storageMode = drive and artifacts > 0
-        O-->>B: OFFSCREEN_STATE(uploading, epoch) + badge UP
+    alt storageMode = local
+        O->>B: OFFSCREEN_SAVE (per artifact)
+    else storageMode = drive and artifacts > 0
+        O->>O: UploadManager.enqueue(sealed artifacts)
+        O-->>B: OFFSCREEN_UPLOAD_STATE(uploading job) + badge UP
     end
-    O-->>B: OFFSCREEN_STATE(idle, epoch, uploadSummary?) or (failed, error)
+    O-->>B: OFFSCREEN_STATE(idle, epoch) or (failed, error)
     B->>S: applyOffscreenPhase(...)
-    S-->>P: RECORDING_STATE + badge cleared / ERR
+    S-->>P: RECORDING_STATE (capture idle; upload job may remain) + badge UP / ERR
     end
 ```
 
@@ -1041,8 +1067,14 @@ flowchart LR
 | :--- | :--- | :--- |
 | `START_RECORDING` | `tabId`, `runConfig` | `CommandResult` with session snapshot |
 | `STOP_RECORDING` | none | `CommandResult` with session snapshot |
+| `DISCARD_RECORDING` | none | `CommandResult`; deletes temporary artifacts without delivery |
 | `GET_RECORDING_STATUS` | none | current session snapshot |
+| `GET_MIC_LEVEL` | none | read-only normalized live mic level when an unmuted mic is active |
+| `RETRY_UPLOAD_JOB` / `CANCEL_UPLOAD_JOB` | `jobId` | `CommandResult`; retry is bounded by retained artifact availability, cancel falls back locally |
 | `GET_DRIVE_TOKEN` | optional `refresh` | token or error |
+| `LIST_RECORDING_HISTORY` | optional `(createdAt, id)` cursor | cursor page of history entries |
+| `RENAME_RECORDING_HISTORY` / `REMOVE_RECORDING_HISTORY` | entry id + name when renaming | atomic entry update / soft delete |
+| `OPEN_RECORDING_HISTORY_FILE` | recording id + file id | open a confirmed local Chrome download |
 
 ### Popup → Content
 
@@ -1059,6 +1091,7 @@ flowchart LR
 | `OFFSCREEN_READY` | offscreen port is attached and ready |
 | `OFFSCREEN_STATE` | phase transition or finalize result; carries the run `epoch` the background fences on (ADR-0003) |
 | `OFFSCREEN_SAVE` | request a local save through background |
+| `OFFSCREEN_UPLOAD_STATE` | current or terminal detached Drive job; terminal jobs are replayed until acknowledged |
 
 ### Content Script → Background
 
@@ -1072,6 +1105,9 @@ flowchart LR
 | :--- | :--- |
 | `OFFSCREEN_START` | begin a run for a specific `streamId` and `runConfig`; carries the run `epoch` the offscreen echoes back (ADR-0003) |
 | `OFFSCREEN_STOP` | stop active recording and begin finalize flow |
+| `OFFSCREEN_DISCARD` | stop capture and delete sealed temporary artifacts without delivery |
+| `OFFSCREEN_RETRY_UPLOAD` / `OFFSCREEN_CANCEL_UPLOAD` | control a detached Drive job by id |
+| `OFFSCREEN_ACK_UPLOAD_STATE` | confirms background/session/history persistence of a terminal upload state, allowing outbox removal |
 | `REVOKE_BLOB_URL` | release local save blob URLs and optionally cleanup OPFS temp files |
 | `OFFSCREEN_CONNECT` | ask an existing offscreen page to reconnect its runtime port |
 
@@ -1095,6 +1131,7 @@ flowchart LR
 │  ├─ background.ts / background/    # service worker and session lifecycle
 │  ├─ offscreen.ts / offscreen/      # media runtime (recorder engine, OPFS, Drive upload)
 │  ├─ popup.ts / popup/              # popup UI and permission flows
+│  ├─ recordings.ts / recordings/     # recording-history page and its controller/view
 │  ├─ settings.ts / settings/        # settings page (thin shell + controller)
 │  ├─ scrapingScript.ts / content/   # caption scraping content script
 │  ├─ debug.ts / debug/              # diagnostics dashboard

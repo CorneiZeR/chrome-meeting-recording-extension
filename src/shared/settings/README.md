@@ -50,6 +50,10 @@ The derive helpers turn *choices* into *numbers*:
 - **`getMicrophoneCaptureSettings`** / **`getChunkingSettings`** pass the DSP toggles and timeslice timings through.
 - **`buildRecorderRuntimeSettingsSnapshot`** assembles all of the above into the one frozen object the background sends down. `buildDefaultRunConfigFromSettings` derives the popup's default `RunConfig`.
 
+## UI feedback for camera profile choices
+
+The redesigned Settings page still edits this same schema; it does not introduce a second set of recorder preferences. The popup's setup form reads the derived self-video profile and, when separate camera capture is selected with a sub-1080p preset, shows a non-blocking nudge to raise the setting. That nudge describes the configured target profile for the next run. The recorder still reports the **actual** tab/camera constraints it receives at runtime, so it must not be treated as a guarantee of device output.
+
 ## Persistence & the deep-module boundary
 
 - **`store.ts`** keeps an in-memory `runtimeSettings` cache and `load`/`save`/`reset` against `chrome.storage.local` (key `EXTENSION_SETTINGS_STORAGE_KEY`). When the storage area is absent (e.g. the e2e tab-capture runtime), it **degrades to defaults** rather than throwing.

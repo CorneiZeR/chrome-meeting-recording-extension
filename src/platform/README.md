@@ -21,11 +21,11 @@ flowchart TD
     WF --> CH
 ```
 
-`chrome/` is the **broad, mostly browser-common** seam — most of it ports across Chromium browsers unchanged. `capabilities/` is the **narrow, divergence-isolating** seam: where a capability genuinely differs by browser, the strategy selection lives there, not scattered through the app. The two meet at auth — `capabilities`'s cross-browser `WebAuthFlow` strategy is *built on* `chrome/identity` (`launchWebAuthFlow` / `getRedirectURL`).
+`chrome/` is the **broad, mostly Chromium-common** seam — most of it ports across the supported Chromium browsers unchanged. `capabilities/` is the **narrow, divergence-isolating** seam: where a capability genuinely differs by browser, the strategy selection lives there, not scattered through the app. The two meet at auth — `capabilities`'s `WebAuthFlow` strategy is *built on* `chrome/identity` (`launchWebAuthFlow` / `getRedirectURL`).
 
 ## The cross-browser stance (ADR-0002)
 
-This split is the shape of the [cross-browser strategy](../../docs/adr/0002-cross-browser-support-strategy.md): keep the broad `chrome/` seam portable, and concentrate the one capability that really differs (auth) behind `capabilities/` so adding a browser is a *selection* change in one place, not a sweep. As of today, **auth is the only Chromium-specific divergence**; everything else in `chrome/` is common.
+This split is the shape of the [cross-browser strategy](../../docs/adr/0002-cross-browser-support-strategy.md): keep the broad `chrome/` seam portable inside the supported Chromium family, and concentrate the capability that currently differs there (auth) behind `capabilities/`. The supported profiles are Chrome, Edge, Brave, Opera, Vivaldi, and Arc. Firefox is intentionally **not** a build target: its capture-source and media-host APIs need adapters, not merely a different OAuth selection.
 
 ## Why this container has a README (and most don't)
 

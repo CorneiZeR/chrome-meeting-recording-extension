@@ -9,6 +9,7 @@ Each pairs with a `src/` entrypoint (webpack bundles the `.ts`, this provides th
 | Page | Entry | Surface |
 | :--- | :--- | :--- |
 | `popup.html` | `src/popup.ts` | the browser-action control panel |
+| `recordings.html` | `src/recordings.ts` | paginated durable recording history (local downloads and Drive links) |
 | `settings.html` | `src/settings.ts` | the settings page |
 | `debug.html` | `src/debug.ts` | the diagnostics dashboard (dev only) |
 | `offscreen.html` | `src/offscreen.ts` | the offscreen recording runtime |
@@ -19,10 +20,14 @@ Each pairs with a `src/` entrypoint (webpack bundles the `.ts`, this provides th
 `static/manifest.json` is the **source**; `webpack.config.js`'s `transformManifest` produces the shipped manifest. What it changes (so don't hand-edit these):
 
 - **`version` is derived from `package.json`** — `toChromeManifestVersion(pkg.version)`. The `"0.0.0"` in the source is an **ignored placeholder**. `version_name` is the full semver (`+ " (dev)"` in dev). Never bump the manifest version by hand — bump `package.json` (`npm version`); see the [versioning protocol](../docs/plans/).
-- **`oauth2.client_id`** is injected from the build env for the Chrome target; for non-Chrome targets the whole `oauth2` block **and** the dev `key` are **deleted** (those browsers authenticate via `launchWebAuthFlow` — [ADR-0002](../docs/adr/0002-cross-browser-support-strategy.md)).
+- **`oauth2.client_id`** is injected from the build env for the Chrome target. The other supported Chromium targets authenticate via `launchWebAuthFlow`, so their emitted manifests drop `oauth2` but **keep** the stable `key`: its extension id is part of the registered redirect URI. Firefox is intentionally not a build target yet; see [ADR-0002](../docs/adr/0002-cross-browser-support-strategy.md).
 - **`system.cpu` is pushed into `permissions` for dev builds only.** It powers dev-only system-wide CPU sampling; production never ships it, keeping the store listing's permission set minimal and avoiding a permission re-review prompt. **It is not in this source file** — the transform adds it, so don't add it here expecting prod behavior.
 
-**Standing rule:** the build is the source of truth for the shipped manifest. Treat the version, the `oauth2` block, and dev-only permissions as build-owned — editing them in `static/manifest.json` either does nothing (version) or risks shipping a dev-only permission.
+**Standing rule:** the build is the source of truth for the shipped manifest. Treat the version, target-specific `oauth2` handling, the stable `key`, and dev-only permissions as build-owned — editing them in `static/manifest.json` either does nothing (version) or risks breaking OAuth or shipping a dev-only permission.
+
+## Assets and styling
+
+`styles/` contains page-scoped CSS, including the split popup layers (`base`, `config`, `recording`, and `after`) and the dedicated recordings, settings, and diagnostics sheets. `fonts/manrope-variable.woff2` is bundled locally for the redesigned UI. Webpack also copies the icon set from `public/` and explicitly ignores Finder metadata (`.DS_Store` and `._*`) so it cannot enter an extension package.
 
 ## Related
 

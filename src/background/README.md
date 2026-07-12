@@ -6,14 +6,14 @@
 
 ## Purpose & mental model
 
-The background is the **single source of truth** and the only place that *commands* recording. The mental model is **command plane vs. data plane**: the background decides *what should happen* (start/stop, the `desired` intent) and persists it; the offscreen document *does* the recording and reports *what is happening* (the `observed` status). The background never captures media; the offscreen never decides policy. Everything below exists to keep that authority coherent across service-worker restarts.
+The background is the **single source of truth** and the only place that *commands* recording. The mental model is **command plane vs. data plane**: the background decides *what should happen* (start/stop/discard, the `desired` intent) and persists it; the offscreen document *does* the recording and reports *what is happening* (the `observed` status). The background also owns durable recording-history transitions. It never captures media; the offscreen never decides policy. Everything below exists to keep that authority coherent across service-worker restarts.
 
 ## MV3 service-worker constraints (the platform reality)
 
 A Manifest V3 service worker is **not** a long-lived background page. Chrome evicts it when idle and restarts it on the next event, with **all in-memory state gone**. Three mechanisms cope:
 
 - **Persisted snapshot.** The `RecordingSessionSnapshot` lives in `chrome.storage.session` (survives SW restarts, cleared on browser close — exactly a run's lifetime). On startup the worker calls `session.hydrate(...)` to rebuild in-memory state from it.
-- **Keep-alive while busy.** `startKeepAlive` pokes the runtime every **20 s** *only* while a busy phase is active (recording/upload), so Chrome doesn't evict mid-recording; `stopKeepAlive` ends it once idle. (See the [`@perf`] note: this is a cost paid only during a run.)
+- **Keep-alive while busy.** `startKeepAlive` pokes the runtime every **20 s** while capture is active **or** a detached upload job is still draining. Capture can now be `idle` while Drive work continues, so the lifecycle uses the upload-job state as well as the recording phase; `stopKeepAlive` ends it only when both are settled. (See the [`@perf`] note: this is a cost paid only during useful work.)
 - **Liveness backstop.** Because an in-flight RPC promise dies with the worker, a session can rehydrate stuck in `starting`/`stopping` — the **phase watchdog** rescues it (below).
 
 ```mermaid
@@ -56,7 +56,7 @@ sequenceDiagram
     Note over SES: phase = projectPhase(desired, observed, failed)
 ```
 
-`RecordingController.start` is the orchestration: validate the request → reject if the tab already has a capture → load the frozen recorder + perf settings → `session.start()` (which assigns a fresh, strictly-increasing **epoch**) → `ensureReady()` the offscreen → resolve a `tabCapture` stream id → fire `OFFSCREEN_START` over RPC. `stop` is the mirror: guard `isStoppablePhase`, `markStopping()` (`desired=idle`), fire `OFFSCREEN_STOP`. Any failure on either path calls `session.fail(error)`.
+`RecordingController.start` is the orchestration: validate the request → reject if the tab already has a capture → load the frozen recorder + perf settings → `session.start()` (which assigns a fresh, strictly-increasing **epoch** and history id) → `ensureReady()` the offscreen → resolve a `tabCapture` stream id → fire `OFFSCREEN_START` over RPC. `stop` is the mirror: guard `isStoppablePhase`, `markStopping()` (`desired=idle`), fire `OFFSCREEN_STOP`. `discard` takes the same guarded stop path but sends `OFFSCREEN_DISCARD`, which deletes temporary artifacts rather than downloading or uploading them. Any failure on either path calls `session.fail(error)`.
 
 ## The session state machine
 
@@ -70,26 +70,30 @@ sequenceDiagram
 | `markIdle()` | resets to idle | preserves `epoch` (monotonic across runs) |
 | `fail(error)` | `failed=true` | preserves run context for the error view |
 | `setMicMuted/CameraMuted/Paused` | overlay flags + the pause-aware timer | mirrors offscreen actuation for a reopened popup |
+| `upsertUploadJob(job)` | `uploadJobs` | persists a detached Drive job independently of the recording phase |
+| `flush()` | — | waits for queued `chrome.storage.session` writes before an upload-state acknowledgement |
 
 Every mutation goes through `commit()` → persist + notify the change listener. The pause-aware timer (`recordedMs`/`runningSince`) is banked/restarted by `nextTimer` and `setPaused` so the popup clock excludes paused spans.
 
 ## Liveness: the phase watchdog
 
-The epoch fence drops *stale* status; it does nothing for *missing* status. A worker that dies mid-start/stop leaves a session rehydrated in `starting`/`stopping` with no one to drive it on (the offscreen's reconnect re-broadcast is itself fenced out by the stale epoch). `createPhaseWatchdog` watches exactly those two orphan-prone phases (per-phase budget map: `STARTING_WATCHDOG_MS` / `STOPPING_WATCHDOG_MS`), armed from the session change-listener **including the rehydrated transition** (budget measured from `updatedAt`, so an already-stale phase fires immediately). On timeout it fails the session and tears down the offscreen so a retry starts clean. `recording`/`uploading`/`idle` are deliberately unwatched (steady states / minutes-long with their own recovery).
+The epoch fence drops *stale* status; it does nothing for *missing* status. A worker that dies mid-start/stop leaves a session rehydrated in `starting`/`stopping` with no one to drive it on (the offscreen's reconnect re-broadcast is itself fenced out by the stale epoch). `createPhaseWatchdog` watches exactly those two orphan-prone phases (per-phase budget map: `STARTING_WATCHDOG_MS` / `STOPPING_WATCHDOG_MS`), armed from the session change-listener **including the rehydrated transition** (budget measured from `updatedAt`, so an already-stale phase fires immediately). On timeout it fails the session and tears down the offscreen so a retry starts clean. `recording` and `idle` are deliberately unwatched; detached uploads use their own recovery and job persistence rather than becoming a recording phase.
 
 ## Crash recovery & save
 
 - **Rehydration:** on startup, `session.hydrate()` rebuilds from the persisted snapshot; the change-listener immediately re-arms keep-alive and the watchdog.
 - **Save is crash-safe:** the `OFFSCREEN_SAVE` handler downloads the blob, then waits for the download to **actually settle** (`awaitDownloadSettled`, event-driven — not a blind timer). The OPFS source is deleted **only** on confirmed `complete`; an `interrupted` download frees the URL but keeps the OPFS file, and a `timeout` keeps both — so a recording is never lost to premature cleanup, and orphan recovery can reclaim it next launch.
+- **History is durable, ordered, and deletion-scalable.** `RecordingHistoryRepository` stores normalized entries in IndexedDB. Its v3 `activeCreatedAtId` compound index contains only visible entries, ordered by `(createdAt, id)`; the upgrade migrates valid v2 rows into that index. `RecordingHistoryService` creates a pending record before delivery begins and atomically applies download or Drive outcomes. Rename and delete use the same atomic update path; deletion leaves a durable tombstone so delayed recovery cannot resurrect the entry, but the tombstone is intentionally absent from page scans.
+- **Terminal upload delivery is acknowledged.** The background serializes upload-state persistence, updates history, then flushes the session snapshot before replying with `OFFSCREEN_ACK_UPLOAD_STATE`. This is the acknowledgement that lets the offscreen outbox delete its durable terminal-state record.
 
 ## Entry paths & offscreen lifecycle
 
 - **Two ways to start:** the popup `START_RECORDING` message, and a **keyboard shortcut** (`recordingCommands`). The shortcut path matters because Chrome grants `activeTab` to user-invoked commands, keeping `tabCapture` tied to a real gesture.
-- **`OffscreenManager`** owns the offscreen document: `ensureReady()` (create-or-reconnect + a version handshake that heals SW/offscreen code skew), and `ensureRecorderTabReady()` — a fallback that hosts the same recorder runtime in a normal extension *tab* when a Chrome version can't scope a tab-capture stream id to an offscreen document.
+- **`OffscreenManager`** owns the offscreen document: `ensureReady()` (create-or-reconnect + a version handshake that heals SW/offscreen code skew), and `ensureRecorderTabReady()` — a fallback that hosts the same recorder runtime in a normal extension *tab* when a Chrome version can't scope a tab-capture stream id to an offscreen document. On every reconnect it hydrates active upload-job liveness and receives replayed terminal job states before acknowledging them.
 
 ## Observability
 
-The background owns the **persisted** perf snapshot and its **reducers** (`PerfDebugStore` + `perf/PerfDebugReducers`), folding events from *every* context into the summary. It does **not** emit `lifecycle.*` events itself — those come from the [offscreen](../offscreen/README.md) engine; `PerfDebugStore` reduces them into `summary.lifecycle` (`startRequested`/`startCompleted`, `stopRequested`/`stopCompleted`, `failureCount`, `warningCount`, `activeTracks`/`peakActiveTracks`, `lastStopDurationMs`). That reduction is what makes a `startRequested` with no matching `startCompleted` legible as the orphaned-start the watchdog exists to catch. The snapshot is read-only-rendered by [`debug`](../debug/README.md); why sampling (offscreen) and persistence (here) are split lives in the [instrumentation doc](../../docs/plans/storage-and-instrumentation-architecture.md).
+The background owns the **persisted** perf snapshot and its **reducers** (`PerfDebugStore` + `perf/PerfDebugReducers`), folding events from *every* context into the summary. It does **not** emit `lifecycle.*` events itself — those come from the [offscreen](../offscreen/README.md) engine; `PerfDebugStore` reduces them into `summary.lifecycle` (`startRequested`/`startCompleted`, `stopRequested`/`stopCompleted`, `failureCount`, `warningCount`, `activeTracks`/`peakActiveTracks`, `lastStopDurationMs`). That reduction is what makes a `startRequested` with no matching `startCompleted` legible as the orphaned-start the watchdog exists to catch. Its persisted raw-event buffer is bounded: on overflow it evicts the oldest high-frequency samples before rare lifecycle/failure/warning/finalization signals, while incremental summary aggregates remain whole-session. The snapshot is read-only-rendered by [`debug`](../debug/README.md); why sampling (offscreen) and persistence (here) are split lives in the [instrumentation doc](../../docs/plans/storage-and-instrumentation-architecture.md).
 
 ## Key invariants & gotchas
 
@@ -97,6 +101,8 @@ The background owns the **persisted** perf snapshot and its **reducers** (`PerfD
 - **`desired` has exactly one writer** (the command path here); `observed` is written only by `applyOffscreenPhase`. Don't cross them.
 - **The epoch is assigned here and never written back** from offscreen status — the offscreen only echoes it so the fence can match.
 - **Keep-alive is busy-only.** Don't pin the worker while idle; it's a deliberate cost paid during a run.
+- **Recording and upload are different lifecycles.** A Drive job can be `uploading` while the canonical recording phase is `idle`, and starting a new recording must preserve that job.
+- **History writes are atomic.** Never reconstruct an entry with an asynchronous read-then-write; use the repository transaction/update operation so a late delivery result cannot overwrite a rename, delete tombstone, or another file outcome.
 - **`getSnapshot()` returns a `structuredClone`** — callers can't mutate the canonical state by reference.
 
 ## Files
@@ -104,10 +110,12 @@ The background owns the **persisted** perf snapshot and its **reducers** (`PerfD
 | File | Role |
 | :--- | :--- |
 | `RecordingSession.ts` | the canonical state machine (writes planes, derives phase, owns the timer) |
-| `RecordingController.ts` | start/stop/mute/pause orchestration (validate → command offscreen) |
-| `OffscreenManager.ts` | offscreen document lifecycle: ensure/reconnect, version handshake, recorder-tab fallback, RPC |
+| `RecordingController.ts` | start/stop/discard/mute/pause orchestration (validate → command offscreen) |
+| `OffscreenManager.ts` | offscreen document lifecycle: ensure/reconnect, version handshake, recorder-tab fallback, RPC, and upload-state acknowledgement |
+| `RecordingHistoryRepository.ts` | IndexedDB persistence: normalized records, v2→v3 active-entry index migration, bounded visible-page reads, atomic updates |
+| `RecordingHistoryService.ts` | history transitions for pending files, settled downloads, Drive jobs, rename/delete, and opening local downloads |
 | `phaseWatchdog.ts` | liveness backstop for orphaned `starting`/`stopping` |
-| `sessionLifecycle.ts` | keep-alive loop, the crash-safe save handler, and `isFreshRecordingStart` (resets diagnostics at the start of a new run, so a finished run's snapshot survives for export) |
+| `sessionLifecycle.ts` | keep-alive loop, crash-safe save handler, and `isFreshRecordingStart` (resets diagnostics at the start of a new run, so a finished run's snapshot survives for export) |
 | `recordingAutoStop.ts` | auto-stop when the recorded tab is **closed** or **navigates away** from the meeting → `controller.stop()` |
 | `recordingCommands.ts` | keyboard-shortcut start path (preserves `activeTab`) |
 | `messageHandlers.ts` | registers the `chrome.runtime.onMessage` listener and dispatches popup commands to their handlers |
@@ -115,17 +123,19 @@ The background owns the **persisted** perf snapshot and its **reducers** (`PerfD
 | `driveAuth.ts` | Drive OAuth token acquisition (silent→interactive, bad-client-id diagnosis) — token *use* is [`offscreen/drive`](../offscreen/drive/README.md) |
 | `PerfDebugStore.ts` + `perf/` | the persisted perf snapshot + reducers (`PerfDebugReducers`, `PerfDebugState`) + `CpuSampler` (dev-only); see the [instrumentation doc](../../docs/plans/storage-and-instrumentation-architecture.md) |
 
-Wiring entry: `src/background.ts` (the SW entrypoint) routes messages/commands to `RecordingController` (including the content script's `MEETING_ENDED` → `controller.stop()`), drives the session change-listener (persist → broadcast → keep-alive → `watchdog.observe` → reset diagnostics on a fresh-run start), and rehydrates on startup.
+Wiring entry: `src/background.ts` (the SW entrypoint) routes messages/commands to `RecordingController` (including the content script's `MEETING_ENDED` → `controller.stop()`), serializes upload-state persistence into the session and history service, drives the session change-listener (persist → broadcast → keep-alive → `watchdog.observe` → reset diagnostics on a fresh-run start), and rehydrates on startup.
 
 ## Testing notes
 
-- `RecordingSession`, `RecordingController`, `phaseWatchdog`, `OffscreenManager` are tested in `__tests__/` with injected persistors/clocks/timers (the watchdog takes injectable `now`/`setTimer` precisely so budgets are deterministic).
+- `RecordingSession`, `RecordingController`, `phaseWatchdog`, `OffscreenManager`, `RecordingHistoryRepository`, and `RecordingHistoryService` are tested in `__tests__/` with injected persistors/clocks/timers (the watchdog takes injectable `now`/`setTimer` precisely so budgets are deterministic). History tests cover cursor ordering, atomic rename/delete, tombstones, and delayed local/Drive outcomes. The browser integration test `tests/e2e/recording-history.spec.ts` additionally upgrades a real v2 IndexedDB database and verifies deleted rows stay out of the active cursor index.
 - `background.test.ts` (kept in the central `tests/` tree) is the **integration** test: it hydrates a stale phase and asserts the fence + watchdog behavior end-to-end across session + offscreen + wiring — it spans modules, so it doesn't live here.
 
 ## Related
 
 - [ADR-0003](../../docs/adr/0003-recording-phase-ownership-and-stale-offscreen-status.md) — the epoch fence + desired/observed split + watchdog rationale.
+- [ADR-0004](../../docs/adr/0004-decouple-uploads-from-the-recording-session.md) — why Drive upload jobs outlive the recording phase.
 - [`shared`](../shared/README.md) — the `projectPhase` projection and snapshot shape this machine writes.
+- [`recordings`](../recordings/README.md) — the page that consumes the durable history service.
 - [`offscreen`](../offscreen/README.md) — the data plane this commands.
 
 ## External references

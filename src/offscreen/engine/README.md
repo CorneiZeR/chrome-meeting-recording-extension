@@ -6,7 +6,7 @@
 
 ## Purpose & mental model
 
-Turn one tab-capture stream id (plus optional mic and camera) into one-to-three encoded WebM artifacts. The mental model is **N independent per-stream recorders started in parallel, with one load-bearing stream**: the **tab** recorder is required (its failure aborts the run); the **separate mic** and **self-video** recorders are optional (their failures are warned and degraded, never fatal). The engine owns stream lifetimes and live actuation (mute/hide/pause); it does *not* decide policy (that's the [background](../../background/README.md)) or persist bytes (that's [storage](../storage/README.md)).
+Turn one tab-capture stream id (plus optional mic and camera) into one-to-three encoded WebM artifacts. The mental model is **N independent per-stream recorders started in parallel, with one load-bearing stream**: the **tab** recorder is required (its failure aborts the run); the **separate mic** and **self-video** recorders are optional (their failures are warned and degraded, never fatal). The engine owns stream lifetimes, live actuation (mute/hide/pause), actual tab-resolution reporting, and the read-only mic-level source; it does *not* decide policy (that's the [background](../../background/README.md)) or persist bytes (that's [storage](../storage/README.md)).
 
 ## The capture → encode pipeline
 
@@ -20,6 +20,7 @@ flowchart TD
     MIX --> TR["tab MediaRecorder (extended timeslice)"]
     TABS --> TR
     MICSEP["separate mic getUserMedia"] --> MR["mic MediaRecorder (default timeslice)"]
+    MICSEP --> METER["MicLevelMonitor → read-only popup meter"]
     CAM["self-video getUserMedia (constraint ladder)"] --> RS["resize if delivered != preset"]
     RS --> SVR["self-video MediaRecorder (extended timeslice)"]
     TR --> CH["ondataavailable → makeChunkHandler → storage"]
@@ -47,6 +48,8 @@ stateDiagram-v2
 
 A monotonic **`runId`** (bumped each `startFromStreamId`) is the staleness guard: any task that resolves after a stop/new-run checks `isStale()` and bows out, so a slow camera acquisition from an abandoned run can't attach to the live one.
 
+The engine reads the actual width and height from the acquired tab video track and includes them in the first `recording` phase report. Requested presets remain ceilings; the popup and diagnostics can therefore distinguish Chrome's delivered tab resolution from the requested one without guessing from encoder settings.
+
 ## Mic modes & the audio graph
 
 Three modes (`off` / `mixed` / `separate`):
@@ -66,6 +69,8 @@ flowchart LR
 
 - **`separate`** records the mic as its own audio-only file (its own `MediaRecorder`).
 - **`off`** acquires no mic.
+
+`MicLevelMonitor` is a separate analyser-only branch over the acquired mic stream. `getMicLevel()` returns zero when the mic is muted or unavailable; it never connects to a destination, changes gain, or feeds a recorder, so the popup meter cannot change recorded audio.
 
 **`ensureAudiblePlayback`** (the `AudioPlaybackBridge`) replays the captured tab audio back to the speakers — `tabCapture` mutes the tab locally while capturing, so without this the user hears nothing during recording.
 
@@ -87,6 +92,7 @@ The popup toggles, the background commands, the engine **actuates** — never in
 
 - **mute mic** → the mic track is silenced (records silence); **hide camera** → black frames; both via per-stream control callbacks captured at start.
 - **pause** (`setPaused` / `applyPauseState`) pauses every recorder *and* idles the upstream producers, **in order**: on resume, restart producers (mixer/self-video) *before* the recorders so frames/audio are already flowing; on pause, idle producers *after* the recorders so no work is wasted. A toggle during `starting` is applied to recorders as they come up.
+- **stop/discard during startup** is valid. If device acquisition resolves after the engine has left `starting`, it releases the just-acquired tracks instead of starting a late recorder. If a stop wins before any recorder reaches `onstart`, the engine still completes cleanup and resolves the stop path.
 
 ## Key invariants & gotchas
 
@@ -94,12 +100,14 @@ The popup toggles, the background commands, the engine **actuates** — never in
 - **Stop the mic *source* track before nulling `micStream`.** Stopping a `MediaRecorder` does **not** stop its source track; in `separate` mode the engine owns that track, so the `onStopped` callback stops it first (`safeStopStream`, idempotent) — otherwise the OS mic indicator stays lit after recording ends. (This was a real regression; the fix lives in `buildRecorderStartTasks`.)
 - **`runId` is the staleness fence.** Every async task re-checks it; don't attach a recorder without the `isStale()` guard.
 - **Pause ordering matters** — producers and recorders start/stop in the opposite order on pause vs. resume (see above) to avoid black/blank filler and wasted mixing.
+- **Stop owns all source cleanup.** The mic analyser, microphone stream, tab stream, mixer, and playback bridge must be released whether stop happens during startup, normal recording, or a partial optional-stream failure.
 
 ## Files
 
 | File | Role |
 | :--- | :--- |
 | `../RecorderEngine.ts` | the orchestrator: acquire → parallel start → stop → seal; live-control actuation |
+| `../MicLevelMonitor.ts` | read-only `AnalyserNode` mic-level observer used by `getMicLevel()` |
 | `TabRecorderTask.ts`, `MicRecorderTask.ts`, `SelfVideoRecorderTask.ts` | per-stream start/stop, each owning its `MediaRecorder` + storage target |
 | `RecorderEngineSetup.ts`, `RecorderTaskUtils.ts` | start-task helpers, `openStorageTarget` + `makeChunkHandler` (the storage seam) |
 | `RecorderEngineTypes.ts` | `StorageTarget`, `SealedStorageFile`, `CompletedRecordingArtifact`, `InMemoryStorageTarget`, `RecorderEngineDeps` |
@@ -117,7 +125,7 @@ The engine emits the `lifecycle.*` events (`start_requested`/`start_completed`, 
 
 ## Testing notes
 
-- `__tests__/RecorderEngine.test.ts` drives start/stop/pause and the per-stream task wiring against mocked `MediaRecorder`/streams — including a **regression test** that the separate-mic source track is stopped on `stop()` (the lingering-mic-indicator bug).
+- `__tests__/RecorderEngine.test.ts` drives start/stop/pause and the per-stream task wiring against mocked `MediaRecorder`/streams — including regressions for late startup after stop/discard, actual tab-resolution reporting, and stopping the separate-mic source track (the lingering-mic-indicator bug).
 - `RecorderProfiles`, `SelfVideoResize`, `RecorderCapture` have focused unit tests; real encode/CPU behavior is only meaningful on real hardware → the `@perf-*` e2e tiers, not jsdom.
 
 ## Related

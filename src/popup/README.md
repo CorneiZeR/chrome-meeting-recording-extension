@@ -1,6 +1,6 @@
 # Popup — the control panel (state-driven, non-authoritative UI)
 
-> The browser-action UI: start/stop, live recording controls (mute/hide/pause), transcript download, and permission priming. It is **created fresh every time the user opens it and destroyed on close** — so it owns *no* truth; it renders from the background's authoritative session. For symbol-level structure use codegraph (`codegraph_explore "PopupController SessionTabsView RecordingTimer CaptionPoller"`). The entry `../popup.ts` is intentionally thin (reads DOM, hands to `PopupController`), and `PopupController` is itself a **thin orchestrator** that delegates the recording timer, the caption poll, and the session-tab/upload UI to focused collaborators.
+> The browser-action UI: start/stop/discard, live recording controls (mute/hide/pause), transcript download, permission priming, history navigation, and detached-upload controls. It is **created fresh every time the user opens it and destroyed on close** — so it owns *no* truth; it renders from the background's authoritative session. For symbol-level structure use codegraph (`codegraph_explore "PopupController SessionTabsView RecordingTimer CaptionPoller"`). The entry `../popup.ts` is intentionally thin (reads DOM, hands to `PopupController`), and `PopupController` is itself a **thin orchestrator** that delegates the recording timer, caption/mic-level polls, and session-tab/upload UI to focused collaborators.
 
 > **Archetype:** *Interactive Surface*. The defining constraint is that this UI is **ephemeral and not the source of truth** — it must render correctly from state it doesn't own, every time it reopens, with live controls that never interrupt the recording. So this README leads with the view-state model and the authority/reconciliation rules. If you read one section, read **The authority model**.
 
@@ -16,7 +16,7 @@ The popup has three **phase-driven** views; the **derived `phase` picks which on
 stateDiagram-v2
     [*] --> config: idle or failed
     config --> recording: starting or recording
-    recording --> finalizing: stopping or uploading
+    recording --> finalizing: stopping
     finalizing --> config: idle
     recording --> config: failed
     note right of recording
@@ -27,7 +27,9 @@ stateDiagram-v2
 
 Live intervals (the 1 s recording timer, the caption-state poll — owned by the `RecordingTimer` and `CaptionPoller` collaborators) are started **only** in the recording view and torn down everywhere else — and unconditionally in `destroy()`.
 
-A fourth surface — the **session tab bar + per-job upload view** (ADR-0004, owned by `SessionTabsView`) — is *not* phase-driven: it's overlaid when an upload tab is selected, independent of the recording phase, so a background Drive upload can be viewed while a new recording runs.
+A fourth surface — the **session tab bar + per-job upload view** (ADR-0004, owned by `SessionTabsView`) — is *not* phase-driven: it's overlaid when an upload tab is selected, independent of the recording phase, so a background Drive upload can be viewed, retried, or canceled while a new recording runs. The header also opens the standalone [recordings history page](../recordings/README.md).
+
+The recording view labels the tab source with its chosen content type and, once capture starts, the **actual delivered tab height** reported by the track (`Screen · 1080p`, for example). This is observational: it explains what Chrome delivered, not a promise that a requested preset was reached.
 
 ## The authority model
 
@@ -40,7 +42,7 @@ The single most important rule: **the popup is not authoritative.** Two conseque
 ## Message flow
 
 ```
-popup → background : START_RECORDING · STOP_RECORDING · GET_RECORDING_STATUS · SET_MIC_MUTED · SET_CAMERA_MUTED · SET_PAUSED
+popup → background : START_RECORDING · STOP_RECORDING · DISCARD_RECORDING · GET_RECORDING_STATUS · SET_MIC_MUTED · SET_CAMERA_MUTED · SET_PAUSED · GET_MIC_LEVEL · RETRY_UPLOAD_JOB · CANCEL_UPLOAD_JOB
 popup → content    : GET_TRANSCRIPT · RESET_TRANSCRIPT · GET_CAPTION_STATE
 background → popup  : RECORDING_STATE · RECORDING_SAVED · RECORDING_SAVE_ERROR
 ```
@@ -63,10 +65,21 @@ flowchart TD
 
 `MicPermissionService` / `CameraPermissionService` each expose `queryPermissionState`, `tryPrimeInline` (a throwaway `getUserMedia` that grants from the popup when Chrome allows), and `openSetupTab`. `ensureReadyForRecording` runs this ladder before a run that needs the device; the mic button (`bindButton`) reflects granted/blocked/enable state live.
 
+When separate camera capture is selected with a sub-1080p camera preset, the setup form shows a non-blocking resolution nudge (`Camera delivering <preset>p · raise in settings`). It reflects the configured target profile for the next run, not the device's guaranteed delivered resolution; users can change it on the Settings page.
+
 ## Live intervals
 
 - **Recording timer** (`RecordingTimer`) — a 1 s `setInterval` that re-renders from the session timer fields; started only while `phase === 'recording'` and not paused.
 - **Caption-state poll** (`CaptionPoller`) — every `CAPTION_POLL_MS`, asks the active tab's content script `GET_CAPTION_STATE` (best-effort; "off" if the tab is unreachable) to drive the Transcript chip. Recording-view only.
+- **Mic-level poll** (`MicLevelPoller`) — every 100 ms, asks the background for a read-only analyser level while an unmuted mic run is active. It drives the meter bars only; it never changes the recorder stream or recording state.
+
+## Stop, discard, and detached uploads
+
+**Stop** seals the capture. In local mode the popup stays in the short finalizing view while the download request is handed off. In Drive mode capture returns to the configuration view as soon as artifacts are queued, while the job remains available in its own upload tab.
+
+**Discard** is deliberately different: it confirms the action, resets the captured transcript, sends `DISCARD_RECORDING`, and waits for the background result. The offscreen runtime deletes sealed temporary artifacts rather than downloading or uploading them. If cleanup fails, the popup refreshes authoritative state and shows the error instead of pretending the recording was discarded.
+
+An upload tab shows the latest job/file outcomes and opens the resolved Drive folder or each uploaded Drive file when metadata is available. Retry is only offered while the offscreen runtime still retains the failed artifacts; retention is bounded to the latest failed job, five minutes, and 128 MB. Cancel aborts queued or active Drive work and routes unfinished files through the normal local-download fallback. Both actions reconcile from the response/session update rather than assuming a local tab mutation succeeded.
 
 ## Transcript download
 
@@ -78,6 +91,8 @@ Separate from recording: the header **Save** button (`wireTranscriptDownload`) p
 - **Always reconcile from the command response**, not from the optimistic local flip — that's what makes a rejected toggle self-correct.
 - **Clean up intervals on view-exit and `destroy()`** — a leaked timer/poll survives the view it belonged to.
 - **A muted mic records silence; a hidden camera records black frames; a paused span is never written** (seamless resume). The popup only *reflects* these; the actuation is in the offscreen recorder.
+- **The mic meter is observational.** A missing/paused/muted mic returns zero and clears the bars; it must never create an audio destination, alter gain, or influence capture.
+- **Upload state is not a phase.** Do not add `uploading` back to `setActiveView`; render detached jobs through `SessionTabsView` so capture can return to idle and start another run.
 - **Caption polling is best-effort** — never block UI on it; an unreachable tab just shows "Transcript off".
 
 ## Files
@@ -87,7 +102,8 @@ Separate from recording: the header **Save** button (`wireTranscriptDownload`) p
 | `PopupController.ts` | thin orchestrator: DOM wiring, view population (`onPhaseChange`), the optimistic toggles (`runToggleCommand`), toasts — delegates the timer, caption poll, and session-tab/upload UI to the collaborators below |
 | `RecordingTimer.ts` | the pause-aware 1 s recording clock (extracted from the controller) |
 | `CaptionPoller.ts` | the recording-view caption-state poll that drives the Transcript chip (extracted) |
-| `SessionTabsView.ts` | the session tab bar + per-job background-upload view (ADR-0004); owns its tab/selection state and talks back to the controller via a `{ rerender, applySession, toast }` callback bag |
+| `MicLevelPoller.ts` | 100 ms read-only mic-meter poll; starts only for an active, unmuted mic recording |
+| `SessionTabsView.ts` | the session tab bar + per-job background-upload view (ADR-0004), including retry/cancel affordances and recovery-state messaging; owns its tab/selection state and talks back to the controller via a `{ rerender, applySession, toast }` callback bag |
 | `controllers/PopupStateController.ts` | maps the session → phase → view; `applySession`, `refreshInitialState`, persistent-status text |
 | `popupView.ts` | `setActiveView` + DOM helpers (the view switch) |
 | `popupRunConfig.ts`, `popupStatus.ts`, `popupMessages.ts` | config-view run-config reads, status/label text, message/toast string builders |
@@ -97,8 +113,8 @@ Entry: `../popup.ts` (DOM wiring only). The Settings *page* is a separate surfac
 
 ## Testing notes
 
-- `__tests__/PopupController.test.ts` and `PopupStateController.test.ts` drive the controller against a fake element set + mocked `chrome.runtime`, asserting view switches, the reconcile-from-response behavior, and the session-tab/upload flows.
-- The extracted collaborators are unit-tested in isolation: `RecordingTimer.test.ts` (tick / pause / stop-idempotence), `CaptionPoller.test.ts` (on / off / unreachable tab / idempotent start), `SessionTabsView.test.ts` (tab render + select, and the retry/dismiss callback seam).
+- `__tests__/PopupController.test.ts` and `PopupStateController.test.ts` drive the controller against a fake element set + mocked `chrome.runtime`, asserting view switches, stop/discard reconciliation, and the session-tab/upload flows.
+- The extracted collaborators are unit-tested in isolation: `RecordingTimer.test.ts` (tick / pause / stop-idempotence), `CaptionPoller.test.ts` (on / off / unreachable tab / idempotent start), `MicLevelPoller.test.ts` (poll cadence and clear), and `SessionTabsView.test.ts` (tab render/select, retry/cancel, and recovery states).
 - `MicPermissionService`/`CameraPermissionService` are tested against a mocked `navigator.permissions`/`mediaDevices` — the ladder (granted / denied / prompt→prime→fallback) is the unit under test.
 - `popupMessages.test.ts` pins the user-facing strings.
 
@@ -106,6 +122,7 @@ Entry: `../popup.ts` (DOM wiring only). The Settings *page* is a separate surfac
 
 - [`background`](../background/README.md) — the authority the popup renders; the `RECORDING_STATE` broadcasts originate there.
 - [`shared`](../shared/README.md) — `RecordingStatusView` (the curated, control-plane-stripped view the popup receives) and the phase model.
+- [`recordings`](../recordings/README.md) — the durable history page opened from the popup header.
 - [`content`](../content/README.md) — answers the `GET_CAPTION_STATE` poll.
 
 ## External references

@@ -6,13 +6,13 @@
 
 | Tier | Where | Runner | What |
 | :--- | :--- | :--- | :--- |
-| **Unit** | `src/**/__tests__/*.test.ts` (+ `src/debug/renderers/tests/`) | jest | one module in isolation; lives beside its source for scoped context |
+| **Unit** | `src/**/__tests__/*.test.ts` (+ `src/debug/renderers/tests/`) | jest | one module in isolation; lives beside its source for scoped context, including recording-history pagination and upload-job state/retry behavior |
 | **Integration** | `tests/background.test.ts` | jest | spans modules (the fence + watchdog across session + offscreen + wiring) — no single module home |
 | **e2e** | `tests/e2e/*.spec.ts` (+ `helpers/`, `fixtures/`) | Playwright | the built extension against a mock (or real) Meet page |
 | **Node build-level** | `tests/scripts/*.test.mjs` | `node --test` | manifest source/version, real-meet CLI/profile — release-build concerns |
 | **e2e-adjacent** | `tests/realMeetScenarios.test.ts` | jest | scenario logic that imports `e2e/helpers` (not a module unit) |
 
-`setup.ts` is the jest global setup; `fixtures/mock-meet.html` is the DOM the mock-Meet e2e drives.
+`setup.ts` is the jest global setup; `fixtures/mock-meet.html` is the DOM the mock-Meet e2e drives. Jest sets `watchman: false` in its repository config (and the npm command repeats it) so local/CI runs do not depend on a Watchman service.
 
 ## Why unit tests are co-located but these aren't
 
@@ -37,6 +37,8 @@ The perf tiers are tagged in the spec titles (`@perf-smoke`, `@perf-full`, `@per
 | `mock-meet-performance.spec.ts` | the perf matrix + reliability (`@perf-*`) |
 | `storage-contention.spec.ts` | OPFS worker vs. main-thread under load (`@perf-contention`) |
 | `recovery.spec.ts` | crash / orphan recovery |
+| `recording-history.spec.ts` | IndexedDB v2→v3 history migration and tombstone-free paged index |
+| `src/recordings/__tests__/RecordingsController.test.ts` (unit) | history-page paging, rename, remove, and loading-state behavior against the background contract |
 | `settings-matrix.spec.ts` | the settings → recorder parameter matrix |
 | `real-meet.spec.ts` | the real-Meet harness path |
 

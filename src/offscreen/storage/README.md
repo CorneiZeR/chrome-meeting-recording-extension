@@ -134,7 +134,7 @@ A recording travels: **temp OPFS file → sealed `SealedStorageFile` → deliver
 
 1. **Write** — `create()` opens a temp file in OPFS; each chunk appends (off-thread via the sync handle, or via a `FileSystemWritableFileStream` on the fallback path).
 2. **Seal** — `close()` finalizes the handle, runs the duration fix, and returns the `SealedStorageFile` (with `opfsFilename` set for OPFS-backed files).
-3. **Deliver** — the persistence pipeline downloads or uploads `file`, then calls `cleanup()` to delete the OPFS temp file.
+3. **Deliver** — the persistence pipeline downloads or uploads `file`, then calls `cleanup()` to delete the OPFS temp file. Both `LocalFileTarget` and `WorkerStorageTarget` drop their retained sealed-file reference in `finally`; the worker target also terminates its worker there. Cleanup therefore releases the OPFS entry and the target's last in-memory/runtime reference even when deletion reports an error.
 4. **Recover (failure branch)** — if the document dies between write and delivery, the bytes are still on disk under `opfsFilename`; `recoverOrphanRecordings` finds and delivers them on the next launch. A RAM artifact has no `opfsFilename` and is lost — the one unrecoverable path.
 
 ```mermaid
@@ -207,7 +207,7 @@ Cross-folder collaborators: `../LocalFileTarget.ts` (main-thread OPFS fallback),
 
 ## How it's wired
 
-Both `makeChunkHandler` (the write wrapper — backpressure + the consecutive-failure / protective-stop escalations) and the `openStorageTarget` factory (which picks the target per stream and applies the fallback ladder) live in `../engine/RecorderTaskUtils.ts`, called per-stream by each `RecorderTask` (`TabRecorderTask`, `SelfVideoRecorderTask`, `MicRecorderTask`). The `requestProtectiveStop` dependency they invoke is provided in `offscreen.ts`, which routes it to `OffscreenController.finalize()` — the same seal→deliver path a user stop uses. Targets are gated by the `opfsWorkerStorage` flag. The post-stop delivery of sealed artifacts (download vs Drive upload) is the offscreen→background **persistence pipeline** — documented at the [root reference](../../../README.md#architecture-reference), not here.
+Both `makeChunkHandler` (the write wrapper — backpressure + the consecutive-failure / protective-stop escalations) and the `openStorageTarget` factory (which picks the target per stream and applies the fallback ladder) live in `../engine/RecorderTaskUtils.ts`, called per-stream by each `RecorderTask` (`TabRecorderTask`, `SelfVideoRecorderTask`, `MicRecorderTask`). The `requestProtectiveStop` dependency they invoke is provided in `offscreen.ts`, which routes it to `OffscreenController.finalize()` — the same seal→deliver path a user stop uses. Targets are gated by the `opfsWorkerStorage` flag. The post-stop delivery of sealed artifacts is the offscreen→background **persistence pipeline**: local saves settle through the history lifecycle, while Drive artifacts are handed to a detached upload job. That delivery split is documented at the [root reference](../../../README.md#architecture-reference), not here.
 
 ## Observability — diagnostic events & warnings
 

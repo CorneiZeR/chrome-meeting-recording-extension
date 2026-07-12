@@ -6,19 +6,20 @@
 
 ## Purpose & mental model
 
-`shared/` is the lingua franca. Two pillars:
+`shared/` is the lingua franca. Three pillars:
 
-1. **The recording state model** (`recording*.ts`) — the canonical `RecordingSessionSnapshot`, its phase, and the pure functions that derive and normalize it. This is where ADR-0003 lives in code.
-2. **The messaging substrate** (`protocol.ts`, `protocolMessageTypes.ts`, `messages.ts`, `rpc.ts`) — the typed envelopes and the request/response framework the contexts talk over.
+1. **The recording state model** (`recording*.ts`) — the canonical `RecordingSessionSnapshot`, its capture phase, detached upload jobs, and the pure functions that derive and normalize them. This is where ADR-0003 and ADR-0004 meet in code.
+2. **The recording-history domain** (`recordingHistory.ts`) — normalized entries, files, cursors, and the message guard shared by the background persistence service and history page.
+3. **The messaging substrate** (`protocol.ts`, `protocolMessageTypes.ts`, `messages.ts`, `rpc.ts`) — the typed envelopes and the request/response framework the contexts talk over.
 
 Everything else (`timeouts.ts`, `logger.ts`, `perf.ts`, `async.ts`, `typeGuards.ts`, `build.ts`) is cross-cutting infrastructure those two pillars and their callers share. The mental model: **the background owns the truth, persists it, and every other context derives its view from a snapshot of it** — so the snapshot's shape and the rules for reading it are load-bearing.
 
 ## The recording state model
 
-The displayed `RecordingPhase` (`idle | starting | recording | stopping | uploading | failed`) is **not stored** — it is *derived* from two independently-owned inputs plus a terminal flag (ADR-0003 Decision 4):
+The displayed `RecordingPhase` (`idle | starting | recording | stopping | failed`) is **not stored** — it is *derived* from two independently-owned inputs plus a terminal flag (ADR-0003 Decision 4):
 
 - **`desired: 'idle' | 'recording'`** — command-plane *intent*. Written **only** by the command path (`start` ⇒ `recording`; `stop`/finalize ⇒ `idle`).
-- **`observed: 'none' | 'starting' | 'recording' | 'stopping' | 'uploading' | 'idle'`** — status-plane *observation*. Written **only** by `applyOffscreenPhase` from the offscreen's `OFFSCREEN_STATE` reports.
+- **`observed: 'none' | 'starting' | 'recording' | 'stopping' | 'idle'`** — status-plane *observation*. Written **only** by `applyOffscreenPhase` from the offscreen's `OFFSCREEN_STATE` reports.
 - **`failed: boolean`** — terminal, cross-cutting. A start can fail in the command path before any status exists, and the offscreen can report a runtime failure — so it is separate and wins over both.
 
 `phase = projectPhase(desired, observed, failed)` (`recordingProjection.ts`) is a **pure, total** function. Because each plane writes only its own field and the phase is computed, the status path can no longer permanently clobber the command path's view: a stale `observed` can at worst flip a derived `recording` back to `starting` until the next report — never overwrite intent.
@@ -29,9 +30,8 @@ The displayed `RecordingPhase` (`idle | starting | recording | stopping | upload
 | :---: | :---: | :--- | :---: | :--- |
 | `true` | * | * | **`failed`** | terminal; wins over everything |
 | `false` | `recording` | `recording` | **`recording`** | intent met |
-| `false` | `recording` | `none`/`starting`/`stopping`/`uploading`/`idle` | **`starting`** | intent ahead of observation |
+| `false` | `recording` | `none`/`starting`/`stopping`/`idle` | **`starting`** | intent ahead of observation |
 | `false` | `idle` | `starting`/`recording`/`stopping` | **`stopping`** | observation lagging the stop |
-| `false` | `idle` | `uploading` | **`uploading`** | draining to Drive |
 | `false` | `idle` | `none`/`idle` | **`idle`** | settled |
 
 `starting` and `stopping` are therefore *derived gaps* between intent and observation, not stored states — which is exactly why the [phase watchdog](../background/phaseWatchdog.ts) watches them (a gap that never closes is an orphaned session).
@@ -45,9 +45,7 @@ stateDiagram-v2
     starting --> recording: observed recording
     starting --> stopping: stop before observed caught up
     recording --> stopping: stop while capturing
-    stopping --> uploading: observed uploading
-    stopping --> idle: observed idle, drained
-    uploading --> idle: observed idle
+    stopping --> idle: observed idle, capture sealed
     starting --> failed: failure
     recording --> failed: failure
     stopping --> failed: failure
@@ -62,7 +60,7 @@ stateDiagram-v2
 
 ## The session snapshot
 
-`RecordingSessionSnapshot` is the single persisted record of a run — written by the background, read (as a normalized copy) by every other context. `phase` is derived; everything else is owned data.
+`RecordingSessionSnapshot` is the persisted record of the active capture plus any still-draining detached upload jobs — written by the background, read (as a normalized copy) by every other context. `phase` is derived; everything else is owned data.
 
 ```ts
 type RecordingRunConfig = {
@@ -80,7 +78,10 @@ type RecordingSessionSnapshot = {
   epoch?: number;                 // fencing token (ADR-0003 D1) — preserved across idle, monotonic
   targetTabId?: number;           // the captured tab
   meetingSlug?: string;           // Meet URL slug, for display/recovery
+  historyId?: string;             // stable identity of this recording's durable history entry
+  tabResolution?: { width?: number; height?: number }; // actual tab-track dimensions reported at start
   uploadSummary?: UploadSummary;  // per-file uploaded / local-fallback results
+  uploadJobs?: UploadJob[];       // detached Drive jobs; can exist while phase is idle
   error?: string;
   warnings?: string[];            // trimmed, de-duplicated run warnings
   // Live overlay flags — mirrored from offscreen actuation so a reopened popup
@@ -99,7 +100,7 @@ type RecordingSessionSnapshot = {
 
 Two rules `normalizeSessionSnapshot` enforces on every read:
 
-- **Phase-gating.** When the derived phase is `idle`, run-scoped fields (`runConfig`, `targetTabId`, `meetingSlug`, the overlay flags, the timer) are dropped — a settled snapshot can't carry stale run data. `error`/`warnings` persist (post-mortem), and…
+- **Phase-gating.** When the derived phase is `idle`, capture-scoped fields (`runConfig`, `targetTabId`, `meetingSlug`, `historyId`, the overlay flags, the timer) are dropped — a settled snapshot can't carry stale capture data. `uploadJobs` deliberately survive: Drive delivery is detached from the recording phase. `error`/`warnings` persist (post-mortem), and…
 - **…the epoch survives `idle`.** The fencing token is the one run-scoped field deliberately *not* dropped, so it stays monotonic across runs — which is what lets the background reject status from a previous epoch.
 
 ## The write paths & the popup-facing view
@@ -119,7 +120,17 @@ flowchart LR
     VIEW -->|control-plane fields stripped| POPUP["popup RecordingStatusView"]
 ```
 
-`toStatusView` (in `recordingFactories.ts`) is the boundary between the full internal snapshot and what the UI sees: it projects the snapshot into a `RecordingStatusView` that **omits control-plane bookkeeping** — the `epoch` fencing token, `targetTabId`, and the raw `desired`/`observed` planes never reach the popup (ADR-0003 keeps the epoch out of the view *by construction*; a test asserts the planes don't leak). The popup renders from the derived `phase` plus the user-facing overlay flags, nothing more.
+`toStatusView` (in `recordingFactories.ts`) is the boundary between the full internal snapshot and what the UI sees: it projects the snapshot into a `RecordingStatusView` that **omits control-plane bookkeeping** — the `epoch` fencing token, `targetTabId`, and the raw `desired`/`observed` planes never reach the popup (ADR-0003 keeps the epoch out of the view *by construction*; a test asserts the planes don't leak). The popup renders from the derived `phase`, user-facing overlay flags, and curated detached job views.
+
+`RecordingStatusView` also carries the curated detached `uploadJobs` list. It is intentionally independent of `phase`: a new recording can start and still render an older Drive job in its own session tab.
+
+Sealed files carry a separate immutable `RecordingArtifactContext` (`historyId`, and, for detached Drive work, `uploadJobId`). The finalizer, local-save request, pending-upload marker, and recovery path pass that context explicitly. It prevents a later capture from assigning an old artifact or fallback download to the wrong history entry/job through mutable session state.
+
+## Recording history domain
+
+`recordingHistory.ts` defines the durable, user-facing history vocabulary. A `RecordingHistoryEntry` contains a stable id, name, timestamp, storage mode, aggregate status, and one normalized file record per stream. A file is `pending`, `available`, or `unavailable`, with a local download id or Drive link when available.
+
+The history API is cursor-paged with a `(createdAt, id)` cursor, so equal timestamps remain deterministic. Its messages are `LIST_RECORDING_HISTORY`, `RENAME_RECORDING_HISTORY`, `REMOVE_RECORDING_HISTORY`, and `OPEN_RECORDING_HISTORY_FILE`. `deletedAt` is a soft-delete tombstone: consumers hide it, while delayed download/upload/recovery updates preserve it rather than recreating an entry the user removed.
 
 ## Design rationale & theory
 
@@ -146,14 +157,15 @@ The contexts talk over `chrome.runtime` ports/messages; `shared/` owns the *mech
 - **`rpc.ts`** — a request/response framework over a port: correlates a request to its reply, bounds it with a timeout (`TIMEOUTS.RPC_MS`), and surfaces transport errors. Used where the caller needs an **ack** — `OFFSCREEN_START` / `OFFSCREEN_STOP` (background → offscreen).
 - **`protocol.ts` / `protocolMessageTypes.ts` / `messages.ts`** — the typed envelopes and their runtime guards (`isOffscreenToBgMessage`, …), so every boundary validates shape before trusting a payload.
 
-Two carriers, by design: **commands** (`OFFSCREEN_START`/`STOP` over rpc — need an ack) and **state transfer** (`OFFSCREEN_STATE`, fire-and-forget, idempotent — the event-carried state transfer the model above relies on). The epoch rides on both so the fence can reject a stale sender.
+Two carriers, by design: **commands** (`OFFSCREEN_START`/`STOP`/`DISCARD` and upload retry/cancel over rpc — need an ack) and **state transfer** (`OFFSCREEN_STATE`, `OFFSCREEN_UPLOAD_STATE`, fire-and-forget, idempotent — the event-carried state transfer the model above relies on). Terminal upload state is separately acknowledged with `OFFSCREEN_ACK_UPLOAD_STATE` only after the background persists the session and history updates. The epoch rides on capture status so the fence can reject a stale sender.
 
 ## Key invariants & gotchas
 
 - **`phase` is never written directly.** Anything that sets `phase` outside `projectPhase` is a bug. Write `desired`/`observed`/`failed`; let the projection compute.
 - **Single writer per field.** `desired` ← command path only; `observed` ← `applyOffscreenPhase` only; `epoch` ← background only (the offscreen merely echoes it for the fence to match).
-- **`projectPhase` is pure & total.** No I/O, no clock, defined for all 24 input combinations — that totality is what makes the transition table a complete spec.
-- **Snapshot fields are phase-gated on normalize.** When the derived phase is `idle`, `normalizeSessionSnapshot` drops run-scoped fields (`runConfig`, `targetTabId`, `micMuted`, `recordedMs`, …) so a settled snapshot can't carry stale run data — but `epoch` survives (monotonic) and warnings/errors persist.
+- **`projectPhase` is pure & total.** No I/O, no clock, defined for all 20 input combinations — that totality is what makes the transition table a complete spec.
+- **Snapshot fields are phase-gated on normalize.** When the derived phase is `idle`, `normalizeSessionSnapshot` drops capture-scoped fields (`runConfig`, `targetTabId`, `micMuted`, `recordedMs`, …) so a settled snapshot can't carry stale capture data — but `epoch` survives (monotonic), warnings/errors persist, and detached `uploadJobs` remain visible.
+- **History is normalized at the boundary.** Invalid durable rows are skipped and a history tombstone always wins over a late delivery result.
 - **The full *message contract* is not here.** This module owns the rpc/protocol *mechanism* and types; the catalogue of which message flows between which contexts is cross-cutting and lives in the [root reference](../../README.md#architecture-reference).
 
 ## Files
@@ -164,26 +176,29 @@ Two carriers, by design: **commands** (`OFFSCREEN_START`/`STOP` over rpc — nee
 | | `recordingNormalizers.ts` | `normalizeSessionSnapshot`, `decomposeLegacyPhase`, plane parsers, phase-gating |
 | | `recordingTypes.ts` | `RecordingPhase`, `DesiredState`, `ObservedState`, `RecordingSessionSnapshot` |
 | | `recordingConstants.ts` | recording defaults + allowed values + phase constant sets (`isBusyPhase`, `isStoppablePhase`) |
-| | `recordingFactories.ts` | `createIdleSession` and **`toStatusView`** → the popup-facing `RecordingStatusView` (strips control-plane fields) |
+| | `recordingFactories.ts` | `createIdleSession` and **`toStatusView`** → the popup-facing `RecordingStatusView` (strips control-plane fields, preserves detached job views) |
 | | `recording.ts` | the public barrel re-export — import from here, not deep paths |
+| **History domain** | `recordingHistory.ts` | history entries/files, cursor page, normalization, labels, and history-message validation |
 | **Messaging substrate** | `rpc.ts` | the request/response framework over `chrome.runtime` ports |
 | | `protocol.ts`, `protocolMessageTypes.ts`, `messages.ts` | typed message envelopes + guards |
 | **Perf vocabulary** | `perf.ts`, `types/perfTypes.ts`, `constants/perfConstants.ts`, `utils/mathUtils.ts` | perf event types/names/helpers + math; the *vocabulary* only — the stores live in `background/`/`debug/` (see the instrumentation doc) |
 | **Cross-cutting infra** | `timeouts.ts` | the single `TIMEOUTS` budget table (watchdogs, RPC, seal, caption/meeting-end) |
-| | `async.ts`, `logger.ts`, `typeGuards.ts`, `build.ts`, `provider.ts` | `withTimeout`, logging, `isRecord`, build flags, meeting-provider metadata |
+| | `async.ts`, `format.ts`, `logger.ts`, `typeGuards.ts`, `build.ts`, `provider.ts` | `withTimeout`, display formatting, logging, `isRecord`, build flags, meeting-provider metadata |
 
 `shared/settings/` is its own **deep module** (load / persist / normalize / derive recorder configuration) and is documented in its own README — not covered here.
 
 ## Testing notes
 
-- `__tests__/recordingProjection.test.ts` is the spec: it asserts `projectPhase` over the **exhaustive 24-combination** input space (so the transition table above is *tested*, not aspirational) plus the `decomposeLegacyPhase` ⇄ `projectPhase` **round-trip** for all six phases.
+- `__tests__/recordingProjection.test.ts` is the spec: it asserts `projectPhase` over the **exhaustive 20-combination** input space (so the transition table above is *tested*, not aspirational) plus the `decomposeLegacyPhase` ⇄ `projectPhase` **round-trip** for all five capture phases.
 - `projectPhase`/`decomposeLegacyPhase` are pure — test them with values, no mocks. Resist adding a clock or I/O to them; their totality is the property under test.
-- Snapshot normalization edge cases (legacy `phase`, missing planes, phase-gating) live alongside in the shared tests.
+- Snapshot normalization edge cases (legacy `phase`, missing planes, phase-gating, detached upload jobs) live alongside in the shared tests. `recordingHistory.test.ts` covers history normalization, stable cursor semantics, and tombstones.
 
 ## Related
 
 - [ADR-0003](../../docs/adr/0003-recording-phase-ownership-and-stale-offscreen-status.md) — the full decision: epoch fence (D1), keep state transfer (D3), the desired/observed split (D4).
+- [ADR-0004](../../docs/adr/0004-decouple-uploads-from-the-recording-session.md) — why Drive work is a detached job instead of a recording phase.
 - [`background/phaseWatchdog.ts`](../background/phaseWatchdog.ts) — the liveness backstop for the derived `starting`/`stopping` gaps.
+- [`recordings`](../recordings/README.md) — the history page that consumes this domain.
 
 ## External references
 

@@ -14,7 +14,14 @@
 
 `npm run release:build` chains the guards: `check:version` → `build` → `test:production-guards`. So a release build can't ship with a stale version or a dev-only permission. (Version itself is single-sourced in `package.json`; see the [versioning protocol](../docs/plans/) and [`static/`](../static/README.md).)
 
+## Browser-target profiles
+
+The manifest target model in `lib/manifestTargets.cjs` supports `chrome`, `edge`, `brave`, `opera`, `vivaldi`, and `arc`. `npm run build:edge`, `build:brave`, and `build:opera` are convenience aliases; the other supported Chromium profiles can be built with `npm exec -- webpack --mode=production --env target=<target>`.
+
+Chrome uses the `chrome.identity.getAuthToken` manifest configuration. The other supported Chromium profiles use `launchWebAuthFlow`: their emitted manifest drops `oauth2` but **retains the stable `key`**, because the resulting extension id is part of the registered Chromium OAuth redirect URI. Firefox deliberately has no profile: it needs real capture-source and media-host adapters before the manifest can advertise support.
+
 ## Related
 
 - [`static/`](../static/README.md) — the manifest transform whose output `check-production-build` validates.
+- [ADR-0002](../docs/adr/0002-cross-browser-support-strategy.md) — the supported-target boundary and the prerequisites for a future Firefox port.
 - [`tests/scripts/`](../tests/README.md) — the `node --test` suite that unit-tests this `lib/` (manifest source/version).

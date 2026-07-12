@@ -1,12 +1,12 @@
 # Platform / Capabilities — the auth seam (OAuth token acquisition)
 
-> The OAuth token-*acquisition* capability behind a single port (`AuthProvider`). This is **the one real cross-browser divergence** (ADR-0002): Chrome ties tokens to its Google sign-in; every other Chromium browser uses the standard OAuth2 redirect flow. For symbol-level structure use codegraph (`codegraph_explore "AuthProvider createAuthProvider"`).
+> The OAuth token-*acquisition* capability behind a single port (`AuthProvider`). Within the **supported Chromium family** (ADR-0002), Chrome ties tokens to its Google sign-in; the other supported Chromium browsers use the standard OAuth2 redirect flow. For symbol-level structure use codegraph (`codegraph_explore "AuthProvider createAuthProvider"`).
 
 > **Archetype:** *External Integration* (seam). Small but pivotal — it's the file you change to support a new browser. Token *use* (caching, refresh-on-401) is [`offscreen/drive`](../../offscreen/drive/README.md); the silent→interactive *policy* is `background/driveAuth.ts`; this folder only **acquires** a token.
 
 ## Purpose & mental model
 
-Get an OAuth access token for Drive, hiding *how* behind a port. Common logic depends only on the `AuthProvider` interface; the composition root (`createAuthProvider`) picks a concrete strategy by browser. The mental model: **one interface, two strategies, selected once** — so adding a browser is a selection change, not a rewrite.
+Get an OAuth access token for Drive, hiding *how* behind a port. Common logic depends only on the `AuthProvider` interface; the composition root (`createAuthProvider`) picks a concrete strategy by browser. The mental model: **one interface, two strategies, selected once** — within the supported Chromium family. A browser whose capture or media-host contract differs still needs those adapters before it can become a build target.
 
 ## The port
 
@@ -38,6 +38,7 @@ flowchart TD
 - **`createAuthProvider` is the only place a concrete provider is chosen.** Add a browser there, behind the same guard pattern.
 - **Capability guard, not just build flag.** Always pair the target check with a runtime `typeof chrome.identity?.getAuthToken === 'function'` so a misconfigured build degrades instead of throwing.
 - **Scope is `drive.file`** (per-file Drive access) — the minimum the uploader needs.
+- **Firefox is not a profile.** Do not add it by selecting `WebAuthFlow` alone; the extension also relies on Chromium `tabCapture` and offscreen-media behavior.
 
 ## Files
 

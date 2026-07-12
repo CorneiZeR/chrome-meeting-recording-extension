@@ -6,7 +6,7 @@
 
 ## Purpose & mental model
 
-Upload a finished, sealed recording file to Drive **durably over a flaky network**: chunk it, drive a [resumable session](https://developers.google.com/workspace/drive/api/guides/manage-uploads#resumable), recover from partial commits and transient failures, and — if the whole offscreen document dies mid-upload — resume on the next launch. A recording can be several files (tab, separate mic, self-video); each is one `DriveTarget` upload, and up to `parallelUploadConcurrency` of them run **concurrently across files** (a single resumable session is inherently sequential by byte-range, so the concurrency is between files, never within one session).
+Upload a finished, sealed recording file to Drive **durably over a flaky network**: chunk it, drive a [resumable session](https://developers.google.com/workspace/drive/api/guides/manage-uploads#resumable), recover from partial commits and transient failures, and — if the whole offscreen document dies mid-upload — re-upload it on the next launch. A recording can be several files (tab, separate mic, self-video); each is one `DriveTarget` upload, and up to `parallelUploadConcurrency` of them run **concurrently across files** (a single resumable session is inherently sequential by byte-range, so the concurrency is between files, never within one session). `UploadManager` runs this work as a detached job after capture is idle; Drive work is never an active-recording phase.
 
 ## The resumable-upload protocol
 
@@ -74,10 +74,12 @@ The status-code contract `uploadChunk` enforces (`DRIVE_MAX_RETRIES = 5`, expone
 | `200` / `201` (final) | upload complete |
 | `401` / `403` | refresh token, retry once |
 | `429` / `408` / `5xx` | recover committed offset → backoff → retry (≤5) |
-| transient fetch (`AbortError`/`TypeError`, incl. the 180 s `DRIVE_REQUEST_TIMEOUT_MS` abort) | recover committed offset → backoff → retry (≤5) |
+| transient fetch (`AbortError`/`TypeError`, including the 180 s `DRIVE_REQUEST_TIMEOUT_MS` abort) | recover committed offset → backoff → retry (≤5), unless the job was canceled |
 | other `4xx` | throw `formatDriveError` — status + detail **+ an actionable hint** (missing scope, Drive API not enabled, unverified consent screen, …) |
 
 `formatDriveError` is deliberately user-actionable: a `403 insufficient scope` becomes "confirm `manifest oauth2.scopes` includes `drive.file` and re-consent", not a raw payload dump.
+
+Every Drive HTTP operation — folder lookup/create, resumable-session creation, chunk upload, and committed-offset probe — goes through `fetchWithTimeout`. A job `AbortSignal` aborts the active request and retry backoff. Folder resolution is shared through an abort-aware flight: canceling one caller releases that caller immediately, but the underlying lookup is aborted only after its **last** cancelable consumer leaves. A remaining upload therefore keeps setup alive; an abandoned setup does not keep running until its 180 s timeout or create folders after every job has been canceled.
 
 ## Crash recovery — re-upload fresh, never resume
 
@@ -85,11 +87,12 @@ If the offscreen document dies mid-upload, recovery does **not** resume the aban
 
 - **`PendingUploadStore`** writes **one `chrome.storage.local` key per file** (prefix-namespaced), *not* a single map — so the concurrent (across-files) uploader's `put`/`remove` can never lose each other to a read-modify-write race.
 - The marker is cleared **the instant** Drive confirms the upload (before deleting the OPFS file), to keep the "crashed between Drive's 200 and our cleanup" duplicate window as small as possible.
-- A marker whose OPFS file is already gone (saved locally instead) is simply dropped; an upload failure leaves the marker for the next launch.
+- Markers carry the owning `historyId` and detached `jobId` when available. Recovery first reports the grouped job as uploading, then reports a terminal result, so history and the popup converge rather than receiving a silent Drive-side change.
+- A marker whose OPFS file is already gone is reported as **unavailable** and dropped. A recovery upload failure is **retry-pending** and retains its marker for the next launch; the UI must not claim either outcome was saved locally.
 
 ## Folder resolution
 
-`DriveFolderResolver` resolves `rootFolderName / recordingFolderName` to a parent id, creating folders as needed (`DRIVE_ROOT_FOLDER_NAME = "Google Meet Records"`). It caches the recording-folder promise **statically** (shared across `DriveTarget` instances in a run, so the several files of one recording resolve the folder once and race-free), evicting the cache entry on failure. Folder-name lookups escape the Drive query literal (`'` and `\`) to keep the `q=` search safe.
+`DriveFolderResolver` resolves `rootFolderName / recordingFolderName` to a parent id, creating folders as needed (`DRIVE_ROOT_FOLDER_NAME = "Google Meet Records"`). It caches a recording-folder **flight** statically (shared across `DriveTarget` instances, so the several files of one recording resolve the folder once and race-free), evicting a failed or fully canceled flight. Folder-name lookups escape the Drive query literal (`'` and `\`) to keep the `q=` search safe. Each flight owns an `AbortController`: it passes that signal into lookup/create requests, but aborts only when no cancelable caller remains. This preserves shared work without leaving abandoned Drive setup running.
 
 ## Configuration & flags
 
@@ -113,6 +116,8 @@ Drive upload feeds the `upload.*` section of the perf snapshot (folded by `backg
 - **A resumable session is sequential.** Concurrency is across files only; never issue two byte-range `PUT`s to one session URI.
 - **Never store the session URI for recovery** — the raw OPFS bytes don't match what the old session committed (see Crash recovery). Re-upload fresh.
 - **Clear the marker before deleting the OPFS file**, not after — minimizes the duplicate window.
+- **Keep identity with the artifact.** `historyId` and `jobId` travel with each pending-upload marker and local-fallback request; never derive them from mutable active-session state after capture ends.
+- **Cancellation is a safe terminal delivery path.** Abort the upload request/backoff, then let the normal per-file local-download fallback preserve unfinished files.
 - **One token per upload, one refresh per auth failure.** The cached provider's generation counter is what keeps a slow stale fetch from clobbering a freshly-refreshed token.
 - **`driveFetch` is the single fetch seam** — in E2E builds it routes through a message bridge to a mock Drive; never call `fetch` directly here or you bypass the test harness.
 
@@ -124,6 +129,7 @@ Drive upload feeds the `upload.*` section of the perf snapshot (folded by `backg
 | `DriveFolderResolver.ts` | resolve/create `root/recording` folders, static race-free cache, query escaping |
 | `PendingUploadStore.ts` | per-file `chrome.storage.local` crash-recovery markers |
 | `resumePendingUploads.ts` | next-launch fresh re-upload of interrupted uploads |
+| `UploadJobStateOutbox.ts` | durable terminal detached-upload state, replayed until `OFFSCREEN_ACK_UPLOAD_STATE` |
 | `request.ts` | `driveFetch` (real / E2E bridge), `createCachedTokenProvider`, `fetchWithAuthRetry` |
 | `errors.ts` | `formatDriveError` (status + detail + actionable hint), `readDriveErrorDetail` |
 | `constants.ts` | endpoints, chunk-sizing + retry/backoff constants |
@@ -133,17 +139,18 @@ Orchestrator: [`../DriveTarget.ts`](../DriveTarget.ts) (per-file upload, adaptiv
 
 ## How it's wired
 
-`RecordingFinalizer` (offscreen) creates a `DriveTarget` per sealed file and calls `upload(file)`; before/around the upload it writes a `PendingUploadStore` marker so a crash is recoverable. On the next launch, `offscreen.ts` runs `resumePendingDriveUploadsWithChrome`. The token comes from the background's `GET_DRIVE_TOKEN` path (`driveAuth.fetchDriveTokenWithFallback`); on any upload failure the finalizer falls back to a **local download** of that file, so a Drive outage never loses a recording.
+After capture seals, `UploadManager` owns a detached job and drives `RecordingFinalizer`, which creates a `DriveTarget` per sealed file and calls `upload(file)`. Before/around the upload it writes a `PendingUploadStore` marker so a crash is recoverable; job updates go to the background, and terminal updates are also written to `UploadJobStateOutbox` until acknowledged. On the next launch, `offscreen.ts` runs `resumePendingDriveUploadsWithChrome`. The token comes from the background's `GET_DRIVE_TOKEN` path (`driveAuth.fetchDriveTokenWithFallback`); on any upload failure or cancellation the finalizer falls back to a **local download** of that file, so a Drive outage never loses a recording.
 
 ## Testing notes
 
 - `__tests__/DriveChunkUploader.test.ts` drives the byte-range protocol against scripted responses (308 chain, 200 final, 401-refresh, 5xx-recover-and-backoff, the `Range`-header committed-offset recovery) — the protocol is unit-tested without a network.
-- `__tests__/DriveFolderResolver.test.ts` covers find-vs-create + the static cache; `__tests__/resumePendingUploads.test.ts` covers the fresh-reupload recovery (file-gone → drop, failure → keep marker).
+- `__tests__/DriveFolderResolver.test.ts` covers find-vs-create, the static cache, pre-canceled callers, last-consumer abort, shared-consumer survival, and hard-timeout wrapping; `__tests__/resumePendingUploads.test.ts` covers fresh re-upload, `retry-pending`, and unavailable-source reporting. `UploadJobStateOutbox.test.ts` covers terminal-state persistence and acknowledgement removal.
 - The full path against a *simulated* Drive is the `@perf-full` Drive-scenario e2e (via the `driveFetch` E2E bridge). Real Google Drive is only exercised by the real-Meet harness.
 
 ## Related
 
 - [`platform/capabilities`](../../platform/capabilities/README.md) — token **acquisition** (the `AuthProvider` seam, silent→interactive fallback, ADR-0002 cross-browser).
+- [ADR-0004](../../../docs/adr/0004-decouple-uploads-from-the-recording-session.md) — the detached upload-job lifecycle that drives this protocol.
 - [Perf roadmap](../../../docs/plans/perf-optimization-roadmap.md) — `parallelUploadConcurrency` and `dynamicDriveChunkSizing` (both shipped, default-on).
 - [`offscreen/storage`](../storage/README.md) — orphan recovery reads the same OPFS files these markers point at.
 
