@@ -51,8 +51,14 @@ export function registerSaveHandler(
       let downloadId: number | undefined;
 
       if (historyId) {
-        void history?.createPending(historyId, [{ id: `${historyId}:${stream}`, stream, filename: resolvedFilename }], 'local')
-          .catch((error) => L.warn('Recording history initialization failed:', error));
+        // Establish the row before Chrome can settle the download. Otherwise a
+        // fast download can report its terminal status first, be ignored because
+        // no row exists yet, then leave a newly-created row stuck at `pending`.
+        try {
+          await history?.createPending(historyId, [{ id: `${historyId}:${stream}`, stream, filename: resolvedFilename }], 'local');
+        } catch (error) {
+          L.warn('Recording history initialization failed:', error);
+        }
       }
 
       try {

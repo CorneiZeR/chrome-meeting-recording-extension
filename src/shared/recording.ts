@@ -17,6 +17,7 @@ export type {
   MicMode,
   ObservedState,
   RecordingPhase,
+  RecordingArtifactContext,
   RecordingRunConfig,
   RecordingSessionSnapshot,
   RecordingStatusView,

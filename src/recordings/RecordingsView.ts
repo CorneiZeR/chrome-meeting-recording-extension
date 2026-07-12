@@ -4,6 +4,7 @@ export type RecordingsViewCallbacks = {
   rename: (id: string, name: string) => void;
   remove: (id: string) => void;
   openLocal: (recordingId: string, fileId: string) => void;
+  loadMore: () => void;
 };
 
 export class RecordingsView {
@@ -11,12 +12,16 @@ export class RecordingsView {
     private readonly list: HTMLElement,
     private readonly empty: HTMLElement,
     private readonly error: HTMLElement,
+    private readonly loadMoreButton: HTMLButtonElement,
     private readonly callbacks: RecordingsViewCallbacks,
-  ) {}
+  ) {
+    this.loadMoreButton.addEventListener('click', () => this.callbacks.loadMore());
+  }
 
-  render(entries: RecordingHistoryEntry[]) {
+  render(entries: RecordingHistoryEntry[], hasMore = false) {
     this.list.replaceChildren();
     this.empty.hidden = entries.length > 0;
+    this.loadMoreButton.hidden = !hasMore;
     const fragment = document.createDocumentFragment();
     for (const entry of entries) fragment.appendChild(this.card(entry));
     this.list.appendChild(fragment);
