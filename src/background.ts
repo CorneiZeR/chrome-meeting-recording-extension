@@ -63,6 +63,10 @@ const session = new RecordingSession(
       await setSessionStorageValues({ [RECORDING_SESSION_STORAGE_KEY]: snapshot });
     } catch (error) {
       L.warn('storage.session.set failed (recording session):', error);
+      // Terminal upload outbox entries may be acknowledged only after this
+      // write succeeds. Re-throw so RecordingSession.flush() preserves that
+      // durability boundary for persistUploadState().
+      throw error;
     }
   },
   (snapshot) => {
@@ -77,6 +81,10 @@ const session = new RecordingSession(
       stopKeepAlive();
     }
     offscreen.hydratePhase(snapshot.phase);
+    // The manager may be recreated during a service-worker restart; treating an
+    // absent hand-off as an empty seed keeps persistence authoritative until the
+    // live offscreen port reconnects and replays its jobs.
+    offscreen.hydrateUploadJobs?.(snapshot.uploadJobs);
     // Reset diagnostics at the start of a new recording, so a finished run's
     // diagnostics survive (idle no longer wipes them) until the next one begins.
     // Guarded by sessionHydrated so a rehydrated busy phase after a SW restart is
@@ -112,12 +120,30 @@ offscreen.onStateChanged = (msg) => {
 
 // ADR-0004: a background upload job changed — persist it on the session (keyed by
 // id, phase-independent) so the popup can render it and "busy" reflects it.
+let uploadStatePersistenceTail: Promise<void> = Promise.resolve();
 offscreen.onUploadJobChanged = (job) => {
-  session.upsertUploadJob(job);
-  if (job.status !== 'uploading') {
-    void history.applyTerminalUploadJob(job).catch((error) => L.warn('Recording history Drive update failed:', error));
-  }
+  // Preserve the order emitted by the offscreen document. In particular, the
+  // initial `uploading` row must reach both durable projections before a fast
+  // terminal report is allowed to acknowledge and clear its replay outbox item.
+  const snapshot = structuredClone(job);
+  uploadStatePersistenceTail = uploadStatePersistenceTail
+    .catch(() => {})
+    .then(() => persistUploadState(snapshot));
+  void uploadStatePersistenceTail.catch(() => {});
 };
+
+async function persistUploadState(job: import('./shared/recording').UploadJob): Promise<void> {
+  try {
+    session.upsertUploadJob(job);
+    await session.flush();
+    await history.applyUploadJob(job);
+    if (job.status !== 'uploading') await offscreen.acknowledgeUploadState?.(job.id);
+  } catch (error) {
+    // Do not acknowledge a terminal outbox item unless both persisted views are
+    // durable. A reconnect will replay it and converge idempotently.
+    L.warn('Could not persist upload state:', error);
+  }
+}
 
 // Liveness backstop for an orphaned `starting`/`stopping` (ADR-0003). Complements
 // the epoch fence: the fence drops *stale* status, this rescues *missing* status —
@@ -170,26 +196,30 @@ chrome.runtime.onSuspend?.addListener(async () => {
 
 // Apply downloaded updates promptly, without interrupting an active recording.
 chrome.runtime.onUpdateAvailable?.addListener(() => {
-  if (!isBusyPhase(session.getSnapshot().phase)) {
-    L.log('Update available; reloading to apply');
-    chrome.runtime.reload();
-  } else {
-    L.log('Update available; deferring reload until current work finishes');
-    pendingReload = true;
-  }
+  void sessionHydration.then(() => {
+    const snapshot = session.getSnapshot();
+    if (!isBusyPhase(snapshot.phase) && !hasUploadsInFlight(snapshot.uploadJobs)) {
+      L.log('Update available; reloading to apply');
+      chrome.runtime.reload();
+    } else {
+      L.log('Update available; deferring reload until current work finishes');
+      pendingReload = true;
+    }
+  });
 });
 
 // On update, discard any stale offscreen document so the next recording runs new code.
 // If work is in flight, defer to a reload after it finishes rather than tearing it down.
 chrome.runtime.onInstalled?.addListener(async (details) => {
   if (details.reason !== 'update') return;
+  await sessionHydration;
   L.log('Extension updated; refreshing offscreen document');
   const closed = await offscreen.closeForUpdate();
   if (!closed) pendingReload = true;
 });
 
 // Hydrate persisted session on service-worker (re)start.
-(async () => {
+const sessionHydration = (async () => {
   try {
     const settings = await configurePerfRuntime({
       source: 'background',
@@ -208,7 +238,7 @@ chrome.runtime.onInstalled?.addListener(async (details) => {
     const snapshot = session.hydrate(
       res?.[RECORDING_SESSION_STORAGE_KEY] ?? hydrateLegacySession(res)
     );
-    if (isBusyPhase(snapshot.phase)) {
+    if (isBusyPhase(snapshot.phase) || hasUploadsInFlight(snapshot.uploadJobs)) {
       L.log('SW restarted while offscreen work was active — re-attaching offscreen');
       await offscreen.ensureReady();
       startKeepAlive();

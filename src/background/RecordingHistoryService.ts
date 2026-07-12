@@ -2,16 +2,17 @@ import type { DownloadSettledResult } from '../platform/chrome/downloads';
 import type { RecordingStream, StorageMode, UploadJob } from '../shared/recording';
 import {
   recordingLabelFromFilename,
+  type RecordingHistoryCursor,
   type RecordingHistoryEntry,
   type RecordingHistoryFile,
+  type RecordingHistoryPage,
 } from '../shared/recordingHistory';
 import type { RecordingHistoryRepositoryPort } from './RecordingHistoryRepository';
 
 type PendingFile = Pick<RecordingHistoryFile, 'id' | 'stream' | 'filename' | 'bytes'>;
 
+/** Owns every recording-history transition, including delayed upload and download work. */
 export class RecordingHistoryService {
-  private readonly tails = new Map<string, Promise<void>>();
-
   constructor(
     private readonly repository: RecordingHistoryRepositoryPort,
     private readonly openDownload: (downloadId: number) => Promise<void>,
@@ -56,6 +57,56 @@ export class RecordingHistoryService {
       return additions.length ? { ...current, files: [...current.files, ...additions], status: summarize([...current.files, ...additions]) } : current;
     });
   }
+
+  /** Persists the initial and every later state of a detached Drive upload job. */
+  async applyUploadJob(job: UploadJob): Promise<void> {
+    if (!job.historyId) return;
+    const historyId = job.historyId;
+    await this.repository.update(historyId, (current) => {
+      if (current?.deletedAt) return current;
+      if (!current) return createEntryFromUploadJob(job);
+      const files = current.files.map((file) => {
+        const update = job.files.find((candidate) => candidate.stream === file.stream);
+        if (!update) return file;
+        if (update.status === 'uploaded') {
+          return {
+            ...file,
+            destination: 'drive' as const,
+            status: 'available' as const,
+            driveFileId: update.driveFileId,
+            webViewLink: update.webViewLink,
+            error: undefined,
+          };
+        }
+        if (update.status === 'retry-pending') {
+          return {
+            ...file,
+            destination: 'drive' as const,
+            status: 'pending' as const,
+            error: update.error,
+          };
+        }
+        if (update.status === 'unavailable') {
+          return {
+            ...file,
+            destination: 'local' as const,
+            status: 'unavailable' as const,
+            error: update.error ?? 'Recovery source is no longer available',
+          };
+        }
+        if (job.status === 'uploading') return file;
+        // A retry that suppresses the duplicate local download must preserve a
+        // previously confirmed local copy. First-attempt fallbacks wait for the
+        // local-save lifecycle to settle their download id and availability.
+        if (file.destination === 'local' && file.status === 'available') return file;
+        return { ...file, destination: 'local' as const, status: 'pending' as const };
+      });
+      return { ...current, storageMode: 'drive', files, status: summarize(files) };
+    });
+  }
+
+  async applyTerminalUploadJob(job: UploadJob): Promise<void> {
+    if (job.status !== 'uploading') await this.applyUploadJob(job);
   }
 
   async localSaveSettled(
@@ -100,6 +151,21 @@ function createEntry(historyId: string, files: PendingFile[], storageMode: Stora
     files: nextFiles,
   };
 }
+
+function createEntryFromUploadJob(job: UploadJob): RecordingHistoryEntry {
+  const historyId = job.historyId!;
+  const files = job.files.map((file) => ({
+    id: `${historyId}:${file.stream}`,
+    stream: file.stream,
+    filename: file.filename,
+    destination: file.status === 'uploaded' || file.status === 'retry-pending' || job.status === 'uploading' ? 'drive' as const : 'local' as const,
+    status: file.status === 'uploaded' ? 'available' as const : file.status === 'unavailable' ? 'unavailable' as const : 'pending' as const,
+    bytes: file.bytes,
+    driveFileId: file.driveFileId,
+    webViewLink: file.webViewLink,
+    error: file.error,
+  }));
+  return { id: historyId, name: job.label, createdAt: job.startedAt, storageMode: 'drive', status: summarize(files), files };
 }
 
 function summarize(files: RecordingHistoryFile[]): RecordingHistoryEntry['status'] {

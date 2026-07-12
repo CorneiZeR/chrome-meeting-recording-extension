@@ -54,6 +54,7 @@ export type SessionPersistor = (snapshot: RecordingSessionSnapshot) => Promise<v
  */
 export class RecordingSession {
   private snapshot: RecordingSessionSnapshot = createIdleSession();
+  private persistenceTail: Promise<void> = Promise.resolve();
 
   /** Builds the canonical session state machine around persistence and change notifications. */
   constructor(
@@ -321,10 +322,21 @@ export class RecordingSession {
     return this.commit();
   }
 
+  /** Resolves only after every snapshot change issued so far reached durable session storage. */
+  async flush(): Promise<void> {
+    await this.persistenceTail;
+  }
+
   /** Persists and broadcasts the latest session snapshot. */
   private commit(): RecordingSessionSnapshot {
     const snapshot = this.getSnapshot();
-    this.persist(snapshot);
+    const write = this.persistenceTail.catch(() => {}).then(async () => {
+      await this.persist(snapshot);
+    });
+    this.persistenceTail = write;
+    // Most callers intentionally update UI optimistically. Keep their behavior
+    // while exposing flush() to the upload outbox acknowledgement path.
+    void write.catch(() => {});
     this.onChanged?.(snapshot);
     return snapshot;
   }

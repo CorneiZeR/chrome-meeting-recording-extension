@@ -25,7 +25,7 @@ import {
   POPUP_TO_CONTENT_MESSAGE_TYPES,
 } from './protocolMessageTypes';
 import { getMessageType, hasKnownMessageType } from './typeGuards';
-import type { RecordingHistoryEntry } from './recordingHistory';
+import type { RecordingHistoryCursor, RecordingHistoryEntry } from './recordingHistory';
 
 export type RpcId = string;
 
@@ -64,7 +64,8 @@ export type PopupDismissUploadJob = { type: 'DISMISS_UPLOAD_JOB'; jobId: string 
 export type PopupRetryUploadJob = { type: 'RETRY_UPLOAD_JOB'; jobId: string };
 /** Cancels an active Drive upload and downloads every unfinished file locally. */
 export type PopupCancelUploadJob = { type: 'CANCEL_UPLOAD_JOB'; jobId: string };
-export type PopupListRecordingHistory = { type: 'LIST_RECORDING_HISTORY' };
+/** Reads one bounded, newest-first page of recording history. */
+export type PopupListRecordingHistory = { type: 'LIST_RECORDING_HISTORY'; cursor?: RecordingHistoryCursor };
 export type PopupRenameRecordingHistory = { type: 'RENAME_RECORDING_HISTORY'; id: string; name: string };
 export type PopupRemoveRecordingHistory = { type: 'REMOVE_RECORDING_HISTORY'; id: string };
 export type PopupOpenRecordingHistoryFile = { type: 'OPEN_RECORDING_HISTORY_FILE'; recordingId: string; fileId: string };
@@ -100,7 +101,7 @@ export type PopupToBgResponse<T extends PopupToBg> =
   T extends PopupDismissUploadJob ? { session: RecordingStatusView } :
   T extends PopupRetryUploadJob ? CommandResult :
   T extends PopupCancelUploadJob ? CommandResult :
-  T extends PopupListRecordingHistory ? { ok: true; entries: RecordingHistoryEntry[] } | { ok: false; error: string } :
+  T extends PopupListRecordingHistory ? { ok: true; entries: RecordingHistoryEntry[]; nextCursor?: RecordingHistoryCursor } | { ok: false; error: string } :
   T extends PopupRenameRecordingHistory ? { ok: true; entry?: RecordingHistoryEntry } | { ok: false; error: string } :
   T extends PopupRemoveRecordingHistory ? { ok: true; removed: boolean } | { ok: false; error: string } :
   T extends PopupOpenRecordingHistoryFile ? { ok: true } | { ok: false; error: string } :
@@ -175,7 +176,9 @@ export type BgToOffscreenRpc =
   | RpcRequest<{ type: 'OFFSCREEN_CANCEL_UPLOAD'; jobId: string }>;
 
 export type BgToOffscreenOneWay =
-  | { type: 'REVOKE_BLOB_URL'; blobUrl: string; opfsFilename?: string };
+  | { type: 'REVOKE_BLOB_URL'; blobUrl: string; opfsFilename?: string }
+  /** Background persisted a terminal upload outcome and history state. */
+  | { type: 'OFFSCREEN_ACK_UPLOAD_STATE'; jobId: string };
 
 export type BgToOffscreenRuntime =
   | { type: 'OFFSCREEN_CONNECT' };

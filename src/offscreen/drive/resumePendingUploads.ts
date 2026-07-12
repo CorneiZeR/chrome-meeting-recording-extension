@@ -1,83 +1,159 @@
 /**
  * @file offscreen/drive/resumePendingUploads.ts
  *
- * Recovers Drive uploads interrupted by a crash or power-off. On the next
- * offscreen launch, each leftover marker (see PendingUploadStore) is re-uploaded
- * FRESH: we re-open the raw OPFS file, re-run the duration fix to reproduce the
- * deliverable bytes, and upload it through a brand-new resumable session.
- *
- * We deliberately do NOT resume the abandoned session from its committed offset:
- * the on-disk OPFS bytes are the raw, pre-duration-fix recording, so splicing
- * them onto a prefix of the duration-fixed file the old session committed would
- * silently corrupt the upload. Re-uploading fresh re-sends already-committed
- * bytes (only in the rare crash case) in exchange for guaranteed correctness.
+ * Recovers Drive uploads interrupted by a crash or power-off. Markers retain the
+ * recording and job identities, allowing recovery to converge history and popup
+ * state instead of silently uploading a file behind the background's back.
  */
 
-import { DriveTarget } from '../DriveTarget';
+import type { UploadJob, UploadJobFile } from '../../shared/recording';
+import { DriveTarget, type DriveUploadResult } from '../DriveTarget';
 import { describeRuntimeError } from '../errors';
 import { DRIVE_ROOT_FOLDER_NAME } from './constants';
 import { DriveFolderResolver } from './DriveFolderResolver';
 import { createCachedTokenProvider, type TokenProvider } from './request';
 import type { PendingUpload, PendingUploadStore } from './PendingUploadStore';
 
+type RecoveredDriveFile = Pick<DriveUploadResult, 'id' | 'webViewLink'> | void;
+
 export type ResumePendingUploadsDeps = {
   store: PendingUploadStore;
   log: (...a: any[]) => void;
   warn: (...a: any[]) => void;
-  /** Reads the raw OPFS file for a marker, or null when it no longer exists. */
   openOpfsFile: (opfsFilename: string) => Promise<Blob | null>;
-  /** Deletes the OPFS file after a successful recovery upload. */
   removeOpfsFile: (opfsFilename: string) => Promise<void>;
-  /** Reconstructs the duration-fixed deliverable bytes from the raw OPFS file. */
   fixDuration: (raw: Blob) => Promise<Blob>;
-  /** Uploads the fixed file fresh to Drive (new resumable session). */
-  uploadFile: (file: Blob, entry: PendingUpload) => Promise<void>;
+  uploadFile: (file: Blob, entry: PendingUpload) => Promise<RecoveredDriveFile>;
+  /** Receives the initial and terminal state of every identity-bearing recovered job. */
+  reportJob?: (job: UploadJob) => Promise<void> | void;
+  now?: () => number;
 };
 
-/**
- * Re-uploads every recording whose Drive upload was interrupted. A marker whose
- * OPFS file is gone (e.g. it was already saved locally) is simply dropped. An
- * upload failure leaves the marker in place for a future attempt.
- */
+type RecoveryOutcome =
+  | { status: 'uploaded'; bytes: number; driveFileId?: string; webViewLink?: string }
+  | { status: 'retry-pending'; bytes?: number; error: string }
+  | { status: 'unavailable'; error: string };
+
+/** Re-uploads pending files and reports grouped job states when markers carry identity. */
 export async function resumePendingDriveUploads(deps: ResumePendingUploadsDeps): Promise<void> {
   const pending = await deps.store.list();
   if (!pending.length) return;
   deps.log(`Recovering ${pending.length} interrupted Drive upload(s)`);
 
+  const now = deps.now ?? Date.now;
+  const groups = groupRecoverableJobs(pending, now());
+  for (const group of groups.values()) await reportSafely(deps, group.job);
+
+  const outcomes = new Map<string, RecoveryOutcome>();
   for (const entry of pending) {
     try {
       const raw = await deps.openOpfsFile(entry.opfsFilename);
       if (!raw || raw.size === 0) {
+        outcomes.set(entry.opfsFilename, { status: 'unavailable', error: 'Recovery source is no longer available' });
         await deps.store.remove(entry.opfsFilename);
         continue;
       }
       const fixed = await deps.fixDuration(raw);
-      await deps.uploadFile(fixed, entry);
-      // Clear the marker the instant the upload is confirmed so the (already
-      // tiny) "crash between Drive's 200 and our cleanup" duplicate window stays
-      // as small as possible; then remove the now-redundant OPFS file.
+      const uploaded = await deps.uploadFile(fixed, entry);
+      outcomes.set(entry.opfsFilename, {
+        status: 'uploaded',
+        bytes: fixed.size,
+        ...(uploaded?.id ? { driveFileId: uploaded.id } : {}),
+        ...(uploaded?.webViewLink ? { webViewLink: uploaded.webViewLink } : {}),
+      });
       await deps.store.remove(entry.opfsFilename);
       await deps.removeOpfsFile(entry.opfsFilename);
       deps.log('Recovered interrupted Drive upload', entry.filename);
     } catch (e) {
+      const error = describeRuntimeError(e);
+      outcomes.set(entry.opfsFilename, { status: 'retry-pending', error });
       deps.warn(
         'Could not recover interrupted upload; will retry next launch',
         entry.filename,
-        describeRuntimeError(e)
+        error
       );
     }
   }
+
+  for (const group of groups.values()) {
+    const files = group.entries.map((entry) => toUploadJobFile(entry, outcomes.get(entry.opfsFilename)));
+    const uploaded = files.filter((file) => file.status === 'uploaded').length;
+    const recoveryPending = files.some((file) => file.status === 'retry-pending');
+    const status: UploadJob['status'] = uploaded === files.length ? 'completed' : uploaded > 0 ? 'partial' : 'failed';
+    await reportSafely(deps, {
+      ...group.job,
+      status,
+      progress: 1,
+      files,
+      finishedAt: now(),
+      ...(recoveryPending ? { recoveryPending: true as const } : {}),
+    });
+  }
 }
 
-/**
- * Wires `resumePendingDriveUploads` to the real OPFS, the dynamically-imported
- * duration fix (kept out of the offscreen bundle), and a fresh DriveTarget.
- */
+function groupRecoverableJobs(pending: PendingUpload[], startedAt: number): Map<string, { entries: PendingUpload[]; job: UploadJob }> {
+  const groups = new Map<string, { entries: PendingUpload[]; job: UploadJob }>();
+  for (const entry of pending) {
+    if (!entry.historyId || !entry.jobId) continue; // legacy marker: recover bytes without a history/job replay.
+    const existing = groups.get(entry.jobId);
+    if (existing) {
+      existing.entries.push(entry);
+      existing.job.files.push({ stream: entry.stream, filename: entry.filename, status: 'uploading' });
+      continue;
+    }
+    groups.set(entry.jobId, {
+      entries: [entry],
+      job: {
+        id: entry.jobId,
+        historyId: entry.historyId,
+        label: entry.recordingFolderName,
+        status: 'uploading',
+        progress: 0,
+        files: [{ stream: entry.stream, filename: entry.filename, status: 'uploading' }],
+        startedAt,
+      },
+    });
+  }
+  return groups;
+}
+
+function toUploadJobFile(entry: PendingUpload, outcome: RecoveryOutcome | undefined): UploadJobFile {
+  if (!outcome || outcome.status === 'retry-pending') {
+    return {
+      stream: entry.stream,
+      filename: entry.filename,
+      status: 'retry-pending',
+      error: outcome?.status === 'retry-pending' ? outcome.error : 'Recovery was interrupted before an outcome was recorded',
+    };
+  }
+  if (outcome.status === 'unavailable') {
+    return { stream: entry.stream, filename: entry.filename, status: 'unavailable', error: outcome.error };
+  }
+  return {
+    stream: entry.stream,
+    filename: entry.filename,
+    status: 'uploaded',
+    bytes: outcome.bytes,
+    ...(outcome.driveFileId ? { driveFileId: outcome.driveFileId } : {}),
+    ...(outcome.webViewLink ? { webViewLink: outcome.webViewLink } : {}),
+  };
+}
+
+async function reportSafely(deps: ResumePendingUploadsDeps, job: UploadJob): Promise<void> {
+  try {
+    await deps.reportJob?.(job);
+  } catch (error) {
+    deps.warn('Could not report recovered upload state; will replay on reconnect', job.id, describeRuntimeError(error));
+  }
+}
+
+/** Wires recovery to real OPFS, the duration fixer, Drive, and the upload-state reporter. */
 export function resumePendingDriveUploadsWithChrome(opts: {
   store: PendingUploadStore;
   getDriveToken: TokenProvider;
   log: (...a: any[]) => void;
   warn: (...a: any[]) => void;
+  reportJob?: (job: UploadJob) => Promise<void> | void;
 }): Promise<void> {
   const getUploadToken = createCachedTokenProvider(opts.getDriveToken);
   const folderResolver = new DriveFolderResolver(getUploadToken);
@@ -86,6 +162,7 @@ export function resumePendingDriveUploadsWithChrome(opts: {
     store: opts.store,
     log: opts.log,
     warn: opts.warn,
+    reportJob: opts.reportJob,
     openOpfsFile: async (name) => {
       try {
         const root = await navigator.storage.getDirectory();
@@ -113,7 +190,7 @@ export function resumePendingDriveUploadsWithChrome(opts: {
         recordingFolderName: entry.recordingFolderName,
         shared: { getUploadToken, folderResolver, log: opts.log },
       });
-      await target.upload(file);
+      return await target.upload(file);
     },
   });
 }

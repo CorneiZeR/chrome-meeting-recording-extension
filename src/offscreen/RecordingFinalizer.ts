@@ -7,7 +7,7 @@
  * with bounded concurrency, and falls back to local download per-file if Drive fails.
  */
 
-import type { RecordingStream, UploadSummary } from '../shared/recording';
+import type { RecordingArtifactContext, RecordingStream, UploadSummary } from '../shared/recording';
 import { DriveTarget } from './DriveTarget';
 import { DriveFolderResolver } from './drive/DriveFolderResolver';
 import { DRIVE_ROOT_FOLDER_NAME } from './drive/constants';
@@ -37,7 +37,7 @@ function driveFolderWebViewLink(folderId: string | null): string | undefined {
 export type RecordingFinalizerDeps = {
   log: (...a: any[]) => void;
   warn: (...a: any[]) => void;
-  requestSave: (filename: string, blobUrl: string, opfsFilename?: string) => void;
+  requestSave: (request: LocalSaveRequest) => void;
   getDriveToken: TokenProvider;
   reportWarning?: (warning: string) => void;
   /**
@@ -48,7 +48,15 @@ export type RecordingFinalizerDeps = {
   pendingUploads?: PendingUploadStore;
 };
 
-export type FinalizeArtifactsOptions = {
+/** One local-download request with explicit artifact ownership. */
+export type LocalSaveRequest = RecordingArtifactContext & {
+  stream: RecordingStream;
+  filename: string;
+  blobUrl: string;
+  opfsFilename?: string;
+};
+
+export type FinalizeArtifactsOptions = RecordingArtifactContext & {
   artifacts: CompletedRecordingArtifact[];
   storageMode: 'local' | 'drive';
   /**
@@ -100,6 +108,10 @@ export class RecordingFinalizer {
   async finalize(options: FinalizeArtifactsOptions): Promise<UploadSummary | undefined> {
     const startedAt = nowMs();
     const orderedArtifacts = this.sortArtifacts(options.artifacts);
+    const context: RecordingArtifactContext = {
+      historyId: options.historyId,
+      uploadJobId: options.uploadJobId,
+    };
     if (!orderedArtifacts.length) {
       logPerf(this.deps.log, 'finalizer', 'finalize_complete', {
         durationMs: roundMs(nowMs() - startedAt),
@@ -116,7 +128,8 @@ export class RecordingFinalizer {
         recordingFolderName,
         options.onUploadProgress,
         options.skipLocalFallback === true,
-        options.signal
+        options.signal,
+        context
       );
       logPerf(this.deps.log, 'finalizer', 'finalize_complete', {
         durationMs: roundMs(nowMs() - startedAt),
@@ -127,7 +140,7 @@ export class RecordingFinalizer {
     }
 
     for (const entry of orderedArtifacts) {
-      this.saveArtifactLocally(entry.artifact, entry.stream, 'local');
+      this.saveArtifactLocally(entry.artifact, entry.stream, 'local', context);
     }
     logPerf(this.deps.log, 'finalizer', 'finalize_complete', {
       durationMs: roundMs(nowMs() - startedAt),
@@ -144,7 +157,8 @@ export class RecordingFinalizer {
   private saveArtifactLocally(
     artifact: SealedStorageFile,
     stream: RecordingStream,
-    reason: 'local' | 'fallback'
+    reason: 'local' | 'fallback',
+    context: RecordingArtifactContext,
   ) {
     const blobUrl = URL.createObjectURL(artifact.file);
     logPerf(this.deps.log, 'finalizer', 'local_save_requested', {
@@ -153,7 +167,14 @@ export class RecordingFinalizer {
       stream,
       reason,
     });
-    this.deps.requestSave(artifact.filename, blobUrl, artifact.opfsFilename);
+    this.deps.requestSave({
+      ...(context.historyId ? { historyId: context.historyId } : {}),
+      ...(context.uploadJobId ? { uploadJobId: context.uploadJobId } : {}),
+      stream,
+      filename: artifact.filename,
+      blobUrl,
+      opfsFilename: artifact.opfsFilename,
+    });
   }
 
   private async cleanupArtifact(artifact: SealedStorageFile) {
@@ -170,7 +191,8 @@ export class RecordingFinalizer {
     recordingFolderName: string,
     onUploadProgress?: (fraction: number) => void,
     skipLocalFallback = false,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    context: RecordingArtifactContext = {},
   ): Promise<UploadSummary> {
     const sharedGetUploadToken = createCachedTokenProvider(this.deps.getDriveToken);
     const folderResolver = new DriveFolderResolver(sharedGetUploadToken);
@@ -178,7 +200,10 @@ export class RecordingFinalizer {
     let sharedSetupError: string | null = null;
     try {
       if (signal?.aborted) throw new DOMException('Upload canceled', 'AbortError');
-      const folderId = await folderResolver.resolveUploadParentId({ rootFolderName: DRIVE_ROOT_FOLDER_NAME, recordingFolderName });
+      const folderId = await folderResolver.resolveUploadParentId(
+        { rootFolderName: DRIVE_ROOT_FOLDER_NAME, recordingFolderName },
+        signal,
+      );
       if (signal?.aborted) throw new DOMException('Upload canceled', 'AbortError');
       folderWebViewLink = driveFolderWebViewLink(folderId);
     } catch (e) {
@@ -213,7 +238,7 @@ export class RecordingFinalizer {
         const markFileDone = () => { loadedPerFile[index] = artifact.file.size; reportProgress(); };
         const startedAt = nowMs();
         if (sharedSetupError) {
-          if (!skipLocalFallback) this.saveArtifactLocally(artifact, stream, 'fallback');
+          if (!skipLocalFallback) this.saveArtifactLocally(artifact, stream, 'fallback', context);
           markFileDone();
           logPerf(this.deps.log, 'finalizer', 'drive_file_complete', { filename: artifact.filename, stream, uploaded: false, durationMs: roundMs(nowMs() - startedAt) });
           return { stream, filename: artifact.filename, bytes: artifact.file.size, uploaded: false, error: sharedSetupError } satisfies UploadOutcome;
@@ -232,7 +257,14 @@ export class RecordingFinalizer {
         // can be recovered (a RAM-fallback artifact has nothing to re-read).
         const opfsFilename = artifact.opfsFilename;
         if (opfsFilename) {
-          await this.deps.pendingUploads?.put({ opfsFilename, filename: artifact.filename, stream, recordingFolderName });
+          await this.deps.pendingUploads?.put({
+            opfsFilename,
+            filename: artifact.filename,
+            stream,
+            recordingFolderName,
+            ...(context.historyId ? { historyId: context.historyId } : {}),
+            ...(context.uploadJobId ? { jobId: context.uploadJobId } : {}),
+          });
         }
 
         try {
@@ -259,7 +291,7 @@ export class RecordingFinalizer {
             this.deps.warn('Retry upload failed; keeping the existing local copy', artifact.filename, error);
           } else {
             this.deps.warn('Drive upload failed; falling back to local download', artifact.filename, error);
-            this.saveArtifactLocally(artifact, stream, 'fallback');
+            this.saveArtifactLocally(artifact, stream, 'fallback', context);
           }
           markFileDone();
           logPerf(this.deps.log, 'finalizer', 'drive_file_complete', { filename: artifact.filename, stream, uploaded: false, durationMs: roundMs(nowMs() - startedAt) });

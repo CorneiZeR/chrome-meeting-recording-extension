@@ -5,12 +5,14 @@ const get = (id: string) => document.getElementById(id);
 const list = get('recordings-list');
 const empty = get('recordings-empty');
 const error = get('recordings-error');
-if (list && empty && error) {
+const loadMore = get('recordings-load-more');
+if (list && empty && error && loadMore instanceof HTMLButtonElement) {
   let controller: RecordingsController;
-  const view = new RecordingsView(list, empty, error, {
+  const view = new RecordingsView(list, empty, error, loadMore, {
     rename: (id, name) => void controller.rename(id, name),
     remove: (id) => void controller.remove(id),
     openLocal: (recordingId, fileId) => void controller.openLocal(recordingId, fileId),
+    loadMore: () => void controller.loadMore(),
   });
   controller = new RecordingsController(view);
   void controller.init().catch((cause) => view.showError(cause instanceof Error ? cause.message : String(cause)));

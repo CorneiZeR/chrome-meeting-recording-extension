@@ -137,8 +137,8 @@ export function normalizeUploadSummary(value: unknown): UploadSummary | undefine
   };
 }
 
-const VALID_UPLOAD_JOB_STATUSES: readonly UploadJobStatus[] = ['uploading', 'completed', 'failed', 'partial'];
-const VALID_UPLOAD_JOB_FILE_STATUSES: readonly UploadJobFile['status'][] = ['uploading', 'uploaded', 'fallback'];
+const VALID_UPLOAD_JOB_STATUSES: readonly UploadJobStatus[] = ['uploading', 'completed', 'failed', 'partial', 'canceled'];
+const VALID_UPLOAD_JOB_FILE_STATUSES: readonly UploadJobFile['status'][] = ['uploading', 'uploaded', 'fallback', 'retry-pending', 'unavailable'];
 const VALID_RECORDING_STREAMS: readonly RecordingStream[] = ['tab', 'mic', 'self-video'];
 
 function parseUploadJobFile(value: unknown): UploadJobFile | null {
@@ -156,6 +156,9 @@ function parseUploadJobFile(value: unknown): UploadJobFile | null {
   const webViewLink = typeof value.webViewLink === 'string' && value.webViewLink.trim()
     ? value.webViewLink.trim()
     : undefined;
+  const error = typeof value.error === 'string' && value.error.trim()
+    ? value.error.trim()
+    : undefined;
   return {
     stream: stream as RecordingStream,
     filename,
@@ -163,6 +166,7 @@ function parseUploadJobFile(value: unknown): UploadJobFile | null {
     bytes,
     driveFileId,
     webViewLink,
+    error,
   };
 }
 
@@ -183,6 +187,7 @@ function parseUploadJob(value: unknown): UploadJob | null {
     folderWebViewLink: typeof value.folderWebViewLink === 'string' && value.folderWebViewLink.trim()
       ? value.folderWebViewLink.trim()
       : undefined,
+    recoveryPending: value.recoveryPending === true ? true : undefined,
     files: normalizedFiles,
     startedAt: typeof startedAt === 'number' && startedAt > 0 ? startedAt : Date.now(),
     finishedAt: typeof finishedAt === 'number' && finishedAt > 0 ? finishedAt : undefined,

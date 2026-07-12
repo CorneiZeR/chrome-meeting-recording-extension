@@ -29,6 +29,10 @@ export type PendingUpload = {
   filename: string;
   stream: RecordingStream;
   recordingFolderName: string;
+  /** Recording aggregate to reconcile after crash recovery; absent on legacy markers. */
+  historyId?: string;
+  /** Detached upload job to reconcile after crash recovery; absent on legacy markers. */
+  jobId?: string;
 };
 
 export interface PendingUploadStorageArea {
@@ -45,6 +49,8 @@ function isPendingUpload(value: unknown): value is PendingUpload {
     && typeof (value as PendingUpload).filename === 'string'
     && typeof (value as PendingUpload).stream === 'string'
     && typeof (value as PendingUpload).recordingFolderName === 'string'
+    && (typeof (value as PendingUpload).historyId === 'undefined' || typeof (value as PendingUpload).historyId === 'string')
+    && (typeof (value as PendingUpload).jobId === 'undefined' || typeof (value as PendingUpload).jobId === 'string')
   );
 }
 

@@ -17,6 +17,7 @@ import { getBuildId } from '../shared/build';
 import { makeLogger } from '../shared/logger';
 import { createPortRpcClient } from '../shared/rpc';
 import type {
+  BgToOffscreenOneWay,
   BgToOffscreenRpc,
   OffscreenToBg,
 } from '../shared/protocol';
@@ -85,6 +86,15 @@ export class OffscreenManager {
   hydratePhase(phase: RecordingPhase) {
     this.lastKnownPhase = phase;
     this.setBadge(phase);
+  }
+
+  /** Seeds upload liveness from the persisted session before an offscreen reconnect. */
+  hydrateUploadJobs(jobs: UploadJob[] | undefined): void {
+    this.activeUploadJobs.clear();
+    for (const job of jobs ?? []) {
+      if (job.status === 'uploading') this.activeUploadJobs.add(job.id);
+    }
+    this.setBadge(this.lastKnownPhase);
   }
 
   /** Returns the last phase reported by the offscreen document. */
@@ -256,6 +266,16 @@ export class OffscreenManager {
     try {
       this.port?.postMessage({ type: 'REVOKE_BLOB_URL', blobUrl, opfsFilename });
     } catch {}
+  }
+
+  /** Clears an acknowledged terminal job from the offscreen's durable outbox. */
+  acknowledgeUploadState(jobId: string): void {
+    try {
+      const message: BgToOffscreenOneWay = { type: 'OFFSCREEN_ACK_UPLOAD_STATE', jobId };
+      this.port?.postMessage(message);
+    } catch {
+      // The outbox keeps the terminal state and will replay it after reconnect.
+    }
   }
 
   /** Resolves the pending ready promise after OFFSCREEN_READY arrives. */

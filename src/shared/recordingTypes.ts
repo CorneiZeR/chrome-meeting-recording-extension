@@ -27,6 +27,13 @@ export type ObservedState = 'none' | 'starting' | 'recording' | 'stopping' | 'id
 export type RecordingStream = 'tab' | 'mic' | 'self-video';
 export type StorageMode = 'local' | 'drive';
 export type MicMode = 'off' | 'mixed' | 'separate';
+/** Immutable ownership carried with sealed artifacts after capture has ended. */
+export type RecordingArtifactContext = {
+  /** History aggregate that owns the artifacts, omitted only for legacy orphan recovery. */
+  historyId?: string;
+  /** Detached Drive job that owns a retry/recovery attempt. */
+  uploadJobId?: string;
+};
 /** Tab recording quality preset: 'screen' (UI/code/slides) vs 'video' (playback/motion). */
 export type TabContentType = 'screen' | 'video';
 
@@ -70,10 +77,11 @@ export type UploadJobStatus = 'uploading' | 'completed' | 'failed' | 'partial' |
 export type UploadJobFile = {
   stream: RecordingStream;
   filename: string;
-  status: 'uploading' | 'uploaded' | 'fallback';
+  status: 'uploading' | 'uploaded' | 'fallback' | 'retry-pending' | 'unavailable';
   bytes?: number;
   driveFileId?: string;
   webViewLink?: string;
+  error?: string;
 };
 
 /**
@@ -94,6 +102,8 @@ export type UploadJob = {
   progress: number;
   /** Browser-openable Drive folder URL once the upload parent is known. */
   folderWebViewLink?: string;
+  /** A crash-recovery attempt retained its OPFS source and will retry when the recorder runtime starts again. */
+  recoveryPending?: true;
   files: UploadJobFile[];
   startedAt: number;
   /** Set once the job reaches a terminal status (completed / failed / partial). */
