@@ -3,16 +3,16 @@ import type { RecordingHistoryEntry } from '../../shared/recordingHistory';
 
 class MemoryRepository {
   entries = new Map<string, RecordingHistoryEntry>();
-  async list() { return [...this.entries.values()].sort((a, b) => b.createdAt - a.createdAt); }
-  async get(id: string) { return this.entries.get(id); }
-  async put(entry: RecordingHistoryEntry) { this.entries.set(entry.id, structuredClone(entry)); }
-  async rename(id: string, name: string) {
-    const entry = this.entries.get(id);
-    if (!entry) return undefined;
-    const next = { ...entry, name, userNamed: true as const };
-    this.entries.set(id, next); return next;
+  async listPage() {
+    return { entries: [...this.entries.values()].filter((entry) => !entry.deletedAt).sort((a, b) => b.createdAt - a.createdAt) };
   }
-  async remove(id: string) { return this.entries.delete(id); }
+  async get(id: string) { return this.entries.get(id); }
+  async update(id: string, mutate: (entry: RecordingHistoryEntry | undefined) => RecordingHistoryEntry | undefined) {
+    const current = this.entries.get(id);
+    const next = mutate(current ? structuredClone(current) : undefined);
+    if (next) this.entries.set(id, structuredClone(next));
+    return next;
+  }
 }
 
 describe('RecordingHistoryService', () => {
@@ -39,5 +39,70 @@ describe('RecordingHistoryService', () => {
     await service.localSaveSettled('r1', 'tab', 1, 'complete');
     await expect(service.openLocalFile('r1', 'r1:tab')).rejects.toThrow('Missing');
     expect(await repo.get('r1')).toBeDefined();
+  });
+
+  it('keeps an already available local fallback available when a retry fails', async () => {
+    const repo = new MemoryRepository();
+    const service = new RecordingHistoryService(repo, jest.fn(), () => 10);
+    await service.createPending('r1', [{ id: 'r1:tab', stream: 'tab', filename: 'demo-recording.webm' }], 'local');
+    await service.localSaveSettled('r1', 'tab', 7, 'complete');
+
+    await service.applyTerminalUploadJob({
+      id: 'job-1',
+      historyId: 'r1',
+      label: 'Demo',
+      status: 'failed',
+      progress: 1,
+      files: [{ stream: 'tab', filename: 'demo-recording.webm', status: 'fallback' }],
+      startedAt: 10,
+      finishedAt: 11,
+    });
+
+    expect((await service.list())[0]).toEqual(expect.objectContaining({
+      status: 'complete',
+      files: [expect.objectContaining({ stream: 'tab', destination: 'local', status: 'available', downloadId: 7 })],
+    }));
+  });
+
+  it('does not resurrect a deleted entry when delayed upload recovery reports its job', async () => {
+    const repo = new MemoryRepository();
+    const service = new RecordingHistoryService(repo, jest.fn(), () => 10);
+    await service.createPending('r1', [{ id: 'r1:tab', stream: 'tab', filename: 'demo-recording.webm' }], 'drive');
+    await service.remove('r1');
+
+    await service.applyUploadJob({
+      id: 'job-1',
+      historyId: 'r1',
+      label: 'Demo',
+      status: 'completed',
+      progress: 1,
+      files: [{ stream: 'tab', filename: 'demo-recording.webm', status: 'uploaded', driveFileId: 'drive-1' }],
+      startedAt: 10,
+      finishedAt: 11,
+    });
+
+    expect(await service.list()).toEqual([]);
+    expect(await repo.get('r1')).toEqual(expect.objectContaining({ deletedAt: 10 }));
+  });
+
+  it('keeps a recovered retry pending on Drive instead of claiming a nonexistent local fallback', async () => {
+    const repo = new MemoryRepository();
+    const service = new RecordingHistoryService(repo, jest.fn(), () => 10);
+
+    await service.applyUploadJob({
+      id: 'job-1',
+      historyId: 'r1',
+      label: 'Demo',
+      status: 'failed',
+      recoveryPending: true,
+      progress: 1,
+      files: [{ stream: 'tab', filename: 'demo-recording.webm', status: 'retry-pending', error: 'network down' }],
+      startedAt: 10,
+      finishedAt: 11,
+    });
+
+    expect((await service.list())[0]).toEqual(expect.objectContaining({
+      files: [expect.objectContaining({ destination: 'drive', status: 'pending', error: 'network down' })],
+    }));
   });
 });

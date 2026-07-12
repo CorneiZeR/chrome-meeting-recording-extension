@@ -1,83 +1,144 @@
-import type { RecordingHistoryEntry } from '../shared/recordingHistory';
+import {
+  normalizeRecordingHistoryEntry,
+  type RecordingHistoryCursor,
+  type RecordingHistoryEntry,
+  type RecordingHistoryPage,
+} from '../shared/recordingHistory';
+
+export type RecordingHistoryMutation = (
+  current: RecordingHistoryEntry | undefined,
+) => RecordingHistoryEntry | undefined;
 
 export interface RecordingHistoryRepositoryPort {
-  list(): Promise<RecordingHistoryEntry[]>;
+  listPage(options?: { limit?: number; cursor?: RecordingHistoryCursor }): Promise<RecordingHistoryPage>;
   get(id: string): Promise<RecordingHistoryEntry | undefined>;
-  put(entry: RecordingHistoryEntry): Promise<void>;
-  rename(id: string, name: string): Promise<RecordingHistoryEntry | undefined>;
-  remove(id: string): Promise<boolean>;
+  update(id: string, mutate: RecordingHistoryMutation): Promise<RecordingHistoryEntry | undefined>;
 }
 
 const DATABASE_NAME = 'recording-history';
+const DATABASE_VERSION = 2;
 const STORE_NAME = 'recordings';
-const CREATED_AT_INDEX = 'createdAt';
+const CREATED_AT_ID_INDEX = 'createdAtId';
+const DEFAULT_PAGE_SIZE = 50;
+const MAX_PAGE_SIZE = 100;
 
+/** IndexedDB adapter. Its update operation is the history module's atomic seam. */
 export class RecordingHistoryRepository implements RecordingHistoryRepositoryPort {
   private databasePromise: Promise<IDBDatabase> | null = null;
 
   constructor(private readonly factory?: IDBFactory) {}
 
-  async list(): Promise<RecordingHistoryEntry[]> {
+  async listPage(options: { limit?: number; cursor?: RecordingHistoryCursor } = {}): Promise<RecordingHistoryPage> {
     const database = await this.open();
+    const limit = Math.max(1, Math.min(MAX_PAGE_SIZE, Math.floor(options.limit ?? DEFAULT_PAGE_SIZE)));
     return await new Promise((resolve, reject) => {
       const transaction = database.transaction(STORE_NAME, 'readonly');
-      const request = transaction.objectStore(STORE_NAME).index(CREATED_AT_INDEX).openCursor(null, 'prev');
+      const index = transaction.objectStore(STORE_NAME).index(CREATED_AT_ID_INDEX);
+      const cursorKey = options.cursor ? [options.cursor.createdAt, options.cursor.id] : undefined;
+      const request = index.openCursor(cursorKey ? IDBKeyRange.upperBound(cursorKey, true) : null, 'prev');
       const entries: RecordingHistoryEntry[] = [];
-      request.onerror = () => reject(request.error ?? new Error('Could not read recording history'));
+      let settled = false;
+      const fail = (error: unknown) => {
+        if (settled) return;
+        settled = true;
+        reject(error instanceof Error ? error : new Error(String(error)));
+      };
+      request.onerror = () => fail(request.error ?? new Error('Could not read recording history'));
       request.onsuccess = () => {
         const cursor = request.result;
         if (!cursor) return;
-        entries.push(cursor.value as RecordingHistoryEntry);
+        const entry = normalizeRecordingHistoryEntry(cursor.value);
+        if (entry && !entry.deletedAt) entries.push(entry);
+        if (entries.length > limit) return;
         cursor.continue();
       };
-      transaction.oncomplete = () => resolve(entries);
-      transaction.onerror = () => reject(transaction.error ?? new Error('Could not read recording history'));
+      transaction.oncomplete = () => {
+        if (settled) return;
+        const hasMore = entries.length > limit;
+        const pageEntries = hasMore ? entries.slice(0, limit) : entries;
+        const last = pageEntries[pageEntries.length - 1];
+        settled = true;
+        resolve({
+          entries: pageEntries,
+          ...(hasMore && last ? { nextCursor: { createdAt: last.createdAt, id: last.id } } : {}),
+        });
+      };
+      transaction.onerror = () => fail(transaction.error ?? new Error('Could not read recording history'));
+      transaction.onabort = () => fail(transaction.error ?? new Error('Recording history read aborted'));
     });
   }
 
   async get(id: string): Promise<RecordingHistoryEntry | undefined> {
     const database = await this.open();
-    return await this.request(database.transaction(STORE_NAME, 'readonly').objectStore(STORE_NAME).get(id));
+    const raw = await this.request(database.transaction(STORE_NAME, 'readonly').objectStore(STORE_NAME).get(id));
+    return normalizeRecordingHistoryEntry(raw);
   }
 
-  async put(entry: RecordingHistoryEntry): Promise<void> {
+  async update(id: string, mutate: RecordingHistoryMutation): Promise<RecordingHistoryEntry | undefined> {
     const database = await this.open();
-    await this.write(database, (store) => store.put(entry));
-  }
-
-  async rename(id: string, name: string): Promise<RecordingHistoryEntry | undefined> {
-    const trimmed = name.trim();
-    if (!trimmed) throw new Error('Recording name cannot be blank');
-    const entry = await this.get(id);
-    if (!entry) return undefined;
-    const renamed = { ...entry, name: trimmed, userNamed: true as const };
-    await this.put(renamed);
-    return renamed;
-  }
-
-  async remove(id: string): Promise<boolean> {
-    if (!await this.get(id)) return false;
-    const database = await this.open();
-    await this.write(database, (store) => store.delete(id));
-    return true;
+    return await new Promise((resolve, reject) => {
+      const transaction = database.transaction(STORE_NAME, 'readwrite');
+      const store = transaction.objectStore(STORE_NAME);
+      const request = store.get(id);
+      let result: RecordingHistoryEntry | undefined;
+      let settled = false;
+      const fail = (error: unknown) => {
+        if (settled) return;
+        settled = true;
+        reject(error instanceof Error ? error : new Error(String(error)));
+      };
+      request.onerror = () => fail(request.error ?? new Error('Could not read recording history'));
+      request.onsuccess = () => {
+        try {
+          const next = mutate(normalizeRecordingHistoryEntry(request.result));
+          if (!next) return;
+          if (next.id !== id) throw new Error('Recording history updates cannot change the entry id');
+          result = next;
+          store.put(next);
+        } catch (error) {
+          try { transaction.abort(); } catch {}
+          fail(error);
+        }
+      };
+      transaction.oncomplete = () => {
+        if (settled) return;
+        settled = true;
+        resolve(result);
+      };
+      transaction.onerror = () => fail(transaction.error ?? new Error('Could not write recording history'));
+      transaction.onabort = () => fail(transaction.error ?? new Error('Recording history write aborted'));
+    });
   }
 
   private open(): Promise<IDBDatabase> {
     if (this.databasePromise) return this.databasePromise;
-    this.databasePromise = new Promise((resolve, reject) => {
-      const factory = this.factory ?? globalThis.indexedDB;
-      if (!factory) {
-        reject(new Error('IndexedDB is unavailable in this context'));
-        return;
-      }
-      const request = factory.open(DATABASE_NAME, 1);
+    const factory = this.factory ?? globalThis.indexedDB;
+    if (!factory) return Promise.reject(new Error('IndexedDB is unavailable in this context'));
+    const opening = new Promise<IDBDatabase>((resolve, reject) => {
+      const request = factory.open(DATABASE_NAME, DATABASE_VERSION);
       request.onupgradeneeded = () => {
         const database = request.result;
-        const store = database.createObjectStore(STORE_NAME, { keyPath: 'id' });
-        store.createIndex(CREATED_AT_INDEX, CREATED_AT_INDEX, { unique: false });
+        const store = database.objectStoreNames.contains(STORE_NAME)
+          ? request.transaction!.objectStore(STORE_NAME)
+          : database.createObjectStore(STORE_NAME, { keyPath: 'id' });
+        if (!store.indexNames.contains(CREATED_AT_ID_INDEX)) {
+          store.createIndex(CREATED_AT_ID_INDEX, ['createdAt', 'id'], { unique: true });
+        }
       };
-      request.onsuccess = () => resolve(request.result);
+      request.onsuccess = () => {
+        const database = request.result;
+        database.onversionchange = () => {
+          database.close();
+          if (this.databasePromise === opening) this.databasePromise = null;
+        };
+        resolve(database);
+      };
       request.onerror = () => reject(request.error ?? new Error('Could not open recording history'));
+      request.onblocked = () => reject(new Error('Recording history upgrade is blocked by another extension context'));
+    });
+    this.databasePromise = opening.catch((error) => {
+      if (this.databasePromise === opening) this.databasePromise = null;
+      throw error;
     });
     return this.databasePromise;
   }
@@ -86,16 +147,6 @@ export class RecordingHistoryRepository implements RecordingHistoryRepositoryPor
     return new Promise((resolve, reject) => {
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error ?? new Error('IndexedDB request failed'));
-    });
-  }
-
-  private write(database: IDBDatabase, operation: (store: IDBObjectStore) => IDBRequest): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const transaction = database.transaction(STORE_NAME, 'readwrite');
-      operation(transaction.objectStore(STORE_NAME));
-      transaction.oncomplete = () => resolve();
-      transaction.onerror = () => reject(transaction.error ?? new Error('Could not write recording history'));
-      transaction.onabort = () => reject(transaction.error ?? new Error('Recording history write aborted'));
     });
   }
 }

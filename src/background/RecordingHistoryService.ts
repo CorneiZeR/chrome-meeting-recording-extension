@@ -18,25 +18,44 @@ export class RecordingHistoryService {
     private readonly now: () => number = Date.now,
   ) {}
 
-  list() { return this.repository.list(); }
-  rename(id: string, name: string) { return this.repository.rename(id, name); }
-  remove(id: string) { return this.repository.remove(id); }
+  async listPage(cursor?: RecordingHistoryCursor): Promise<RecordingHistoryPage> {
+    return await this.repository.listPage({ cursor });
+  }
+
+  async list(): Promise<RecordingHistoryEntry[]> {
+    return (await this.listPage()).entries;
+  }
+
+  async rename(id: string, name: string): Promise<RecordingHistoryEntry | undefined> {
+    const trimmed = name.trim();
+    if (!trimmed) throw new Error('Recording name cannot be blank');
+    const updated = await this.repository.update(id, (current) => {
+      if (!current || current.deletedAt) return current;
+      return { ...current, name: trimmed, userNamed: true as const };
+    });
+    return updated?.deletedAt ? undefined : updated;
+  }
+
+  async remove(id: string): Promise<boolean> {
+    let removed = false;
+    await this.repository.update(id, (current) => {
+      if (!current || current.deletedAt) return current;
+      removed = true;
+      return { ...current, deletedAt: this.now() };
+    });
+    return removed;
+  }
 
   async createPending(historyId: string, files: PendingFile[], storageMode: StorageMode): Promise<void> {
-    await this.mutate(historyId, (current) => {
-      if (!current) return {
-        id: historyId,
-        name: recordingLabelFromFilename(files[0]?.filename ?? 'Recording'),
-        createdAt: this.now(),
-        storageMode,
-        status: 'saving',
-        files: files.map((file) => ({ ...file, destination: storageMode, status: 'pending' })),
-      };
+    await this.repository.update(historyId, (current) => {
+      if (current?.deletedAt) return current;
+      if (!current) return createEntry(historyId, files, storageMode, this.now());
       const known = new Set(current.files.map((file) => file.id));
       const additions = files.filter((file) => !known.has(file.id))
         .map((file) => ({ ...file, destination: storageMode, status: 'pending' as const }));
-      return additions.length ? { ...current, files: [...current.files, ...additions] } : current;
+      return additions.length ? { ...current, files: [...current.files, ...additions], status: summarize([...current.files, ...additions]) } : current;
     });
+  }
   }
 
   async localSaveSettled(
@@ -46,61 +65,41 @@ export class RecordingHistoryService {
     settled: DownloadSettledResult,
     error?: string,
   ): Promise<void> {
-    await this.mutate(historyId, (current) => {
-      if (!current) return current;
+    await this.repository.update(historyId, (current) => {
+      if (!current || current.deletedAt) return current;
       const status: RecordingHistoryFile['status'] = settled === 'complete' ? 'available' : 'unavailable';
       const files = current.files.map((file) => file.stream === stream
-        ? { ...file, destination: 'local' as const, status, downloadId, error: error ?? (status === 'unavailable' ? `Download ${settled}` : undefined) }
+        ? {
+            ...file,
+            destination: 'local' as const,
+            status,
+            downloadId,
+            error: error ?? (status === 'unavailable' ? `Download ${settled}` : undefined),
+          }
         : file);
       return { ...current, files, status: summarize(files) };
     });
   }
 
-  async applyTerminalUploadJob(job: UploadJob): Promise<void> {
-    if (job.status === 'uploading' || !job.historyId) return;
-    const historyId = job.historyId;
-    await this.mutate(historyId, (current) => {
-      if (!current) {
-        const files = job.files.map((file) => ({
-          id: `${historyId}:${file.stream}`,
-          stream: file.stream,
-          filename: file.filename,
-          destination: file.status === 'uploaded' ? 'drive' as const : 'local' as const,
-          status: file.status === 'uploaded' ? 'available' as const : 'pending' as const,
-          bytes: file.bytes,
-          driveFileId: file.driveFileId,
-          webViewLink: file.webViewLink,
-        }));
-        return { id: historyId, name: job.label, createdAt: job.startedAt, storageMode: 'drive' as const, status: summarize(files), files };
-      }
-      const files = current.files.map((file) => {
-        const update = job.files.find((candidate) => candidate.stream === file.stream);
-        if (!update) return file;
-        if (update.status === 'uploaded') {
-          return { ...file, destination: 'drive' as const, status: 'available' as const, driveFileId: update.driveFileId, webViewLink: update.webViewLink };
-        }
-        return { ...file, status: 'pending' as const };
-      });
-      return { ...current, storageMode: 'drive', files, status: summarize(files) };
-    });
-  }
-
   async openLocalFile(recordingId: string, fileId: string): Promise<void> {
     const entry = await this.repository.get(recordingId);
-    const file = entry?.files.find((candidate) => candidate.id === fileId);
+    const file = entry && !entry.deletedAt ? entry.files.find((candidate) => candidate.id === fileId) : undefined;
     if (!file?.downloadId) throw new Error('This local file is no longer available');
     await this.openDownload(file.downloadId);
   }
+}
 
-  private mutate(id: string, reduce: (entry: RecordingHistoryEntry | undefined) => RecordingHistoryEntry | undefined): Promise<void> {
-    const previous = this.tails.get(id) ?? Promise.resolve();
-    const next = previous.then(async () => {
-      const updated = reduce(await this.repository.get(id));
-      if (updated) await this.repository.put(updated);
-    });
-    this.tails.set(id, next.catch(() => {}));
-    return next;
-  }
+function createEntry(historyId: string, files: PendingFile[], storageMode: StorageMode, createdAt: number): RecordingHistoryEntry {
+  const nextFiles = files.map((file) => ({ ...file, destination: storageMode, status: 'pending' as const }));
+  return {
+    id: historyId,
+    name: recordingLabelFromFilename(files[0]?.filename ?? 'Recording'),
+    createdAt,
+    storageMode,
+    status: summarize(nextFiles),
+    files: nextFiles,
+  };
+}
 }
 
 function summarize(files: RecordingHistoryFile[]): RecordingHistoryEntry['status'] {

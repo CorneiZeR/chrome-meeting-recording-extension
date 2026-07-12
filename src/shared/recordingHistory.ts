@@ -21,10 +21,19 @@ export type RecordingHistoryEntry = {
   storageMode: StorageMode;
   status: 'saving' | 'complete' | 'partial';
   files: RecordingHistoryFile[];
+  /** Soft deletion prevents delayed upload/recovery work from resurrecting history. */
+  deletedAt?: number;
+};
+
+export type RecordingHistoryCursor = { createdAt: number; id: string };
+
+export type RecordingHistoryPage = {
+  entries: RecordingHistoryEntry[];
+  nextCursor?: RecordingHistoryCursor;
 };
 
 export type RecordingHistoryMessage =
-  | { type: 'LIST_RECORDING_HISTORY' }
+  | { type: 'LIST_RECORDING_HISTORY'; cursor?: RecordingHistoryCursor }
   | { type: 'RENAME_RECORDING_HISTORY'; id: string; name: string }
   | { type: 'REMOVE_RECORDING_HISTORY'; id: string }
   | { type: 'OPEN_RECORDING_HISTORY_FILE'; recordingId: string; fileId: string };
@@ -37,10 +46,92 @@ export function recordingLabelFromFilename(filename: string): string {
   return filename.replace(/-(recording|mic|self-video)\.webm$/, '') || filename;
 }
 
+/** Decodes durable history data before it reaches callers. Invalid rows are skipped. */
+export function normalizeRecordingHistoryEntry(value: unknown): RecordingHistoryEntry | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const candidate = value as Record<string, unknown>;
+  const id = typeof candidate.id === 'string' ? candidate.id.trim() : '';
+  const name = typeof candidate.name === 'string' ? candidate.name.trim() : '';
+  const createdAt = typeof candidate.createdAt === 'number' && Number.isFinite(candidate.createdAt)
+    ? candidate.createdAt
+    : undefined;
+  const storageMode = candidate.storageMode === 'drive' ? 'drive' : candidate.storageMode === 'local' ? 'local' : undefined;
+  if (!id || !name || createdAt == null || !storageMode || !Array.isArray(candidate.files)) return undefined;
+
+  const files = candidate.files
+    .map(normalizeRecordingHistoryFile)
+    .filter((file): file is RecordingHistoryFile => file != null);
+  if (!files.length) return undefined;
+
+  const status = candidate.status === 'complete' || candidate.status === 'partial' || candidate.status === 'saving'
+    ? candidate.status
+    : summarizeHistoryFiles(files);
+  const deletedAt = typeof candidate.deletedAt === 'number' && Number.isFinite(candidate.deletedAt)
+    ? candidate.deletedAt
+    : undefined;
+  return {
+    id,
+    name,
+    ...(candidate.userNamed === true ? { userNamed: true as const } : {}),
+    createdAt,
+    storageMode,
+    status,
+    files,
+    ...(deletedAt != null ? { deletedAt } : {}),
+  };
+}
+
+function normalizeRecordingHistoryFile(value: unknown): RecordingHistoryFile | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const candidate = value as Record<string, unknown>;
+  const id = typeof candidate.id === 'string' ? candidate.id.trim() : '';
+  const filename = typeof candidate.filename === 'string' ? candidate.filename.trim() : '';
+  const stream = candidate.stream === 'mic' || candidate.stream === 'self-video' ? candidate.stream : candidate.stream === 'tab' ? 'tab' : undefined;
+  const destination = candidate.destination === 'drive' ? 'drive' : candidate.destination === 'local' ? 'local' : undefined;
+  const status = candidate.status === 'available' || candidate.status === 'unavailable' || candidate.status === 'pending'
+    ? candidate.status
+    : undefined;
+  if (!id || !filename || !stream || !destination || !status) return undefined;
+  const optionalString = (field: string) => typeof candidate[field] === 'string' && candidate[field].trim()
+    ? candidate[field].trim()
+    : undefined;
+  const bytes = typeof candidate.bytes === 'number' && candidate.bytes >= 0 ? candidate.bytes : undefined;
+  const downloadId = typeof candidate.downloadId === 'number' && Number.isInteger(candidate.downloadId)
+    ? candidate.downloadId
+    : undefined;
+  return {
+    id,
+    stream,
+    filename,
+    destination,
+    status,
+    ...(bytes != null ? { bytes } : {}),
+    ...(downloadId != null ? { downloadId } : {}),
+    ...(optionalString('driveFileId') ? { driveFileId: optionalString('driveFileId') } : {}),
+    ...(optionalString('webViewLink') ? { webViewLink: optionalString('webViewLink') } : {}),
+    ...(optionalString('error') ? { error: optionalString('error') } : {}),
+  };
+}
+
+function summarizeHistoryFiles(files: RecordingHistoryFile[]): RecordingHistoryEntry['status'] {
+  if (files.some((file) => file.status === 'unavailable')) return 'partial';
+  if (files.every((file) => file.status === 'available')) return 'complete';
+  return 'saving';
+}
+
 export function isRecordingHistoryMessage(value: unknown): value is RecordingHistoryMessage {
   if (!value || typeof value !== 'object') return false;
   const message = value as Record<string, unknown>;
-  if (message.type === 'LIST_RECORDING_HISTORY') return true;
+  if (message.type === 'LIST_RECORDING_HISTORY') {
+    const cursor = message.cursor;
+    if (cursor == null) return true;
+    if (typeof cursor !== 'object') return false;
+    const candidate = cursor as Record<string, unknown>;
+    return typeof candidate.createdAt === 'number'
+      && Number.isFinite(candidate.createdAt)
+      && typeof candidate.id === 'string'
+      && candidate.id.length > 0;
+  }
   if (message.type === 'RENAME_RECORDING_HISTORY') {
     return typeof message.id === 'string' && message.id.length > 0 && typeof message.name === 'string';
   }
