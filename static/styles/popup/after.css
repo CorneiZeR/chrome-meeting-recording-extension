@@ -1,404 +1,70 @@
-/* ── Finalizing / per-job upload (spinner + grouped meta list) ── */
-.center {
-  text-align: center;
-  padding: 6px 0 4px;
-}
+/* Finalization and Drive-upload views. */
+.center { padding: 46px 0 54px; text-align: center; }
+.upload-ring { position: relative; width: 28px; height: 28px; margin: 0 auto; }
+.upload-ring-svg { display: block; width: 100%; height: 100%; }
+.upload-ring-track { fill: none; stroke: var(--tile); stroke-width: 3; }
+.upload-ring-arc { fill: none; stroke: var(--accent); stroke-width: 3; stroke-linecap: round; stroke-dasharray: 100; stroke-dashoffset: 100; transform: rotate(-90deg); transform-origin: 50% 50%; transition: stroke-dashoffset .3s ease; }
+.upload-ring-label { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--ink); font-size: 12px; font-weight: 700; }
+.upload-ring[data-mode='indeterminate'] .upload-ring-svg { animation: spin .85s linear infinite; }
+.upload-ring[data-mode='indeterminate'] .upload-ring-arc { stroke-dasharray: 25 100; stroke-dashoffset: 0; transform: none; transition: none; }
+.upload-ring[data-mode='indeterminate'] .upload-ring-label { display: none; }
+.upload-ring[data-mode='done'] { width: 34px; height: 34px; margin-top: 0; border-radius: 50%; background: color-mix(in srgb, var(--ready) 16%, transparent); }
+.upload-ring[data-mode='done'] .upload-ring-svg { display: none; }
+.upload-ring[data-mode='done'] .upload-ring-label { color: var(--ready); font-size: 18px; }
 
-/* Progress ring (indeterminate while finalizing, determinate per upload job).
-   PopupController / SessionTabsView drive `data-mode`, the arc's
-   stroke-dashoffset, and the centre label. */
-.upload-ring {
-  position: relative;
-  width: 46px;
-  height: 46px;
-  margin: 6px auto 0;
-}
+.finalizing-label { margin: 14px 0 6px; color: var(--ink); font-size: 16px; }
+.finalizing-sub { margin: 0; color: var(--ink-3); font-size: 12px; }
+.file-spin { width: 14px; height: 14px; flex: 0 0 auto; border: 2px solid var(--tile); border-top-color: var(--accent); border-radius: 50%; animation: spin .9s linear infinite; }
+.meta-list { margin-top: 15px; border-top: 1px solid var(--divider); }
+.meta-list li { display: flex; align-items: center; justify-content: space-between; min-height: 44px; padding: 0; border-bottom: 1px solid var(--divider); font-size: 12px; }
+.meta-list li span:first-child { color: var(--ink-2); }
+.meta-list li span:last-child { color: var(--ink-3); }
 
-.upload-ring-svg {
-  display: block;
-  width: 100%;
-  height: 100%;
-}
+.up-head { display: flex; align-items: baseline; gap: 8px; margin: 0 0 13px; }
+.up-head-ico { display: none; }
+.up-head-pct { order: -1; flex: none; color: var(--ink); font-size: 38px; font-weight: 700; line-height: 1; letter-spacing: -.04em; }
+.up-head-title { color: var(--ink-3); font-size: 13px; font-weight: 500; }
+.up-bar { height: 6px; margin: 0 0 12px; overflow: hidden; border-radius: 999px; background: var(--tile); }
+.up-bar-fill { height: 100%; border-radius: inherit; background: var(--ink); transition: width .3s ease; }
+.up-meta { min-height: 13px; margin: 0 0 12px; color: var(--ink-4); font: 600 9.5px 'IBM Plex Mono', monospace; letter-spacing: .13em; text-transform: uppercase; }
 
-.upload-ring-track {
-  fill: none;
-  stroke: var(--control-bg);
-  stroke-width: 3;
-}
+#view-upload { padding-top: 0; }
+#view-upload .file-list { margin: 0; }
+#view-upload .file-list li { position: relative; display: flex; align-items: flex-start; min-height: 0; padding: 7px 0; }
+#view-upload .file-ico { display: none; }
+#view-upload .file-main { width: 100%; min-width: 0; }
+#view-upload .file-head { display: flex; align-items: center; justify-content: space-between; min-width: 0; gap: 10px; }
+#view-upload .file-title { min-width: 0; overflow: hidden; color: var(--ink-2); font-size: 12.5px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+#view-upload .file-sub { flex: 0 0 auto; color: var(--ink-3); font: 500 10px 'IBM Plex Mono', monospace; white-space: nowrap; }
+#view-upload .file-status-uploaded .file-sub { color: var(--ready); }
+#view-upload .file-open { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; flex: 0 0 14px; margin: 0; padding: 0; border: 0; background: transparent; color: var(--ink-2); font-size: 14px; line-height: 1; cursor: pointer; }
+.file-progress { height: 5px; margin-top: 7px; overflow: hidden; border-radius: 999px; background: var(--tile); }
+.file-progress span { display: block; height: 100%; border-radius: inherit; background: var(--ink); }
+.file-status-uploaded .file-progress span { background: var(--ready); }
 
-.upload-ring-arc {
-  fill: none;
-  stroke: var(--accent);
-  stroke-width: 3;
-  stroke-linecap: round;
-  stroke-dasharray: 100;
-  stroke-dashoffset: 100;
-  transform: rotate(-90deg);
-  transform-origin: 50% 50%;
-  transition: stroke-dashoffset 0.3s ease;
-}
+.upload-actions { display: flex; flex-direction: column; gap: 8px; margin: 16px -18px -18px; padding: 14px 18px; border-top: 1px solid var(--divider); background: var(--raised); }
+#view-upload:not(:has(#upload-done:not([hidden]))) .upload-actions { margin-top: 5px; }
+#upload-job-cancel { width: 100%; height: 46px; margin: 0; }
+#upload-done { display: grid; grid-template-columns: 34px 1fr; align-items: center; column-gap: 11px; padding: 0 0 21px; text-align: left; }
+#upload-done .done-check { display: flex; align-items: center; justify-content: center; width: 34px; height: 34px; grid-row: span 2; margin: 0; border-radius: 50%; background: color-mix(in srgb, var(--ready) 16%, transparent); }
+#upload-done .done-check svg { width: 18px; height: 18px; }
+#upload-done .finalizing-label { margin: 0; font-size: 15px; text-align: left; }
+#upload-done .upload-job-sub { margin: 2px 0 0; color: var(--ink-3); font: 500 10.5px 'IBM Plex Mono', monospace; text-align: left; }
+#upload-job-open-drive,
+#upload-job-new-recording { width: 100%; height: 48px; margin: 0; }
+#upload-job-open-drive { display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 0; background: var(--ink); color: var(--surface); }
+#upload-job-open-drive svg { display: block; width: 14px; height: 14px; }
+#upload-job-new-recording { height: 44px; }
+.upload-transcript { display: flex; align-items: center; width: 100%; gap: 8px; margin-top: 14px; padding: 11px 13px; border: 0; border-radius: 6px; background: var(--tile); color: var(--ink); font: 600 12.5px 'Space Grotesk', sans-serif; }
+.upload-transcript svg { width: 13px; height: 13px; }
+.upload-transcript span { margin-left: auto; color: var(--ink-3); font: 500 10px 'IBM Plex Mono', monospace; }
+#view-upload:has(#upload-done:not([hidden])) .file-list { border-top: 0; }
+#view-upload:has(#upload-done:not([hidden])) .file-list::before { display: block; padding: 0 0 7px; border-bottom: 1px solid var(--divider); color: var(--ink-4); font: 600 9px 'IBM Plex Mono', monospace; letter-spacing: .13em; content: 'IN GOOGLE DRIVE'; }
+#view-upload:has(#upload-done:not([hidden])) .file-list li { align-items: center; min-height: 44px; padding: 0; }
+#view-upload:has(#upload-done:not([hidden])) .file-list .file-sub,
+#view-upload:has(#upload-done:not([hidden])) .file-status-uploaded .file-sub { color: var(--ink-3); }
 
-.upload-ring-label {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--ink);
-}
-
-.upload-ring[data-mode='indeterminate'] .upload-ring-svg {
-  animation: spin 0.85s linear infinite;
-}
-
-.upload-ring[data-mode='indeterminate'] .upload-ring-arc {
-  stroke-dasharray: 25 100;
-  stroke-dashoffset: 0;
-  transform: none;
-  transition: none;
-}
-
-.upload-ring[data-mode='indeterminate'] .upload-ring-label {
-  display: none;
-}
-
-.upload-ring[data-mode='done'] {
-  width: 48px;
-  height: 48px;
-  margin-top: 4px;
-  border-radius: 50%;
-  background: rgba(63, 185, 80, 0.14);
-}
-
-.upload-ring[data-mode='done'] .upload-ring-svg {
-  display: none;
-}
-
-.upload-ring[data-mode='done'] .upload-ring-label {
-  font-size: 25px;
-  font-weight: 800;
-  color: var(--ready);
-}
-
-.finalizing-label {
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--ink);
-  text-align: center;
-  margin: 12px 0 4px;
-}
-
-.finalizing-sub {
-  margin: 0 0 14px;
-  font-size: 11.5px;
-  color: var(--ink-3);
-  text-align: center;
-}
-
-/* Small per-file "sealing" spinner in the finalizing checklist. */
-.file-spin {
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  border: 2px solid var(--control-bg);
-  border-top-color: var(--accent);
-  animation: spin 0.9s linear infinite;
-  flex-shrink: 0;
-}
-
-.upload-job-sub {
-  margin: -8px 0 13px;
-  font-size: 11.5px;
-  color: var(--ink-3);
-  text-align: center;
-}
-
-/* Grouped file/meta list rendered by SessionTabsView + updateFinalizingView. */
-.meta-list {
-  list-style: none;
-  border: 1px solid var(--list-border);
-  border-radius: 13px;
-  overflow: hidden;
-  background: linear-gradient(180deg, var(--list-top) 0%, var(--list-bottom) 100%);
-}
-
-.meta-list li {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  min-height: 44px;
-  padding: 0 13px;
-  font-size: 12px;
-  border-bottom: 1px solid var(--divider);
-}
-
-.meta-list li:last-child {
-  border-bottom: 0;
-}
-
-.meta-list li span:first-child {
-  color: var(--ink-3);
-}
-
-.meta-list li span:last-child {
-  color: var(--ink-2);
-  font-weight: 600;
-}
-
-.file-list li {
-  justify-content: flex-start;
-  min-height: 46px;
-  gap: 10px;
-}
-
-.file-ico {
-  width: 26px;
-  height: 26px;
-  border-radius: 8px;
-  background: var(--control-bg);
-  color: var(--control-ink);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.file-ico svg {
-  width: 14px;
-  height: 14px;
-}
-
-.file-main {
-  flex: 1;
-  min-width: 0;
-}
-
-.file-title {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--ink-2);
-}
-
-.file-sub {
-  margin-top: 2px;
-  font-size: 10.5px;
-  color: var(--ink-3);
-}
-
-.file-open {
-  border: 0;
-  background: transparent;
-  padding: 0 0 0 8px;
-  cursor: pointer;
-  font-family: inherit;
-  color: var(--accent);
-  font-size: 12px;
-  font-weight: 700;
-}
-
-/* ── Uploading: linear progress bar (design) ── */
-.up-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 6px;
-}
-
-.up-head-ico {
-  width: 14px;
-  height: 14px;
-  flex-shrink: 0;
-}
-
-.up-head-title {
-  flex: 1;
-  font-size: 12.5px;
-  font-weight: 600;
-  color: var(--ink);
-}
-
-.up-head-pct {
-  flex: 0 0 auto;
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--accent-hi);
-}
-
-.up-bar {
-  height: 7px;
-  border-radius: 999px;
-  background: var(--secondary-bg);
-  overflow: hidden;
-  margin-bottom: 5px;
-}
-
-.up-bar-fill {
-  height: 100%;
-  border-radius: 999px;
-  background: linear-gradient(90deg, var(--accent), var(--accent-hi));
-  transition: width 0.3s ease;
-}
-
-.up-meta {
-  font-size: 10.5px;
-  color: var(--ink-3);
-  margin-bottom: 14px;
-  min-height: 13px;
-}
-
-/* Done confirmation check circle (upload view). */
-.done-check {
-  width: 48px;
-  height: 48px;
-  margin: 0 auto 12px;
-  border-radius: 50%;
-  background: rgba(63, 185, 80, 0.14);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.done-check svg {
-  width: 24px;
-  height: 24px;
-}
-
-#upload-job-open-drive {
-  margin-top: 12px;
-  height: 40px;
-  font-size: 12.5px;
-}
-
-/* ── Session tabs (live session + background uploads, ADR-0004) ── */
-.session-tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 14px;
-}
-
-.session-tab {
-  flex: 0 1 auto;
-  min-width: 0;
-  max-width: 100%;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 4px 10px;
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 1.45;
-  color: var(--control-ink);
-  background: var(--secondary-bg);
-  border: 1px solid var(--secondary-border);
-  border-radius: 999px;
-  cursor: pointer;
-}
-
-.session-tab[aria-selected='true'] {
-  color: var(--ink);
-  border-color: var(--accent);
-  background: var(--accent-soft);
-}
-
-.session-tab:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
-
-.session-tab--new {
-  border-style: dashed;
-  color: var(--accent-hi);
-}
-
-.session-tab--new[aria-selected='true'] {
-  border-style: solid;
-}
-
-.session-tab-close {
-  margin-left: 1px;
-  margin-right: -3px;
-  padding: 0 3px;
-  border-radius: 50%;
-  color: var(--ink-4);
-  font-size: 13px;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.session-tab-close:hover {
-  color: var(--ink);
-  background: var(--control-bg-strong);
-}
-
-.session-tab--fading {
-  opacity: 0;
-  transition: opacity 0.28s ease;
-}
-
-.session-tab-label {
-  min-width: 0;
-  max-width: 92px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.session-tab-pct {
-  flex: 0 0 auto;
-  color: #6f9bef;
-}
-
-.session-tab[data-status='completed'] .session-tab-pct {
-  color: #3fae6b;
-}
-
-.session-tab[data-status='failed'] .session-tab-pct,
-.session-tab[data-status='partial'] .session-tab-pct {
-  color: #e0a23a;
-}
-
-/* ── Retry CTA (failed / partial upload job) ── */
-#upload-job-retry {
-  width: 100%;
-  margin-top: 14px;
-}
-
-/* ── Shared status / toast line ── */
-#recording-status {
-  min-height: 16px;
-  font-size: 11px;
-  color: var(--warn);
-  font-weight: 500;
-  text-align: center;
-  padding: 8px 0 0;
-}
-
-#recording-status:empty {
-  display: none;
-}
-
-@keyframes mrPulse {
-
-  0%,
-  100% {
-    opacity: 1;
-    transform: scale(1);
-  }
-
-  50% {
-    opacity: 0.35;
-    transform: scale(0.82);
-  }
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
+#view-finalizing .meta-list { display: none; }
+body:has(#view-finalizing:not([hidden])) .session-tabs { display: none !important; }
+#recording-status { min-height: 16px; padding: 8px 0 0; color: var(--warn-label); font-size: 10.5px; text-align: center; }
+#recording-status:empty { display: none; }
