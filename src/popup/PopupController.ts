@@ -320,6 +320,7 @@ export class PopupController {
     }
 
     if (this.el.micModeLabel) this.el.micModeLabel.textContent = micMode.toUpperCase();
+    this.updateDeviceLabel(this.el.micDeviceLabel, session?.capturedDevices?.microphone, 'microphone', session?.phase);
     this.micMuted = session?.micMuted === true;
     this.renderTogglePill(btn, this.micMuted, '[data-mute-label]');
   }
@@ -373,11 +374,25 @@ export class PopupController {
     }
 
     this.cameraMuted = session?.cameraMuted === true;
+    this.updateDeviceLabel(this.el.cameraDeviceLabel, session?.capturedDevices?.camera, 'camera', session?.phase);
     const cameraMode = document.getElementById('camera-mode-label');
     if (cameraMode) {
       cameraMode.textContent = '720P';
     }
     this.renderTogglePill(btn, this.cameraMuted, '[data-camera-label]');
+  }
+
+  /** Renders the label Chrome exposed for the active track, without claiming it was explicitly chosen. */
+  private updateDeviceLabel(
+    el: HTMLElement | null,
+    label: string | undefined,
+    device: 'microphone' | 'camera',
+    phase: RecordingPhase | undefined,
+  ): void {
+    if (!el) return;
+    const text = label || (phase === 'starting' ? 'Connecting…' : `${device === 'microphone' ? 'Microphone' : 'Camera'} unavailable`);
+    el.textContent = text;
+    el.title = label ? `Current ${device}: ${label}` : text;
   }
 
   private wirePause() {

@@ -4,7 +4,7 @@
  * Core type definitions shared across all recorder task files and the engine facade.
  */
 
-import type { CapturedTabResolution, RecordingPhase, RecordingStream } from '../../shared/recording';
+import type { CapturedTabResolution, RecordingCaptureDevices, RecordingPhase, RecordingStream } from '../../shared/recording';
 
 export type EngineState = Exclude<RecordingPhase, 'failed'>;
 
@@ -45,6 +45,8 @@ export type RecorderEngineDeps = {
   warn: (...a: any[]) => void;
   error: (...a: any[]) => void;
   notifyPhase: (phase: RecordingPhase, extra?: { tabResolution?: CapturedTabResolution }) => void;
+  /** Reports labels from the exact microphone/camera tracks Chrome opened for this run. */
+  reportCaptureDevices?: (devices: RecordingCaptureDevices) => void;
   reportWarning?: (warning: string) => void;
   openTarget?: (filename: string, stream?: RecordingStream) => Promise<StorageTarget>;
   /**

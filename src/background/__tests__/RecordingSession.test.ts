@@ -177,6 +177,24 @@ describe('RecordingSession state machine', () => {
   });
 
   describe('applyOffscreenPhase', () => {
+    it('retains delivered microphone and camera labels for the active run', () => {
+      session.start(RUN_CONFIG, { targetTabId: 42 });
+
+      const starting = session.applyOffscreenPhase({
+        phase: 'starting',
+        capturedDevices: { microphone: 'Shure MV7' },
+      });
+      expect(starting.capturedDevices).toEqual({ microphone: 'Shure MV7' });
+
+      const recording = session.applyOffscreenPhase({
+        phase: 'recording',
+        capturedDevices: { microphone: 'Shure MV7', camera: 'Logitech Brio' },
+      });
+      expect(recording.capturedDevices).toEqual({ microphone: 'Shure MV7', camera: 'Logitech Brio' });
+      expect(session.markStopping().capturedDevices).toEqual({ microphone: 'Shure MV7', camera: 'Logitech Brio' });
+      expect(session.applyOffscreenPhase({ phase: 'idle' }).capturedDevices).toBeUndefined();
+    });
+
     it('finalizes through markIdle on an offscreen idle report, surfacing the upload summary', () => {
       session.start(RUN_CONFIG, { targetTabId: 42 });
       session.applyOffscreenPhase({ phase: 'recording' });

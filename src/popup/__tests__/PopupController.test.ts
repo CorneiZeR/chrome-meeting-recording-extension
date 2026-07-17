@@ -92,9 +92,11 @@ describe('PopupController', () => {
       chipStorageLabel: document.createElement('span'),
       micRow: document.createElement('div'),
       micModeLabel: document.createElement('span'),
+      micDeviceLabel: document.createElement('span'),
       micMeterBars: Array.from({ length: 7 }, () => document.createElement('span')),
       muteMicBtn: pill('data-mute-label'),
       cameraRow: document.createElement('div'),
+      cameraDeviceLabel: document.createElement('span'),
       hideCameraBtn: pill('data-camera-label'),
       pauseBtn: pill('data-pause-label'),
       stopBtn: document.createElement('button'),
@@ -1058,6 +1060,19 @@ describe('PopupController', () => {
   });
 
   describe('mic mute toggle (recording-view row)', () => {
+    it('shows the labels of the microphone and camera Chrome opened for this recording', async () => {
+      mockSendMessage.mockResolvedValueOnce(recordingSession({
+        capturedDevices: { microphone: 'Shure MV7', camera: 'Logitech Brio' },
+      }));
+      controller.init();
+      await new Promise(process.nextTick);
+
+      expect(elements.micDeviceLabel.textContent).toBe('Shure MV7');
+      expect(elements.micDeviceLabel.title).toBe('Current microphone: Shure MV7');
+      expect(elements.cameraDeviceLabel.textContent).toBe('Logitech Brio');
+      expect(elements.cameraDeviceLabel.title).toBe('Current camera: Logitech Brio');
+    });
+
     it('shows the mic row and mutes the mic on its pill', async () => {
       mockSendMessage.mockResolvedValueOnce(recordingSession());
       controller.init();

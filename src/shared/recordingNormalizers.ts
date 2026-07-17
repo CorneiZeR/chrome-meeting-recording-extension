@@ -20,6 +20,7 @@ import {
 } from './recordingConstants';
 import type {
   CapturedTabResolution,
+  RecordingCaptureDevices,
   DesiredState,
   MicMode,
   ObservedState,
@@ -293,6 +294,18 @@ function decomposeLegacyPhase(phase: RecordingPhase): { desired: DesiredState; o
   }
 }
 
+/** Keeps only non-empty input-device labels from a persisted active session. */
+function normalizeCapturedDevices(value: unknown): RecordingCaptureDevices | undefined {
+  if (!isRecord(value)) return undefined;
+  const microphone = typeof value.microphone === 'string' && value.microphone.trim()
+    ? value.microphone.trim()
+    : undefined;
+  const camera = typeof value.camera === 'string' && value.camera.trim()
+    ? value.camera.trim()
+    : undefined;
+  return microphone || camera ? { microphone, camera } : undefined;
+}
+
 /** Creates the canonical idle session snapshot used as the safe fallback state. */
 export function createIdleSession(now = Date.now()): RecordingSessionSnapshot {
   return {
@@ -362,6 +375,7 @@ export function normalizeSessionSnapshot(value: unknown): RecordingSessionSnapsh
           ? candidate.runningSince
           : undefined,
     tabResolution: phase === 'idle' ? undefined : normalizeTabResolution(candidate.tabResolution),
+    capturedDevices: phase === 'idle' ? undefined : normalizeCapturedDevices(candidate.capturedDevices),
     updatedAt: typeof candidate.updatedAt === 'number' ? candidate.updatedAt : Date.now(),
   };
 }

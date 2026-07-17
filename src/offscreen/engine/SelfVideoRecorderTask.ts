@@ -42,6 +42,7 @@ export type SelfVideoRecorderCallbacks = {
     stop: () => void;
     setMuted: (muted: boolean) => void;
     setPaused: (paused: boolean) => void;
+    track?: MediaStreamTrack;
   }) => void;
 };
 
@@ -197,7 +198,12 @@ async function startWiredSelfVideoRecorder(
   // is actually defined for the active path: `enabled = false` on the camera track
   // when recording it directly, or a black-frame fill inside the resize pump when
   // rerouted through insertable streams (where `enabled` propagation is unspecified).
-  callbacks.onStreamAcquired?.({ stop: stopSelfVideoStream, setMuted: enforced.setMuted, setPaused: enforced.setPaused });
+  callbacks.onStreamAcquired?.({
+    stop: stopSelfVideoStream,
+    setMuted: enforced.setMuted,
+    setPaused: enforced.setPaused,
+    track,
+  });
 
   let started = false;
   let actualStartTimeMs = 0;

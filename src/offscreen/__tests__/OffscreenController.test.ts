@@ -46,6 +46,32 @@ describe('OffscreenController', () => {
       controller.pushState('idle'); // idle never rebaselines
       expect(sampler.markActivePhaseStart).toHaveBeenCalledTimes(1);
     });
+
+    it('includes actual input-device labels in active phase updates and clears them at idle', () => {
+      const { controller, postMessage } = makeController();
+      controller.onStartRequested({ storageMode: 'local', micMode: 'separate', recordSelfVideo: true }, 'local', 3, 'history-1');
+      controller.pushState('starting');
+      postMessage.mockClear();
+
+      controller.reportCaptureDevices({ microphone: 'Shure MV7' });
+      expect(lastState(postMessage)).toEqual({
+        type: 'OFFSCREEN_STATE',
+        phase: 'starting',
+        epoch: 3,
+        capturedDevices: { microphone: 'Shure MV7' },
+      });
+
+      controller.reportCaptureDevices({ camera: 'Logitech Brio' });
+      expect(lastState(postMessage)).toEqual({
+        type: 'OFFSCREEN_STATE',
+        phase: 'starting',
+        epoch: 3,
+        capturedDevices: { microphone: 'Shure MV7', camera: 'Logitech Brio' },
+      });
+
+      controller.pushState('idle');
+      expect(lastState(postMessage)).toEqual({ type: 'OFFSCREEN_STATE', phase: 'idle', epoch: 3 });
+    });
   });
 
   describe('reportWarning', () => {

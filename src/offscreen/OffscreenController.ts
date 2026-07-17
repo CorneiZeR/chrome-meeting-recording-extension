@@ -14,6 +14,7 @@ import type { OffscreenPhaseUpdate } from '../shared/protocol';
 import {
   DEFAULT_RECORDING_RUN_CONFIG,
   type RecordingPhase,
+  type RecordingCaptureDevices,
   type RecordingArtifactContext,
   type RecordingRunConfig,
   type StorageMode,
@@ -53,6 +54,8 @@ export class OffscreenController {
   private warnings: string[] = [];
   private storageMode: StorageMode = DEFAULT_RECORDING_RUN_CONFIG.storageMode;
   private historyId: string | undefined;
+  /** Device labels from the tracks opened for the active run. */
+  private capturedDevices: RecordingCaptureDevices | undefined;
   /** Run epoch from the latest OFFSCREEN_START; echoed in every OFFSCREEN_STATE (ADR-0003). */
   private epoch = 0;
   private finalizeRunPromise: Promise<void> | null = null;
@@ -90,6 +93,13 @@ export class OffscreenController {
     this.storageMode = storageMode;
     this.epoch = epoch;
     this.historyId = historyId || undefined;
+    this.capturedDevices = undefined;
+  };
+
+  /** Stores a delivered input-device label and re-broadcasts the active phase. */
+  reportCaptureDevices = (devices: RecordingCaptureDevices): void => {
+    this.capturedDevices = { ...this.capturedDevices, ...devices };
+    if (this.phase !== 'idle') this.pushState(this.phase);
   };
 
   onStopRequested = (): void => { void this.finalize(); };
@@ -104,11 +114,13 @@ export class OffscreenController {
       this.deps.sampler.markActivePhaseStart(this.now());
     }
     this.phase = phase;
+    if (phase === 'idle') this.capturedDevices = undefined;
     this.deps.postMessage({
       type: 'OFFSCREEN_STATE',
       phase,
       epoch: this.epoch,
       ...(this.warnings.length ? { warnings: this.warnings } : {}),
+      ...(this.capturedDevices ? { capturedDevices: this.capturedDevices } : {}),
       ...(extra ?? {}),
     });
   };

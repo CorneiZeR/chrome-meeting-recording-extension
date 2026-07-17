@@ -55,6 +55,12 @@ export type CapturedTabResolution = {
   height?: number;
 };
 
+/** Human-readable labels of the exact input devices Chrome delivered to this run. */
+export type RecordingCaptureDevices = {
+  microphone?: string;
+  camera?: string;
+};
+
 export type UploadSummaryEntry = {
   stream: RecordingStream;
   filename: string;
@@ -194,6 +200,8 @@ export type RecordingSessionSnapshot = {
    * expose dimensions or after the session returns to idle.
    */
   tabResolution?: CapturedTabResolution;
+  /** Actual microphone/camera labels reported by the live MediaStream tracks. */
+  capturedDevices?: RecordingCaptureDevices;
   /**
    * Background Drive-upload jobs that have been detached from the recording
    * session (ADR-0004). Phase-independent — a job keeps running (and stays on the
@@ -226,6 +234,8 @@ export type RecordingStatusView = {
   runningSince?: number;
   /** Real captured tab dimensions; see {@link RecordingSessionSnapshot.tabResolution}. */
   tabResolution?: CapturedTabResolution;
+  /** Actual microphone/camera labels; see {@link RecordingSessionSnapshot.capturedDevices}. */
+  capturedDevices?: RecordingCaptureDevices;
   /** Background Drive-upload jobs; see {@link RecordingSessionSnapshot.uploadJobs}. */
   uploadJobs?: UploadJob[];
   updatedAt: number;

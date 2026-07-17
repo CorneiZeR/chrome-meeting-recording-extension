@@ -8,7 +8,7 @@
 
 import { captureTabStreamFromId } from './RecorderCapture';
 import { buildRecorderRuntimeSettingsSnapshot, type RecorderRuntimeSettingsSnapshot } from '../shared/settings';
-import { DEFAULT_RECORDING_RUN_CONFIG, isStoppablePhase, type CapturedTabResolution, type MicMode, type RecordingRunConfig, type RecordingStream } from '../shared/recording';
+import { DEFAULT_RECORDING_RUN_CONFIG, isStoppablePhase, type CapturedTabResolution, type MicMode, type RecordingCaptureDevices, type RecordingRunConfig, type RecordingStream } from '../shared/recording';
 import { describeMediaError } from './RecorderSupport';
 import type { MixedAudioMixer } from './RecorderAudio';
 import type { AudioPlaybackBridge } from './RecorderAudio';
@@ -235,6 +235,7 @@ export class RecorderEngine {
 
     if (options.micMode === 'mixed' || options.micMode === 'separate') {
       this.micStream = await acquireMicStream(runId, () => this.runId, () => this.state, options.micMode, recorderSettings, this.deps);
+      this.reportCapturedDevice('microphone', this.micStream.getAudioTracks()[0]);
       this.applyMicMuteState();
     }
 
@@ -294,6 +295,7 @@ export class RecorderEngine {
           onStopped: (artifact) => { this.selfVideoSetMuted = null; this.selfVideoSetPaused = null; this.onTrackStopped('self-video', artifact); },
           onWarning: (msg) => this.deps.reportWarning?.(msg),
           onStreamAcquired: (controls) => {
+            this.reportCapturedDevice('camera', controls.track);
             stopStream = controls.stop;
             this.selfVideoSetMuted = controls.setMuted;
             this.selfVideoSetPaused = controls.setPaused;
@@ -403,6 +405,12 @@ export class RecorderEngine {
   private onRecorderStarted() {
     if (this.activeRecorders === 0) this.deps.notifyPhase('recording', { tabResolution: this.tabResolution });
     this.activeRecorders += 1;
+  }
+
+  /** Publishes the label Chrome exposed for the exact live MediaStreamTrack it selected. */
+  private reportCapturedDevice(device: keyof RecordingCaptureDevices, track?: MediaStreamTrack): void {
+    const label = track?.label?.trim() || 'Device name unavailable';
+    this.deps.reportCaptureDevices?.({ [device]: label });
   }
 
   private onRecorderStopped() {

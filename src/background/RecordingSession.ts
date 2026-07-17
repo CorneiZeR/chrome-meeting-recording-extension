@@ -120,6 +120,7 @@ export class RecordingSession {
       cameraMuted: this.snapshot.cameraMuted,
       paused: this.snapshot.paused,
       tabResolution: this.snapshot.tabResolution,
+      capturedDevices: this.snapshot.capturedDevices,
       ...this.nextTimer(phase, now),
       epoch: this.snapshot.epoch,
       uploadJobs: this.snapshot.uploadJobs,
@@ -169,6 +170,7 @@ export class RecordingSession {
       cameraMuted: this.snapshot.cameraMuted,
       paused: this.snapshot.paused,
       tabResolution: this.snapshot.tabResolution,
+      capturedDevices: this.snapshot.capturedDevices,
       recordedMs: this.elapsedRecordedMs(now),
       runningSince: undefined,
       uploadJobs: this.snapshot.uploadJobs,
@@ -253,7 +255,7 @@ export class RecordingSession {
    * code, so it is trusted as-is — no defensive normalization.
    */
   applyOffscreenPhase(update: OffscreenPhaseUpdate): RecordingSessionSnapshot {
-    const { phase: reported, error, uploadSummary, warnings, tabResolution } = update;
+    const { phase: reported, error, uploadSummary, warnings, tabResolution, capturedDevices } = update;
 
     // A fenced same-run `idle` is a genuine end-of-run — the offscreen finalized,
     // whether we commanded the stop or capture ended on its own — so finalize and
@@ -288,6 +290,7 @@ export class RecordingSession {
       cameraMuted: this.snapshot.cameraMuted,
       paused: this.snapshot.paused,
       tabResolution: tabResolution ?? this.snapshot.tabResolution,
+      capturedDevices: capturedDevices ?? this.snapshot.capturedDevices,
       ...this.nextTimer(phase, now),
       uploadSummary: undefined,
       epoch: this.snapshot.epoch,

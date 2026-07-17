@@ -219,6 +219,7 @@ const engine = new RecorderEngine({
   warn: L.warn,
   error: L.error,
   notifyPhase: controller.pushState,
+  reportCaptureDevices: controller.reportCaptureDevices,
   reportWarning: controller.reportWarning,
   // Storage gave out mid-recording: route through the same finalize pipeline a
   // user/background stop uses, so the already-persisted prefix is sealed and

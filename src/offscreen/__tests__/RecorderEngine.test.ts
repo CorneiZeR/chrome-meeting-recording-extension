@@ -186,6 +186,7 @@ describe('RecorderEngine', () => {
       warn: jest.fn(),
       error: jest.fn(),
       notifyPhase: jest.fn(),
+      reportCaptureDevices: jest.fn(),
       reportWarning: jest.fn(),
       enableMicMix: false,
     };
@@ -270,6 +271,26 @@ describe('RecorderEngine', () => {
       tabResolution: { width: 1920, height: 1080 },
     });
 
+    await engine.stop();
+  });
+
+  it('reports the actual microphone label from the acquired audio track', async () => {
+    const baseStream = makeStream({
+      audioTracks: [makeTrack('audio', { suppressLocalAudioPlayback: false })],
+      videoTracks: [makeTrack('video', { width: 1920, height: 1080 })],
+    });
+    const microphone = { ...makeTrack('audio'), label: 'Shure MV7' };
+
+    (navigator.mediaDevices.getUserMedia as jest.Mock).mockImplementation(async (constraints: MediaStreamConstraints) => {
+      if ((constraints.video as any)?.mandatory?.chromeMediaSource) return baseStream;
+      if (constraints.audio && !constraints.video) return makeStream({ audioTracks: [microphone] });
+      throw new Error('Unexpected getUserMedia call');
+    });
+    deps.openTarget = jest.fn(async (filename: string, mimeType?: string) => new BufferedTarget(filename, mimeType || 'video/webm'));
+
+    await engine.startFromStreamId('stream-id', makeRunConfig({ micMode: 'separate' }));
+
+    expect(deps.reportCaptureDevices).toHaveBeenCalledWith({ microphone: 'Shure MV7' });
     await engine.stop();
   });
 

@@ -13,6 +13,7 @@
 
 export type {
   CapturedTabResolution,
+  RecordingCaptureDevices,
   DesiredState,
   MicMode,
   ObservedState,
