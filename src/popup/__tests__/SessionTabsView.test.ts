@@ -159,6 +159,7 @@ describe('SessionTabsView', () => {
     expect(el.uploadJobFiles!.textContent).toContain('meet-camera.webm');
     expect(el.uploadJobFiles!.textContent).toContain('92 MB');
     expect(el.uploadJobFiles!.querySelectorAll('.file-open')).toHaveLength(3);
+    expect(el.uploadJobFiles!.querySelectorAll('.file-head .file-open')).toHaveLength(3);
     expect(el.uploadJobOpenDrive!.hidden).toBe(false);
     expect(el.uploadJobRetry!.hidden).toBe(true);
 
@@ -183,7 +184,7 @@ describe('SessionTabsView', () => {
     expect(el.uploadDone!.hidden).toBe(true);
     expect(el.uploadJobPct!.textContent).toBe('42%');
     expect(el.uploadBarFill!.style.width).toBe('42%');
-    expect(el.uploadJobMeta!.textContent).toBe('1 of 2 files · 90 MB');
+    expect(el.uploadJobMeta!.textContent).toBe('2 files');
     expect(el.uploadJobOpenDrive!.hidden).toBe(true);
   });
 

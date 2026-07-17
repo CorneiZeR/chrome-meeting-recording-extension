@@ -40,6 +40,13 @@ describe('ConfirmDialog', () => {
     expect(overlay().hidden).toBe(true);
   });
 
+  it('updates the message while a prompt remains open', () => {
+    void dialog.ask(OPTIONS);
+    dialog.updateMessage('You will lose 0:28 of recording.');
+
+    expect(document.querySelector('.modal-message')?.textContent).toBe('You will lose 0:28 of recording.');
+  });
+
   it('resolves false on cancel, Escape, and a backdrop click', async () => {
     const cancelled = dialog.ask(OPTIONS);
     cancelBtn().click();

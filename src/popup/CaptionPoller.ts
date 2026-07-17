@@ -49,7 +49,7 @@ export class CaptionPoller {
     } catch {
       active = false;
     }
-    if (this.labelEl) this.labelEl.textContent = active ? 'Transcript on' : 'Transcript off';
+    if (this.labelEl) this.labelEl.textContent = active ? 'Transcribing' : 'Transcript off';
     if (this.chipEl) this.chipEl.classList.toggle('off', !active);
   }
 }

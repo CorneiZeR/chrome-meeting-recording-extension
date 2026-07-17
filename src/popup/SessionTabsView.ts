@@ -75,11 +75,6 @@ function uploadFileStatusText(file: UploadJobFile): string {
   return 'Uploading…';
 }
 
-/** Human label for a recording stream in an upload job's file list. */
-function streamLabel(stream: RecordingStream): string {
-  return stream === 'tab' ? 'Screen / Tab' : stream === 'mic' ? 'Microphone' : 'Camera';
-}
-
 function fileCountText(count: number): string {
   return `${count} ${count === 1 ? 'file' : 'files'}`;
 }
@@ -144,6 +139,7 @@ export class SessionTabsView {
     this.el.uploadJobRetry?.addEventListener('click', () => void this.retryUploadJob());
     this.el.uploadJobCancel?.addEventListener('click', () => void this.cancelUploadJob());
     this.el.uploadJobOpenDrive?.addEventListener('click', () => void this.openUploadJobFolder());
+    document.getElementById('upload-job-new-recording')?.addEventListener('click', () => this.selectTab('live'));
     // "Upload in background" just returns to the live/Setup tab; the upload keeps
     // running (ADR-0004), so backgrounding it is exactly selecting the live tab.
     this.wireKeyboard();
@@ -344,12 +340,15 @@ export class SessionTabsView {
     if (this.el.uploadDone) this.el.uploadDone.hidden = !completed;
 
     // In-progress bar (the head text also carries failed/partial outcomes).
-    if (this.el.uploadJobLabel) this.el.uploadJobLabel.textContent = uploadJobStatusText(job);
+    if (this.el.uploadJobLabel) {
+      this.el.uploadJobLabel.textContent = job.status === 'uploading'
+        ? 'to Google Drive'
+        : uploadJobStatusText(job);
+    }
     if (this.el.uploadJobPct) this.el.uploadJobPct.textContent = `${percent}%`;
     if (this.el.uploadBarFill) this.el.uploadBarFill.style.width = `${percent}%`;
     if (this.el.uploadJobMeta) {
-      const uploaded = job.files.filter((f) => f.status === 'uploaded').length;
-      this.el.uploadJobMeta.textContent = `${uploaded} of ${fileCountText(job.files.length)}${sizeSuffix}`;
+      this.el.uploadJobMeta.textContent = fileCountText(job.files.length);
     }
 
     // Saved-confirmation subline (shown in the done block).
@@ -360,6 +359,7 @@ export class SessionTabsView {
       const frag = document.createDocumentFragment();
       for (const file of job.files) {
         const li = document.createElement('li');
+        li.classList.add(`file-status-${file.status}`);
         li.appendChild(buildStreamIcon(file.stream));
         const main = document.createElement('div');
         main.className = 'file-main';
@@ -368,20 +368,38 @@ export class SessionTabsView {
         name.textContent = file.filename;
         const status = document.createElement('div');
         status.className = 'file-sub';
-        const parts = [streamLabel(file.stream), uploadFileStatusText(file)];
-        if (typeof file.bytes === 'number') parts.push(formatBytes(file.bytes));
-        status.textContent = parts.join(' · ');
-        main.append(name, status);
-        li.appendChild(main);
+        if (file.status === 'uploaded' && completed) {
+          status.textContent = typeof file.bytes === 'number' ? formatBytes(file.bytes) : 'DONE';
+        } else if (file.status === 'uploaded') {
+          status.textContent = `✓ DONE${typeof file.bytes === 'number' ? ` · ${formatBytes(file.bytes)}` : ''}`;
+        } else if (typeof file.bytes === 'number') {
+          status.textContent = `${formatBytes(Math.round(file.bytes * job.progress))} / ${formatBytes(file.bytes)}`;
+        } else {
+          status.textContent = uploadFileStatusText(file);
+        }
+        const head = document.createElement('div');
+        head.className = 'file-head';
+        head.append(name, status);
+        main.append(head);
+        if (job.status === 'uploading' || file.status === 'uploaded') {
+          const progress = document.createElement('div');
+          progress.className = 'file-progress';
+          const fill = document.createElement('span');
+          const fraction = file.status === 'uploaded' ? 1 : job.progress;
+          fill.style.width = `${Math.round(Math.min(1, Math.max(0, fraction)) * 100)}%`;
+          progress.append(fill);
+          main.append(progress);
+        }
         const openUrl = driveFileUrl(file);
         if (openUrl && file.status === 'uploaded') {
           const open = document.createElement('button');
           open.type = 'button';
           open.className = 'file-open';
-          open.textContent = 'Open';
+          open.textContent = '↗';
           open.addEventListener('click', () => void createExternalTab(openUrl));
-          li.appendChild(open);
+          head.appendChild(open);
         }
+        li.appendChild(main);
         frag.appendChild(li);
       }
       this.el.uploadJobFiles.replaceChildren(frag);
@@ -402,6 +420,10 @@ export class SessionTabsView {
       this.el.uploadJobOpenDrive.hidden = !(completed && job.folderWebViewLink);
       this.el.uploadJobOpenDrive.dataset.folderUrl = completed ? job.folderWebViewLink ?? '' : '';
     }
+    const newRecording = document.getElementById('upload-job-new-recording') as HTMLButtonElement | null;
+    if (newRecording) newRecording.hidden = !completed;
+    const transcript = document.getElementById('upload-job-transcript') as HTMLButtonElement | null;
+    if (transcript) transcript.hidden = !completed;
   }
 
   private async openUploadJobFolder(): Promise<void> {

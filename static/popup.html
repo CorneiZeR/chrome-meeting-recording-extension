@@ -9,29 +9,27 @@
     <link rel="stylesheet" href="styles/popup/recording.css" />
     <link rel="stylesheet" href="styles/popup/after.css" />
     <link rel="stylesheet" href="styles/popup/dialog.css" />
+    <link rel="stylesheet" href="styles/popup/redesign.css" />
   </head>
 
   <body>
     <!-- Persistent wordmark header (full on idle, compact on every other state). -->
     <div id="pp-header" class="pp-header">
       <div class="brand">
-        <span class="brand-mark">
-          <svg width="10" height="10" viewBox="0 0 12 12" fill="#fff" aria-hidden="true">
-            <circle cx="6" cy="6" r="4" />
-          </svg>
-        </span>
+        <span class="brand-mark" title="Ready to record" aria-hidden="true"></span>
         <span class="brand-name">Meet Recorder</span>
       </div>
-      <button id="open-settings" class="icon-button" type="button" title="Open recorder settings"
-        aria-label="Open recorder settings">
-        <svg viewBox="0 0 20 20" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-          <path fill-rule="evenodd"
-            d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z"
-            clip-rule="evenodd" />
-        </svg>
-      </button>
-      <button id="open-recordings" class="icon-button" type="button" title="Open recording history"
-        aria-label="Open recording history">▤</button>
+      <div class="menu-wrap">
+        <span id="header-phase" class="header-phase" aria-live="polite" hidden></span>
+        <button id="open-menu" class="icon-button" type="button" title="Menu" aria-label="Open menu" aria-haspopup="menu" aria-expanded="false"><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><circle cx="8" cy="3" r="1.4"/><circle cx="8" cy="8" r="1.4"/><circle cx="8" cy="13" r="1.4"/></svg></button>
+        <div id="popup-menu" class="popup-menu" role="menu" hidden>
+          <button id="discard-rec" class="menu-row menu-row-danger" type="button" role="menuitem" hidden><svg class="menu-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 4.5h10M6.4 4.5V3.3a1 1 0 011-1h1.2a1 1 0 011 1v1.2M4.8 4.5l.5 8a1 1 0 001 .95h3.4a1 1 0 001-.95l.5-8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>Discard recording</button>
+          <button id="open-recordings" class="menu-row" type="button" role="menuitem"><svg class="menu-icon menu-icon-warm" viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="2.5" y="5" width="9" height="7" rx="1.5"/><path d="M5.2 3.2h6.3a2 2 0 012 2v5.3"/></svg>Recordings <span id="recordings-count" class="recordings-count" hidden>0</span></button>
+          <div class="menu-divider"></div>
+          <button id="open-diagnostics" class="menu-row" type="button" role="menuitem" hidden><svg class="menu-icon menu-icon-warm" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 1.5v2M8 12.5v2M14.5 8h-2M3.5 8h-2M2.5 8a5.5 5.5 0 1011 0 5.5 5.5 0 00-11 0z" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>Diagnostics <span class="menu-badge">DEV</span></button>
+          <button id="open-settings" class="menu-row" type="button" role="menuitem"><svg class="menu-icon menu-icon-warm" viewBox="0 0 20 20" aria-hidden="true"><path fill-rule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd"/></svg>Settings</button>
+        </div>
+      </div>
     </div>
 
     <!-- ════════ SESSION TABS (live session + background uploads, ADR-0004) ════════ -->
@@ -39,59 +37,56 @@
 
     <!-- ════════ CONFIG VIEW (idle / failed) ════════ -->
     <section id="view-config" class="view">
-      <div class="ready">
-        <span class="ready-dot"></span>
-        <span class="ready-text">Ready — records tab, mic &amp; camera</span>
-      </div>
-
-      <div class="glist">
-        <div class="grow">
-          <span class="grow-label">Microphone</span>
-          <select id="mic-mode" class="grow-select" aria-label="Microphone mode">
-            <option value="off">Off</option>
-            <option value="mixed">Mixed into tab</option>
-            <option value="separate" selected>Separate file</option>
-          </select>
-        </div>
-        <div class="grow-div"></div>
-        <div class="grow">
-          <span class="grow-label">Camera</span>
-          <label class="cam-toggle" title="Record my camera as a separate file">
-            <input type="checkbox" id="record-self-video" checked />
-            <span class="cam-pill">
-              <span class="cam-pill-text">Separate</span>
-              <span class="cam-pill-knob" aria-hidden="true">
-                <svg class="on-check" viewBox="0 0 18 18" fill="none">
-                  <path d="M3.5 9.5l3.5 3.5 7.5-8" stroke="#4c7fe3" stroke-width="2.4" stroke-linecap="round"
-                    stroke-linejoin="round" />
-                </svg>
-                <svg class="off-x" viewBox="0 0 18 18" fill="none">
-                  <path d="M5 5l8 8M13 5l-8 8" stroke="#9aa0ab" stroke-width="2" stroke-linecap="round" />
-                </svg>
-              </span>
-            </span>
-          </label>
-        </div>
-        <div class="grow-div"></div>
+      <div class="section-eyebrow">CAPTURE SETUP</div>
+      <div class="glist setup-list">
         <div class="grow">
           <span class="grow-label">Save to</span>
-          <select id="storage-mode" class="grow-select" aria-label="Storage destination">
+          <select id="storage-mode" class="grow-select native-select" aria-label="Storage destination" tabindex="-1">
             <option value="local">Local disk</option>
             <option value="drive" selected>Google Drive</option>
           </select>
+          <button id="storage-mode-trigger" class="select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="storage-mode-options"><svg class="select-drive-icon" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4.5 13a3 3 0 01-.3-5.99A4 4 0 0112 6.5a2.75 2.75 0 01-.25 5.5H4.5z"/></svg><span data-select-label>Google Drive</span></button>
+          <div id="storage-mode-options" class="select-options" role="listbox" aria-label="Storage destination" hidden>
+            <button type="button" role="option" data-value="drive" aria-selected="true"><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4.5 13a3 3 0 01-.3-5.99A4 4 0 0112 6.5a2.75 2.75 0 01-.25 5.5H4.5z"/></svg>Google Drive <svg class="select-check" width="12" height="10" viewBox="0 0 14 11" fill="none" aria-hidden="true"><path d="M1.5 6l3.5 3.5L12.5 1.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+            <button type="button" role="option" data-value="local" aria-selected="false"><svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 4.2A1.2 1.2 0 013.2 3h3l1.4 1.6h4.2A1.2 1.2 0 0113 5.8v5.4a1.2 1.2 0 01-1.2 1.2H3.2A1.2 1.2 0 012 11.2z" stroke="currentColor" stroke-width="1.4"/></svg>Local downloads <svg class="select-check" width="12" height="10" viewBox="0 0 14 11" fill="none" aria-hidden="true"><path d="M1.5 6l3.5 3.5L12.5 1.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+            <span class="select-divider" aria-hidden="true"></span>
+            <button type="button" class="select-add" aria-label="Add destination">＋ Add destination…</button>
+          </div>
         </div>
-        <div class="grow-div"></div>
-        <div class="grow">
-          <span class="grow-label">Tab quality</span>
-          <div id="tab-content-type" class="segmented" role="radiogroup" aria-label="Tab content type">
-            <label class="seg">
-              <input type="radio" name="tab-content-type" value="screen" checked />
-              <span>Screen</span>
+        <button id="toggle-capture-setup" class="capture-summary" type="button" aria-expanded="false" aria-controls="capture-details">
+          <span><strong>Camera, mic &amp; quality</strong><small id="capture-summary-value">CAM ON · MIC SEPARATE · SCREEN</small></span>
+          <span class="capture-chevron" aria-hidden="true">⌄</span>
+        </button>
+        <div id="capture-details" hidden>
+          <div class="grow grow-detail">
+            <span class="grow-label">Microphone</span>
+            <select id="mic-mode" class="grow-select native-select" aria-label="Microphone mode" tabindex="-1">
+              <option value="off">Off</option>
+              <option value="mixed">Mixed into tab</option>
+              <option value="separate" selected>Separate file</option>
+            </select>
+            <button id="mic-mode-trigger" class="select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="mic-mode-options">Separate file</button>
+            <div id="mic-mode-options" class="select-options" role="listbox" aria-label="Microphone mode" hidden>
+              <button type="button" role="option" data-value="separate" aria-selected="true">Separate file</button>
+              <button type="button" role="option" data-value="mixed" aria-selected="false">Mixed into tab</button>
+              <button type="button" role="option" data-value="off" aria-selected="false">Off</button>
+            </div>
+          </div>
+          <div class="grow-div"></div>
+          <div class="grow grow-detail">
+            <span class="grow-label">Camera</span>
+            <label class="cam-toggle" title="Record my camera as a separate file">
+              <input type="checkbox" id="record-self-video" checked />
+              <span class="cam-pill"><span class="cam-pill-off">Off</span><span class="cam-pill-text">On</span></span>
             </label>
-            <label class="seg">
-              <input type="radio" name="tab-content-type" value="video" />
-              <span>Video</span>
-            </label>
+          </div>
+          <div class="grow-div"></div>
+          <div class="grow grow-detail">
+            <span class="grow-label">Tab quality</span>
+            <div id="tab-content-type" class="segmented" role="radiogroup" aria-label="Tab content type">
+              <label class="seg"><input type="radio" name="tab-content-type" value="screen" checked /><span>Screen</span></label>
+              <label class="seg"><input type="radio" name="tab-content-type" value="video" /><span>Video</span></label>
+            </div>
           </div>
         </div>
       </div>
@@ -118,27 +113,48 @@
         Enable Microphone
       </button>
 
-      <button id="start-rec" class="btn btn-primary start-cta">
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
-          <path d="M3 2l7 4-7 4V2z" />
-        </svg>
-        Start Recording
-      </button>
-
-      <div class="foot">
-        <button id="save" class="link-btn" type="button" title="Download the meeting transcript">
-          <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-            <path d="M8 12l-4.5-4.5 1.06-1.06L7 8.88V2h2v6.88l2.44-2.44 1.06 1.06L8 12z" />
-            <path d="M2 13h12v1.5H2z" />
+      <div class="setup-footer">
+        <button id="start-rec" class="btn btn-primary start-cta">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
+            <path d="M3 2l7 4-7 4V2z" />
           </svg>
-          Transcript
+          Start Recording
         </button>
-        <button id="open-diagnostics" class="link-btn dim" type="button" hidden>Diagnostics</button>
+
+        <div class="foot">
+          <button id="save" class="link-btn" type="button" title="Download the meeting transcript">
+            <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+              <path d="M8 12l-4.5-4.5 1.06-1.06L7 8.88V2h2v6.88l2.44-2.44 1.06 1.06L8 12z" />
+              <path d="M2 13h12v1.5H2z" />
+            </svg>
+            Transcript
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <section id="view-recordings" class="view recordings-popup" hidden>
+      <div class="section-eyebrow">RECENT</div>
+      <div id="popup-recordings-list" class="popup-recordings-list"></div>
+      <p id="popup-recordings-empty" class="popup-recordings-empty" hidden>No recordings yet.</p>
+      <div class="setup-footer recordings-footer">
+        <button id="new-recording" class="btn btn-primary start-cta" type="button">New recording</button>
+        <button id="see-all-recordings" class="btn btn-secondary" type="button">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+          See all recordings
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M6 4h6v6M11.5 4.5L5 11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
       </div>
     </section>
 
     <!-- ════════ PERMISSION VIEW (pre-record camera interstitial) ════════ -->
     <section id="view-permission" class="view" hidden>
+      <div class="permission-hero">
+        <span class="permission-hero-mark" aria-hidden="true"><span class="permission-mark-text">!</span><svg viewBox="0 0 16 16" fill="none"><path d="M8 2.3 14 13H2L8 2.3Z" stroke="currentColor" stroke-width="1.25" stroke-linejoin="round"/><path d="M8 5.7v3.8M8 11.4h.01" stroke="currentColor" stroke-width="1.25" stroke-linecap="round"/></svg></span>
+        <h2 id="permission-title">Allow mic &amp; camera</h2>
+        <p id="permission-detail">Meet Recorder needs access to capture this tab. Your browser will ask once.</p>
+      </div>
+      <div class="section-eyebrow permission-eyebrow">PERMISSIONS</div>
       <div class="glist">
         <div class="grow grow-tall">
           <span class="perm-ico ready" data-perm-mic-icon>
@@ -164,16 +180,13 @@
         </div>
       </div>
 
-      <p id="permission-copy" class="permission-copy">
-        Meet Recorder needs camera access to record it as a separate file. Your streams never leave the browser until
-        you save.
-      </p>
+      <p id="permission-copy" class="permission-copy"></p>
 
       <button id="grant-permission" class="btn btn-primary btn-full" type="button">
-        Grant camera access
+        Allow access
       </button>
       <button id="permission-continue" class="btn btn-secondary btn-full" type="button">
-        Continue without camera
+        Not now
       </button>
     </section>
 
@@ -189,9 +202,12 @@
 
       <!-- Legacy status chips (hidden): valid targets for the caption poll and the
            storage-chip update; their info now lives in the source rows below. -->
-      <div class="chips" hidden>
-        <span id="chip-transcript" class="chip off"><span id="chip-transcript-label">Transcript off</span></span>
-        <span id="chip-storage" class="chip"><span id="chip-storage-label">Google Drive</span></span>
+      <div class="chips">
+        <span id="chip-transcript" class="chip off"><span class="chip-state-dot" aria-hidden="true"></span><span id="chip-transcript-label">Transcript off</span></span>
+        <span id="chip-storage" class="chip"><svg class="chip-storage-icon" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M5 14a3.2 3.2 0 01-.4-6.37A4 4 0 0112.3 8.2 3 3 0 0113 14H5z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg><span id="chip-storage-label">Google Drive</span></span>
+      </div>
+      <div id="paused-meta" class="paused-meta" hidden>
+        <span><svg viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M5 14a3.2 3.2 0 01-.4-6.37A4 4 0 0112.3 8.2 3 3 0 0113 14H5z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>Google Drive</span><span>·</span><span><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 10a2 2 0 002-2V4a2 2 0 00-4 0v4a2 2 0 002 2z"/><path d="M4.5 8a.5.5 0 00-1 0 4.5 4.5 0 009 0 .5.5 0 00-1 0 3.5 3.5 0 01-7 0zM7.5 13.5v1.5h1v-1.5a.5.5 0 00-1 0z"/></svg>Separate</span><span>·</span><span><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M2 4.5A1.5 1.5 0 013.5 3h6A1.5 1.5 0 0111 4.5v1.2l3.2-1.8a.5.5 0 01.8.4v7.4a.5.5 0 01-.8.4L11 10.3v1.2A1.5 1.5 0 019.5 13h-6A1.5 1.5 0 012 11.5v-7z"/></svg>720p</span>
       </div>
 
       <div class="glist src-list">
@@ -232,7 +248,7 @@
                 d="M2 4.5A1.5 1.5 0 013.5 3h6A1.5 1.5 0 0111 4.5v1.2l3.2-1.8a.5.5 0 01.8.4v7.4a.5.5 0 01-.8.4L11 10.3v1.2A1.5 1.5 0 019.5 13h-6A1.5 1.5 0 012 11.5v-7z" />
             </svg></span>
           <div class="srow-main">
-            <div class="srow-title">Camera <span id="camera-mode-label" class="srow-mode">· separate</span></div>
+            <div class="srow-title">Camera <span id="camera-mode-label" class="srow-mode">720P</span></div>
           </div>
           <button id="hide-camera" class="switch on" type="button" aria-pressed="false"
             title="Hide the camera (records black frames) without stopping the recording">
@@ -255,9 +271,9 @@
           <svg width="11" height="11" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
             <rect x="1" y="1" width="10" height="10" rx="2" />
           </svg>
-          Stop
+          <span data-stop-label>Finish Recording</span>
         </button>
-        <button id="discard-rec" class="btn btn-discard" type="button"
+        <button class="btn btn-discard" type="button" hidden
           title="Discard this recording and permanently delete its captured media">
           Discard
         </button>
@@ -306,18 +322,24 @@
         <div id="upload-job-sub" class="upload-job-sub"></div>
       </div>
       <ul id="upload-job-files" class="meta-list file-list"></ul>
-      <button id="upload-job-cancel" class="btn btn-secondary btn-full" type="button" hidden>
-        Cancel upload and download locally
-      </button>
-      <button id="upload-job-open-drive" class="btn btn-primary btn-full" type="button" hidden>
-        Open in Drive
-      </button>
-      <button id="upload-job-retry" class="btn btn-primary" type="button" hidden>
-        <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-          <path d="M13.65 2.35A8 8 0 108 16v-2a6 6 0 114.24-1.76L10 10h6V4l-2.35-1.65z" />
-        </svg>
-        Retry upload
-      </button>
+      <button id="upload-job-transcript" class="upload-transcript" type="button" hidden><svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 2v7m0 0 2.5-2.5M8 9 5.5 6.5M3 11.5v1A1.5 1.5 0 0 0 4.5 14h7a1.5 1.5 0 0 0 1.5-1.5v-1" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"/></svg><strong>Transcript</strong><span>VTT</span></button>
+      <div class="upload-actions">
+        <button id="upload-job-cancel" class="btn btn-secondary btn-full" type="button" hidden>
+          Cancel upload and download locally
+        </button>
+        <button id="upload-job-open-drive" class="btn btn-primary btn-full" type="button" hidden>
+          <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4.5 13a3 3 0 01-.3-5.99A4 4 0 0112 6.5a2.75 2.75 0 01-.25 5.5H4.5z"/></svg>Open in Google Drive
+        </button>
+        <button id="upload-job-new-recording" class="btn btn-secondary btn-full" type="button" hidden>
+          New recording
+        </button>
+        <button id="upload-job-retry" class="btn btn-primary" type="button" hidden>
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+            <path d="M13.65 2.35A8 8 0 108 16v-2a6 6 0 114.24-1.76L10 10h6V4l-2.35-1.65z" />
+          </svg>
+          Retry upload
+        </button>
+      </div>
     </section>
 
     <!-- Shared status / toast line -->

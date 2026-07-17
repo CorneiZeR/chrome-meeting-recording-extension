@@ -323,7 +323,7 @@ describe('PopupController', () => {
       expect(elements.uploadBarFill.style.width).toBe('42%');
       expect(elements.uploadProgress.hidden).toBe(false);
       expect(elements.uploadDone.hidden).toBe(true);
-      expect(elements.uploadJobLabel.textContent).toContain('Uploading to Google Drive');
+      expect(elements.uploadJobLabel.textContent).toBe('to Google Drive');
       expect(elements.uploadJobFiles.children).toHaveLength(1);
       // An in-flight upload tab has no × close affordance.
       expect(elements.sessionTabs.querySelector('.session-tab-close')).toBeNull();
@@ -404,7 +404,7 @@ describe('PopupController', () => {
       // Live (last) is selected; ArrowRight wraps to the first (job) tab and activates it.
       elements.sessionTabs.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
       expect(elements.viewUpload.hidden).toBe(false);
-      expect(elements.uploadJobLabel.textContent).toContain('Uploading to Google Drive');
+      expect(elements.uploadJobLabel.textContent).toBe('to Google Drive');
     });
 
     it('dismisses a focused finished tab with the Delete key', async () => {
@@ -795,7 +795,7 @@ describe('PopupController', () => {
     await flush();
 
     const message = document.querySelector('.modal-message')?.textContent ?? '';
-    expect(message).toContain('permanently deleted');
+    expect(message).toContain("You'll lose");
     expect(chrome.runtime.sendMessage).not.toHaveBeenCalled();
 
     document.querySelector<HTMLButtonElement>('[data-confirm-cancel]')!.click();
@@ -1066,7 +1066,7 @@ describe('PopupController', () => {
       const pill = elements.muteMicBtn as HTMLButtonElement;
       const label = pill.querySelector('[data-mute-label]') as HTMLElement;
       expect(elements.micRow.hidden).toBe(false);
-      expect(elements.micModeLabel.textContent).toBe('· separate');
+      expect(elements.micModeLabel.textContent).toBe('SEPARATE');
       expect(label.textContent).toBe('on');
       expect(pill.classList.contains('on')).toBe(true);
       expect(pill.getAttribute('aria-pressed')).toBe('false');
@@ -1151,7 +1151,7 @@ describe('PopupController', () => {
       await new Promise(process.nextTick);
 
       expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ type: 'SET_PAUSED', paused: true });
-      expect(label.textContent).toBe('Resume');
+      expect(label.textContent).toBe('Resume Recording');
       expect(pill.getAttribute('aria-pressed')).toBe('true');
       expect(pill.classList.contains('btn-primary')).toBe(true);
       expect(pill.classList.contains('btn-danger')).toBe(false);
@@ -1223,7 +1223,7 @@ describe('PopupController', () => {
       await new Promise(process.nextTick);
 
       expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(101, { type: 'GET_CAPTION_STATE' });
-      expect(elements.chipTranscriptLabel.textContent).toBe('Transcript on');
+      expect(elements.chipTranscriptLabel.textContent).toBe('Transcribing');
       expect(elements.chipTranscript.classList.contains('off')).toBe(false);
     });
   });

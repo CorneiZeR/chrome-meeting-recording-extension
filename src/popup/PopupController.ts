@@ -38,7 +38,8 @@ import { createRuntimeTab, queryActiveTab } from '../platform/chrome/tabs';
 import { sendToBackground, sendToContent } from '../shared/messages';
 import type { BgToPopup, CommandResult } from '../shared/protocol';
 import { isDevBuild, isTestRuntime } from '../shared/build';
-import type { RecordingPhase, RecordingRunConfig, RecordingStatusView } from '../shared/recording';
+import type { RecordingPhase, RecordingRunConfig, RecordingStatusView, UploadJob } from '../shared/recording';
+import type { RecordingHistoryEntry } from '../shared/recordingHistory';
 
 /** Joins labels as "a", "a & b", or "a, b & c". */
 function humanJoin(parts: string[]): string {
@@ -88,6 +89,8 @@ export class PopupController {
   private micMuted = false;
   private cameraMuted = false;
   private paused = false;
+  /** A local history screen must not be overwritten by the async initial state refresh. */
+  private showingRecordings = false;
   private pendingPermissionStart: PendingPermissionStart | null = null;
   /** Last phase/session, replayed when a tab is clicked without a new background push. */
   private lastPhase: RecordingPhase = 'idle';
@@ -128,7 +131,9 @@ export class PopupController {
     this.wireSettingsLink();
     this.wireRecordingsLink();
     this.wireDiagnosticsLink();
+    document.getElementById('upload-job-transcript')?.addEventListener('click', () => this.el.saveBtn?.click());
     this.sessionTabs.wireEvents();
+    void this.refreshRecordingsCount();
     void this.state.refreshInitialState();
   }
 
@@ -153,7 +158,13 @@ export class PopupController {
     this.lastPhase = phase;
     this.lastSession = session;
     writeCachedPhase(phase);
+    // `showRecordingsView` awaits the history query. The initial status refresh can
+    // resolve in that gap; retaining the explicit local view prevents setup and
+    // history from rendering together (and makes the popup scroll under its footer).
+    if (this.showingRecordings) return;
     this.sessionTabs.sync(phase, session);
+    if (this.el.discardBtn) this.el.discardBtn.hidden = phase !== 'starting' && phase !== 'recording';
+    this.updateHeaderPhase(phase, session?.paused === true);
 
     // An upload tab is selected: show only that job's upload view and stop the
     // live-recording intervals (we're not on the recording view).
@@ -161,12 +172,14 @@ export class PopupController {
     if (job) {
       this.timer.stop();
       this.captionPoller.stop();
+      if (this.el.sessionTabs) this.el.sessionTabs.hidden = true;
       if (this.el.viewConfig) this.el.viewConfig.hidden = true;
       if (this.el.viewPermission) this.el.viewPermission.hidden = true;
       if (this.el.viewRecording) this.el.viewRecording.hidden = true;
       if (this.el.viewFinalizing) this.el.viewFinalizing.hidden = true;
       if (this.el.viewUpload) this.el.viewUpload.hidden = false;
       this.setHeaderCompact(true);
+      this.updateHeaderUpload(job.status === 'completed');
       this.sessionTabs.renderJobView(job);
       this.persistentStatus = this.state.buildPersistentStatus(phase, session?.paused === true);
       if (!this.statusTimer) setStatusText(this.el, this.persistentStatus);
@@ -306,7 +319,7 @@ export class PopupController {
       return;
     }
 
-    if (this.el.micModeLabel) this.el.micModeLabel.textContent = `· ${micMode}`;
+    if (this.el.micModeLabel) this.el.micModeLabel.textContent = micMode.toUpperCase();
     this.micMuted = session?.micMuted === true;
     this.renderTogglePill(btn, this.micMuted, '[data-mute-label]');
   }
@@ -360,6 +373,10 @@ export class PopupController {
     }
 
     this.cameraMuted = session?.cameraMuted === true;
+    const cameraMode = document.getElementById('camera-mode-label');
+    if (cameraMode) {
+      cameraMode.textContent = '720P';
+    }
     this.renderTogglePill(btn, this.cameraMuted, '[data-camera-label]');
   }
 
@@ -400,12 +417,51 @@ export class PopupController {
     btn.classList.toggle('btn-secondary', !this.paused);
     btn.classList.remove('btn-danger');
     const label = btn.querySelector<HTMLElement>('[data-pause-label]') ?? btn;
-    label.textContent = this.paused ? 'Resume' : 'Pause';
+    label.textContent = this.paused ? 'Resume Recording' : 'Pause';
+    const icon = btn.querySelector('svg');
+    if (icon) {
+      icon.innerHTML = this.paused
+        ? '<path d="M3 2l7 4-7 4V2z"/>'
+        : '<rect x="1" y="1" width="3.4" height="12" rx="1"/><rect x="7.6" y="1" width="3.4" height="12" rx="1"/>';
+      icon.setAttribute('viewBox', this.paused ? '0 0 12 12' : '0 0 12 14');
+    }
+    document.querySelector('.controls')?.classList.toggle('paused', this.paused);
+    const stopLabel = this.el.stopBtn?.querySelector<HTMLElement>('[data-stop-label]');
+    if (stopLabel) stopLabel.textContent = this.paused ? 'Stop & Save' : 'Finish Recording';
+    document.getElementById('paused-meta')?.toggleAttribute('hidden', !this.paused);
   }
 
   /** Full wordmark header on the idle/config screen; compact header everywhere else. */
   private setHeaderCompact(compact: boolean): void {
     this.el.ppHeader?.classList.toggle('compact', compact);
+  }
+
+  /** Mirrors the reference design's compact status label beside the wordmark. */
+  private updateHeaderPhase(phase: RecordingPhase, paused: boolean): void {
+    const label = document.getElementById('header-phase');
+    if (!label) return;
+    const active = phase === 'starting' || phase === 'recording' || phase === 'stopping';
+    // Sealing is deliberately quiet: the finalizing screen owns the status, while
+    // detached Drive jobs retain the explicit SAVING header via updateHeaderUpload.
+    label.hidden = !active || phase === 'stopping';
+    label.textContent = paused ? 'PAUSED' : phase === 'stopping' ? 'SAVING' : 'REC';
+    label.dataset.tone = paused ? 'paused' : 'recording';
+    this.el.ppHeader?.classList.toggle('recording-active', active && !paused);
+    this.el.ppHeader?.classList.toggle('recording-paused', active && paused);
+    this.el.ppHeader?.classList.remove('recording-saved');
+    this.el.ppHeader?.classList.remove('permission-blocked');
+  }
+
+  /** Gives detached Drive jobs their own visual lifecycle labels. */
+  private updateHeaderUpload(completed: boolean): void {
+    const label = document.getElementById('header-phase');
+    if (!label) return;
+    label.hidden = false;
+    label.textContent = completed ? 'SAVED' : 'SAVING';
+    label.dataset.tone = completed ? 'saved' : 'uploading';
+    this.el.ppHeader?.classList.toggle('recording-active', !completed);
+    this.el.ppHeader?.classList.remove('recording-paused');
+    this.el.ppHeader?.classList.toggle('recording-saved', completed);
   }
 
   /** Sets the recording banner label + paused styling for the current phase. */
@@ -486,9 +542,104 @@ export class PopupController {
 
   private wireRecordingsLink() {
     if (!this.el.openRecordingsBtn) return;
-    this.el.openRecordingsBtn.addEventListener('click', async () => {
-      await createRuntimeTab('recordings.html');
-    });
+    this.el.openRecordingsBtn.addEventListener('click', () => void this.showRecordingsView());
+    document.getElementById('new-recording')?.addEventListener('click', () => this.hideRecordingsView());
+    document.getElementById('see-all-recordings')?.addEventListener('click', () => void createRuntimeTab('recordings.html'));
+  }
+
+  private async showRecordingsView(): Promise<void> {
+    const recordings = document.getElementById('view-recordings');
+    if (!recordings) return;
+    this.showingRecordings = true;
+    if (this.el.sessionTabs) this.el.sessionTabs.hidden = true;
+    for (const id of ['view-config', 'view-permission', 'view-recording', 'view-finalizing', 'view-upload']) {
+      const view = document.getElementById(id);
+      if (view) view.hidden = true;
+    }
+    recordings.hidden = false;
+    this.setHeaderCompact(false);
+    const title = this.el.ppHeader?.querySelector<HTMLElement>('.brand-name');
+    if (title) title.textContent = 'Recordings';
+    const list = document.getElementById('popup-recordings-list');
+    const empty = document.getElementById('popup-recordings-empty');
+    if (!list || !empty) return;
+    list.replaceChildren();
+    try {
+      const response = await sendToBackground({ type: 'LIST_RECORDING_HISTORY' });
+      const uploads = (this.lastSession?.uploadJobs ?? []).filter((job) => job.status === 'uploading');
+      for (const job of uploads) list.appendChild(this.renderPopupUpload(job));
+      const entries = response.ok ? response.entries.slice(0, Math.max(0, 3 - uploads.length)) : [];
+      empty.hidden = uploads.length > 0 || entries.length > 0;
+      for (const entry of entries) list.appendChild(this.renderPopupRecording(entry));
+    } catch {
+      empty.hidden = false;
+    }
+  }
+
+  private async refreshRecordingsCount(): Promise<void> {
+    const count = document.getElementById('recordings-count');
+    if (!count) return;
+    try {
+      const response = await sendToBackground({ type: 'LIST_RECORDING_HISTORY' });
+      if (!response.ok) return;
+      count.textContent = String(response.entries.length);
+      count.hidden = false;
+    } catch {
+      count.hidden = true;
+    }
+  }
+
+  private hideRecordingsView(): void {
+    const recordings = document.getElementById('view-recordings');
+    if (recordings) recordings.hidden = true;
+    this.showingRecordings = false;
+    const title = this.el.ppHeader?.querySelector<HTMLElement>('.brand-name');
+    if (title) title.textContent = 'Meet Recorder';
+    this.onPhaseChange(this.lastPhase, this.lastSession);
+  }
+
+  private renderPopupRecording(entry: RecordingHistoryEntry): HTMLElement {
+    const row = document.createElement('div');
+    row.className = 'popup-recording-row';
+    const copy = document.createElement('div');
+    const title = document.createElement('div');
+    title.className = 'popup-recording-title';
+    title.textContent = entry.name;
+    const meta = document.createElement('div');
+    meta.className = 'popup-recording-meta';
+    meta.textContent = `${entry.files.length} ${entry.files.length === 1 ? 'FILE' : 'FILES'} · ${new Date(entry.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }).toUpperCase()}`;
+    copy.append(title, meta);
+    const open = document.createElement('button');
+    open.type = 'button';
+    open.className = 'popup-recording-open';
+    open.setAttribute('aria-label', `Open ${entry.name}`);
+    // This is the supplied design's source icon, kept as a real SVG control rather
+    // than the word “Open”, so popup history rows retain their compact 52px rhythm.
+    open.innerHTML = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M6 4h6v6M11.5 4.5L5 11" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    open.addEventListener('click', () => void createRuntimeTab('recordings.html'));
+    row.append(copy, open);
+    return row;
+  }
+
+  /** Active uploads are first-class entries in the compact Recordings list. */
+  private renderPopupUpload(job: UploadJob): HTMLElement {
+    const row = document.createElement('div');
+    row.className = 'popup-recording-upload';
+    const head = document.createElement('div');
+    head.className = 'popup-recording-upload-head';
+    const title = document.createElement('span');
+    title.textContent = job.label;
+    const status = document.createElement('span');
+    const percent = Math.round(Math.min(1, Math.max(0, job.progress)) * 100);
+    status.textContent = `UPLOADING ${percent}%`;
+    head.append(title, status);
+    const track = document.createElement('div');
+    track.className = 'popup-recording-upload-track';
+    const fill = document.createElement('span');
+    fill.style.width = `${percent}%`;
+    track.append(fill);
+    row.append(head, track);
+    return row;
   }
 
   private wireDiagnosticsLink() {
@@ -555,15 +706,37 @@ export class PopupController {
     const discardBtn = this.el.discardBtn;
     if (!discardBtn) return;
     discardBtn.addEventListener('click', async () => {
-      if (this.inFlight || this.confirmDialog.isOpen()) return;
-      const confirmed = await this.confirmDialog.ask({
+      if (this.confirmDialog.isOpen()) return;
+      const menu = document.getElementById('popup-menu');
+      const menuButton = document.getElementById('open-menu');
+      if (menu) menu.hidden = true;
+      menuButton?.setAttribute('aria-expanded', 'false');
+      const message = () => buildDiscardConfirmMessage(this.el.recTimer?.textContent ?? undefined);
+      const confirmation = this.confirmDialog.ask({
         title: DISCARD_CONFIRM_TEXT.title,
-        message: buildDiscardConfirmMessage(this.el.recTimer?.textContent ?? undefined),
+        message: message(),
         confirmLabel: DISCARD_CONFIRM_TEXT.confirmLabel,
         cancelLabel: DISCARD_CONFIRM_TEXT.cancelLabel,
         tone: 'danger',
       });
+      // Recording continues behind the prompt; keep the amount to be discarded
+      // truthful as the popup's live timer advances.
+      const messageTimer = setInterval(() => this.confirmDialog.updateMessage(message()), 1_000);
+      const confirmed = await confirmation;
+      clearInterval(messageTimer);
       if (!confirmed) return;
+
+      // A recording can become visible a few milliseconds before the start RPC
+      // settles. Keep Discard responsive in that gap and then serialize the actual
+      // destructive command behind the start command instead of dropping the click.
+      const deadline = Date.now() + 3_000;
+      while (this.inFlight && Date.now() < deadline) {
+        await new Promise<void>((resolve) => setTimeout(resolve, 25));
+      }
+      if (this.inFlight) {
+        this.toast('Recording is still starting. Please try Discard again.');
+        return;
+      }
 
       await this.executeCommand(
         discardBtn,
@@ -650,8 +823,7 @@ export class PopupController {
     if (this.el.startBtn) this.el.startBtn.disabled = false;
 
     if (this.el.permissionCopy) {
-      this.el.permissionCopy.textContent =
-        'Meet Recorder needs camera access to record it as a separate file. Your streams never leave the browser until you save.';
+      this.el.permissionCopy.textContent = '';
     }
 
     const [micState, resolvedCameraState] = await Promise.all([
@@ -660,6 +832,20 @@ export class PopupController {
     ]);
     this.renderPermissionState('mic', micState);
     this.renderPermissionState('camera', resolvedCameraState);
+    const blocked = micState === 'denied' || resolvedCameraState === 'denied';
+    this.el.viewPermission?.classList.toggle('permission-blocked', blocked);
+    this.el.ppHeader?.classList.toggle('permission-blocked', blocked);
+    const title = document.getElementById('permission-title');
+    const detail = document.getElementById('permission-detail');
+    if (title) title.textContent = blocked ? 'Mic & camera blocked' : 'Allow mic & camera';
+    if (detail) detail.textContent = blocked
+      ? 'The browser is denying access on this site.'
+      : 'Meet Recorder needs access to capture this tab. Your browser will ask once.';
+    if (this.el.permissionCopy) this.el.permissionCopy.textContent = blocked
+      ? 'Click the lock icon in the address bar → allow Microphone and Camera → reload.'
+      : '';
+    if (this.el.grantPermissionBtn) this.el.grantPermissionBtn.textContent = blocked ? 'Open site settings' : 'Allow access';
+    if (this.el.permissionContinueBtn) this.el.permissionContinueBtn.textContent = blocked ? 'Try again' : 'Not now';
     setStatusText(this.el, '');
   }
 

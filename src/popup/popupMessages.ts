@@ -75,9 +75,9 @@ export const DISCARD_CONFIRM_TEXT = {
  * to lose — and is omitted when the timer has not produced one yet.
  */
 export function buildDiscardConfirmMessage(elapsed?: string): string {
-  const captured = elapsed?.trim() ? ` (${elapsed.trim()})` : '';
-  return `Recording stops now and everything captured so far${captured} is permanently deleted. `
-    + 'No file is saved locally or uploaded to Drive, and this cannot be undone.';
+  const raw = elapsed?.trim() || '0:00';
+  const captured = raw.replace(/^00:/, '').replace(/^0(?=\d:)/, '');
+  return `You'll lose ${captured} of video, audio, and the live transcript. This can't be undone.`;
 }
 
 /** Returns the user-facing mic-permission error for the active microphone mode. */

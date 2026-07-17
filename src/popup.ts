@@ -23,6 +23,101 @@ initializeExtensionTheme();
 
 const byId = <T extends HTMLElement>(id: string) => document.getElementById(id) as T | null;
 
+const menuButton = byId<HTMLButtonElement>('open-menu');
+const menu = byId<HTMLElement>('popup-menu');
+if (menuButton && menu) {
+  const closeMenu = () => { menu.hidden = true; menuButton.setAttribute('aria-expanded', 'false'); };
+  menuButton.addEventListener('click', () => {
+    const open = menu.hidden;
+    menu.hidden = !open;
+    menuButton.setAttribute('aria-expanded', String(open));
+  });
+  document.addEventListener('click', (event) => {
+    if (!menu.hidden && !menu.contains(event.target as Node) && !menuButton.contains(event.target as Node)) closeMenu();
+  });
+  menu.addEventListener('click', closeMenu);
+  document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeMenu(); });
+}
+
+/** Accessible custom select surfaces keep the native controls as the data source. */
+function wireSelect(selectId: string, triggerId: string, optionsId: string): void {
+  const select = byId<HTMLSelectElement>(selectId);
+  const trigger = byId<HTMLButtonElement>(triggerId);
+  const options = byId<HTMLElement>(optionsId);
+  if (!select || !trigger || !options) return;
+  const close = () => {
+    options.hidden = true;
+    trigger.setAttribute('aria-expanded', 'false');
+  };
+  const sync = () => {
+    const option = select.selectedOptions[0];
+    const label = trigger.querySelector<HTMLElement>('[data-select-label]');
+    if (label) label.textContent = option?.textContent ?? '';
+    else trigger.textContent = option?.textContent ?? '';
+    // The destination trigger mirrors the selected option's real icon instead
+    // of permanently showing the Drive cloud after Local disk is selected.
+    if (selectId === 'storage-mode') {
+      const selectedIcon = options.querySelector<SVGElement>(`[role="option"][data-value="${select.value}"] svg`);
+      const currentIcon = trigger.querySelector<SVGElement>('svg');
+      if (selectedIcon && currentIcon) {
+        const icon = selectedIcon.cloneNode(true) as SVGElement;
+        icon.classList.add('select-storage-icon');
+        currentIcon.replaceWith(icon);
+      }
+    }
+    options.querySelectorAll<HTMLButtonElement>('[role="option"]').forEach((item) => {
+      item.setAttribute('aria-selected', String(item.dataset.value === select.value));
+    });
+  };
+  trigger.addEventListener('click', () => {
+    const willOpen = options.hidden;
+    document.querySelectorAll<HTMLElement>('.select-options').forEach((other) => {
+      if (other === options) return;
+      other.hidden = true;
+      document.querySelector<HTMLButtonElement>(`[aria-controls="${other.id}"]`)?.setAttribute('aria-expanded', 'false');
+    });
+    options.hidden = !willOpen;
+    trigger.setAttribute('aria-expanded', String(willOpen));
+  });
+  options.addEventListener('click', (event) => {
+    const option = (event.target as HTMLElement).closest<HTMLButtonElement>('[role="option"]');
+    if (!option?.dataset.value) return;
+    select.value = option.dataset.value;
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    sync();
+    close();
+    trigger.focus();
+  });
+  select.addEventListener('change', sync);
+  document.addEventListener('keydown', (event) => { if (event.key === 'Escape') close(); });
+  document.addEventListener('click', (event) => {
+    if (!options.hidden && !options.contains(event.target as Node) && !trigger.contains(event.target as Node)) close();
+  });
+  sync();
+}
+
+wireSelect('storage-mode', 'storage-mode-trigger', 'storage-mode-options');
+wireSelect('mic-mode', 'mic-mode-trigger', 'mic-mode-options');
+
+const captureToggle = byId<HTMLButtonElement>('toggle-capture-setup');
+const captureDetails = byId<HTMLElement>('capture-details');
+const captureSummary = byId<HTMLElement>('capture-summary-value');
+const syncCaptureSummary = () => {
+  const mic = byId<HTMLSelectElement>('mic-mode')?.value ?? 'separate';
+  const cameraOn = byId<HTMLInputElement>('record-self-video')?.checked ?? false;
+  if (captureSummary) captureSummary.textContent = `CAM ${cameraOn ? 'ON' : 'OFF'} · MIC ${mic.toUpperCase()} · 720P`;
+};
+if (captureToggle && captureDetails) {
+  captureToggle.addEventListener('click', () => {
+    const expanded = captureToggle.getAttribute('aria-expanded') === 'true';
+    captureToggle.setAttribute('aria-expanded', String(!expanded));
+    captureDetails.hidden = expanded;
+  });
+  ['mic-mode', 'record-self-video'].forEach((id) => byId<HTMLInputElement | HTMLSelectElement>(id)?.addEventListener('change', syncCaptureSummary));
+  document.querySelectorAll<HTMLInputElement>('input[name="tab-content-type"]').forEach((input) => input.addEventListener('change', syncCaptureSummary));
+  syncCaptureSummary();
+}
+
 const controller = new PopupController({
   // Header + config view
   saveBtn: byId<HTMLButtonElement>('save'),

@@ -20,10 +20,19 @@ export function applyRunConfigToForm(
   if (!config) return;
 
   if (elements.storageModeSelect) {
-    elements.storageModeSelect.value = config.storageMode;
+    if (elements.storageModeSelect.value !== config.storageMode) {
+      elements.storageModeSelect.value = config.storageMode;
+      // The accessible selector is a styled mirror of this native control. Notify
+      // it when a restored session/default changes the value so label, icon, and
+      // selected checkmark can never disagree.
+      elements.storageModeSelect.dispatchEvent(new Event('change', { bubbles: true }));
+    }
   }
   if (elements.micModeSelect) {
-    elements.micModeSelect.value = config.micMode;
+    if (elements.micModeSelect.value !== config.micMode) {
+      elements.micModeSelect.value = config.micMode;
+      elements.micModeSelect.dispatchEvent(new Event('change', { bubbles: true }));
+    }
   }
   if (elements.recordSelfVideoCheckbox) {
     elements.recordSelfVideoCheckbox.checked = config.recordSelfVideo;

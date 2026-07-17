@@ -56,6 +56,27 @@ describe('popupRunConfig — tab content type segmented control', () => {
     expect(radio(group, 'video').checked).toBe(true);
   });
 
+  it('notifies custom select mirrors when restored settings change a select value', () => {
+    const group = makeContentTypeGroup();
+    const el = makeElements(group);
+    const storageChanged = jest.fn();
+    const micChanged = jest.fn();
+    el.storageModeSelect!.addEventListener('change', storageChanged);
+    el.micModeSelect!.addEventListener('change', micChanged);
+
+    applyRunConfigToForm(el, {
+      storageMode: 'drive',
+      micMode: 'mixed',
+      recordSelfVideo: false,
+      tabContentType: 'screen',
+    });
+
+    expect(el.storageModeSelect!.value).toBe('drive');
+    expect(el.micModeSelect!.value).toBe('mixed');
+    expect(storageChanged).toHaveBeenCalledTimes(1);
+    expect(micChanged).toHaveBeenCalledTimes(1);
+  });
+
   it('falls back to the default content type when the group is absent', () => {
     const el = makeElements(null);
     expect(buildRunConfigFromForm(el).tabContentType).toBe('screen');

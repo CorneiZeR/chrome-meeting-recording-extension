@@ -34,7 +34,7 @@ describe('CaptionPoller', () => {
     poller.stop();
 
     expect(mockSendToContent).toHaveBeenCalledWith(7, { type: 'GET_CAPTION_STATE' });
-    expect(label.textContent).toBe('Transcript on');
+    expect(label.textContent).toBe('Transcribing');
     expect(chip.classList.contains('off')).toBe(false);
   });
 

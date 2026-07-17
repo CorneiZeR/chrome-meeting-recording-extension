@@ -71,6 +71,11 @@ export class ConfirmDialog {
     return promise;
   }
 
+  /** Updates the visible explanatory copy without closing an active prompt. */
+  updateMessage(message: string): void {
+    if (this.pending && this.parts) this.parts.message.textContent = message;
+  }
+
   /** Closes an open dialog and resolves its pending `ask` with `false`. */
   dismiss = (): void => this.close(false);
 
@@ -111,6 +116,11 @@ export class ConfirmDialog {
     message.className = 'modal-message';
     message.id = 'modal-message';
 
+    const icon = this.doc.createElement('span');
+    icon.className = 'modal-icon';
+    icon.setAttribute('aria-hidden', 'true');
+    icon.innerHTML = '<svg viewBox="0 0 22 22" fill="none"><path d="M4 6h14M8.6 6V4.6a1.3 1.3 0 011.3-1.3h2.2a1.3 1.3 0 011.3 1.3V6M6.6 6l.7 11.2a1.3 1.3 0 001.3 1.2h4.8a1.3 1.3 0 001.3-1.2L15.4 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
     const actions = this.doc.createElement('div');
     actions.className = 'modal-actions';
 
@@ -139,8 +149,9 @@ export class ConfirmDialog {
       if (event.key === 'Tab') this.trapFocus(event, cancelBtn, confirmBtn);
     });
 
-    actions.append(cancelBtn, confirmBtn);
-    card.append(title, message, actions);
+    // The destructive action comes first visually; focus still opens on Keep.
+    actions.append(confirmBtn, cancelBtn);
+    card.append(icon, title, message, actions);
     overlay.append(card);
     this.doc.body.appendChild(overlay);
 

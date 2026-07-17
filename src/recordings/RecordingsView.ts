@@ -40,11 +40,13 @@ export class RecordingsView {
     name.addEventListener('blur', commit);
     name.addEventListener('keydown', (event) => { if (event.key === 'Enter') { name.blur(); } });
     const remove = document.createElement('button');
-    remove.type = 'button'; remove.className = 'delete-recording'; remove.textContent = 'Delete history';
+    remove.type = 'button'; remove.className = 'delete-recording'; remove.textContent = 'Remove';
     remove.addEventListener('click', () => this.callbacks.remove(entry.id));
     top.append(name, remove);
     const meta = document.createElement('p'); meta.className = 'recording-meta';
-    meta.textContent = `${new Date(entry.createdAt).toLocaleString()} · ${entry.status}`;
+    meta.textContent = new Date(entry.createdAt).toLocaleString();
+    const status = document.createElement('span'); status.className = `recording-status recording-status--${entry.status}`;
+    status.textContent = entry.status;
     const files = document.createElement('ul'); files.className = 'recording-files';
     for (const file of entry.files) {
       const item = document.createElement('li');
@@ -60,7 +62,7 @@ export class RecordingsView {
       }
       files.appendChild(item);
     }
-    card.append(top, meta, files);
+    card.append(top, status, meta, files);
     return card;
   }
 }
