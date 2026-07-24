@@ -23,7 +23,11 @@ class ManualReader {
     if (item) return Promise.resolve(item);
     return new Promise((resolve) => this.resolvers.push(resolve));
   }
-  cancel() { this.cancelled = true; }
+  cancel() {
+    this.cancelled = true;
+    while (this.resolvers.length) this.resolvers.shift()!({ value: undefined, done: true });
+    return Promise.resolve();
+  }
 }
 
 function makeFrame(extra: Record<string, unknown> = {}) {
@@ -238,12 +242,35 @@ describe('enforceSelfVideoResolution', () => {
       const enforced = await enforceSelfVideoResolution(source, { width: 640, height: 360 }, () => {}, { auto: true });
 
       expect(enforced.resized).toBe(false);
-      expect(enforced.stream).toBe(source);
+      expect(enforced.generated).toBe(true);
+      expect(enforced.stream).not.toBe(source);
       // Bitrate must size to the native coded buffer, not getSettings()'s under-report.
       expect(enforced.encodedSize).toEqual({ width: 1280, height: 720 });
-      // Direct-path mute still works (well-defined enabled=false).
+      // Muting is owned by the stable generator rather than the physical track.
       enforced.setMuted(true);
-      expect(sourceTrack.enabled).toBe(false);
+      expect(sourceTrack.enabled).toBe(true);
+    });
+
+    it('replaces the physical camera while preserving the generated recorder track', async () => {
+      const firstReader = new ManualReader();
+      const secondReader = new ManualReader();
+      const firstTrack: any = {
+        stop: jest.fn(),
+        clone: () => ({ __probe: true, stop: jest.fn() }),
+        __manual: firstReader,
+      };
+      const secondTrack: any = { stop: jest.fn(), __manual: secondReader };
+      const source = { getVideoTracks: () => [firstTrack], getTracks: () => [firstTrack] } as any;
+      const enforced = await enforceSelfVideoResolution(source, { width: 640, height: 360 }, () => {});
+      const recorderTrack = enforced.stream.getVideoTracks()[0];
+
+      await enforced.replaceSource!(secondTrack);
+      secondReader.push(makeFrame({ timestamp: 2000 }));
+      await flush();
+
+      expect(enforced.stream.getVideoTracks()[0]).toBe(recorderTrack);
+      expect(firstTrack.stop).toHaveBeenCalled();
+      expect(generators[0].written).toHaveLength(1);
     });
   });
 });

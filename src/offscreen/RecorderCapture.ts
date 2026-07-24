@@ -198,7 +198,8 @@ export async function captureTabStreamFromId(
 export async function maybeGetMicStream(
   micMode: MicMode,
   microphoneOrDeps: Readonly<MicrophoneCaptureSettings> | RecorderCaptureDeps,
-  deps?: RecorderCaptureDeps
+  deps?: RecorderCaptureDeps,
+  deviceId?: string,
 ): Promise<MediaStream | null> {
   if (micMode === 'off') return null;
   const microphone = deps ? microphoneOrDeps as Readonly<MicrophoneCaptureSettings> : getMicrophoneCaptureSettings();
@@ -208,7 +209,10 @@ export async function maybeGetMicStream(
   try {
     const mic = await withTimeout(
       navigator.mediaDevices.getUserMedia({
-        audio: microphone,
+        audio: {
+          ...microphone,
+          ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
+        },
       }),
       TIMEOUTS.GUM_MS,
       'mic getUserMedia'
@@ -249,7 +253,8 @@ export async function maybeGetMicStream(
 export async function maybeGetSelfVideoStream(
   enabled: boolean,
   profileOrDeps: Readonly<SelfVideoProfileSettings> | RecorderCaptureDeps,
-  deps?: RecorderCaptureDeps
+  deps?: RecorderCaptureDeps,
+  deviceId?: string,
 ): Promise<MediaStream | null> {
   if (!enabled) return null;
   const profile = deps ? profileOrDeps as Readonly<SelfVideoProfileSettings> : getSelfVideoProfileSettings();
@@ -261,7 +266,10 @@ export async function maybeGetSelfVideoStream(
     try {
       const stream = await withTimeout(
         navigator.mediaDevices.getUserMedia({
-          video: request.constraints,
+          video: {
+            ...request.constraints,
+            ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
+          },
           audio: false,
         }),
         TIMEOUTS.GUM_MS,

@@ -61,6 +61,9 @@ export type RecordingCaptureDevices = {
   camera?: string;
 };
 
+/** Input source that can be switched while a recording is active. */
+export type RecordingInputDevice = keyof RecordingCaptureDevices;
+
 export type UploadSummaryEntry = {
   stream: RecordingStream;
   filename: string;

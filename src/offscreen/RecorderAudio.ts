@@ -12,6 +12,58 @@ type RecorderAudioDeps = {
   warn: (...a: any[]) => void;
 };
 
+/**
+ * Routes replaceable microphone captures into one stable Web Audio destination
+ * track. MediaRecorder owns the destination track, so changing the source does
+ * not change its track set or split the recorded file.
+ */
+export class SwitchableAudioInput {
+  private ctx: AudioContext | null = null;
+  private destination: MediaStreamAudioDestinationNode | null = null;
+  private source: MediaStreamAudioSourceNode | null = null;
+  private sourceStream: MediaStream | null = null;
+
+  async create(stream: MediaStream): Promise<MediaStream> {
+    const AC = (window.AudioContext || (window as any).webkitAudioContext) as typeof AudioContext;
+    const ctx = new AC();
+    this.ctx = ctx;
+    await ctx.resume().catch(() => {});
+    this.destination = ctx.createMediaStreamDestination();
+    await this.replaceSource(stream);
+    return this.destination.stream;
+  }
+
+  async replaceSource(stream: MediaStream): Promise<void> {
+    const ctx = this.ctx;
+    const destination = this.destination;
+    if (!ctx || !destination || !stream.getAudioTracks().length) {
+      throw new Error('Switchable microphone bridge is unavailable');
+    }
+
+    const next = ctx.createMediaStreamSource(new MediaStream(stream.getAudioTracks()));
+    next.connect(destination);
+    const previousNode = this.source;
+    const previousStream = this.sourceStream;
+    this.source = next;
+    this.sourceStream = stream;
+    try { previousNode?.disconnect(); } catch {}
+    try { previousStream?.getTracks().forEach((track) => track.stop()); } catch {}
+  }
+
+  suspend(): void { try { void this.ctx?.suspend?.(); } catch {} }
+  resume(): void { try { void this.ctx?.resume?.(); } catch {} }
+
+  stop(): void {
+    try { this.source?.disconnect(); } catch {}
+    try { this.sourceStream?.getTracks().forEach((track) => track.stop()); } catch {}
+    try { this.ctx?.close(); } catch {}
+    this.source = null;
+    this.sourceStream = null;
+    this.destination = null;
+    this.ctx = null;
+  }
+}
+
 export class MixedAudioMixer {
   private ctx: AudioContext | null = null;
   private sources: MediaStreamAudioSourceNode[] = [];

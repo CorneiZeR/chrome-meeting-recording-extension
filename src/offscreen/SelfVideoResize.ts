@@ -20,20 +20,24 @@
  * `MediaStreamTrackProcessor -> OffscreenCanvas -> MediaStreamTrackGenerator`,
  * downscaling each frame to the target. `drawImage(VideoFrame, …)` honors the
  * frame's display/visible-rect, so aspect ratio (the camera's own crop-and-scale)
- * is preserved. When no resize is needed — or the platform lacks insertable
- * streams — the original stream is returned unchanged, so non-contended captures
- * keep zero overhead.
+ * is preserved. When no resize is needed, frames pass through a generated track
+ * without re-rasterization; that stable track permits live source replacement.
+ * Platforms without insertable streams retain the direct fallback.
  */
 
 import { logPerf } from '../shared/perf';
 
 export type EnforcedSelfVideoStream = {
-  /** The stream to hand to MediaRecorder (a resized track when necessary). */
+  /** The stable stream to hand to MediaRecorder. */
   stream: MediaStream;
-  /** Stops the resize pump and output track. No-op when no resize was inserted. Idempotent. */
+  /** Stops the frame pump and output track. No-op on the direct fallback. Idempotent. */
   stop: () => void;
   /** True when a resize transform was inserted. */
   resized: boolean;
+  /** True when MediaRecorder receives a generated (stable, replaceable) track. */
+  generated?: boolean;
+  /** Replaces the camera feeding the generated track without replacing that output track. */
+  replaceSource?: (track: MediaStreamTrack) => Promise<void>;
   /**
    * Hides/shows the encoded camera (black frames) without tearing the track down.
    * Blacks out at the layer that is actually defined for the active path: `enabled
@@ -105,55 +109,76 @@ async function detectCodedSize(track: MediaStreamTrack): Promise<Size | null> {
   }
 }
 
-/** Builds an output track that downscales every camera frame to width x height. */
-function buildResizedTrack(
+/** Builds one stable output track whose camera source can be replaced live. */
+function buildGeneratedTrack(
   track: MediaStreamTrack,
-  width: number,
-  height: number
-): { track: MediaStreamTrack; stop: () => void; setMuted: (muted: boolean) => void; setPaused: (paused: boolean) => void } {
+  target?: Size,
+): {
+  track: MediaStreamTrack;
+  stop: () => void;
+  setMuted: (muted: boolean) => void;
+  setPaused: (paused: boolean) => void;
+  replaceSource: (track: MediaStreamTrack) => Promise<void>;
+} {
   const g = globalThis as any;
-  const processor = new g.MediaStreamTrackProcessor({ track });
   const generator = new g.MediaStreamTrackGenerator({ kind: 'video' });
   try { (generator as any).contentHint = 'motion'; } catch {}
-  const canvas = new g.OffscreenCanvas(width, height);
-  const context = canvas.getContext('2d', { alpha: false, desynchronized: true });
-  const reader = processor.readable.getReader();
   const writer = generator.writable.getWriter();
 
   let stopped = false;
   let muted = false;
   let paused = false;
+  let generation = 0;
+  let reader: any = null;
+  let currentSource = track;
+  let pumpPromise: Promise<void> = Promise.resolve();
+  let canvas: any = null;
+  let context: any = null;
 
-  const pump = async () => {
+  const frameSize = (frame: any): Size => ({
+    width: target?.width ?? frame.displayWidth ?? frame.codedWidth,
+    height: target?.height ?? frame.displayHeight ?? frame.codedHeight,
+  });
+
+  const renderFrame = (frame: any): any => {
+    // With neither resizing nor muting, forward the VideoFrame directly. This
+    // keeps the auto-resolution bridge cheap while retaining a stable generator.
+    if (!target && !muted) return frame;
+    const size = frameSize(frame);
+    if (!canvas || canvas.width !== size.width || canvas.height !== size.height) {
+      canvas = new g.OffscreenCanvas(size.width, size.height);
+      context = canvas.getContext('2d', { alpha: false, desynchronized: true });
+    }
+    if (muted) {
+      context.fillStyle = '#000';
+      context.fillRect(0, 0, size.width, size.height);
+    } else {
+      context.drawImage(frame, 0, 0, size.width, size.height);
+    }
+    return new g.VideoFrame(canvas, {
+      timestamp: frame.timestamp,
+      ...(frame.duration == null ? {} : { duration: frame.duration }),
+    });
+  };
+
+  const pump = async (source: MediaStreamTrack, ownGeneration: number) => {
+    const processor = new g.MediaStreamTrackProcessor({ track: source });
+    const ownReader = processor.readable.getReader();
+    reader = ownReader;
     try {
       for (;;) {
-        const { value: frame, done } = await reader.read();
+        const { value: frame, done } = await ownReader.read();
         if (done) break;
-        if (stopped) { frame.close(); break; }
+        if (stopped || ownGeneration !== generation) { frame.close(); break; }
         // Paused: drain the source frame (so the processor doesn't back up) but
         // skip the expensive resize work and write nothing — the MediaRecorder is
         // paused, so it would discard these frames anyway.
         if (paused) { frame.close(); continue; }
         try {
-          if (muted) {
-            // Hidden: write a black frame at the source cadence instead of the
-            // camera image. Blacking out here — where we own the encoded frame —
-            // is deterministic, unlike relying on `enabled` propagating through
-            // MediaStreamTrackProcessor (undefined per mediacapture-transform).
-            context.fillStyle = '#000';
-            context.fillRect(0, 0, width, height);
-          } else {
-            // drawImage uses the VideoFrame's display rect, preserving the
-            // camera's intended crop-and-scale while forcing the encoded size.
-            context.drawImage(frame, 0, 0, width, height);
-          }
-          const resized = new g.VideoFrame(canvas, {
-            timestamp: frame.timestamp,
-            ...(frame.duration == null ? {} : { duration: frame.duration }),
-          });
-          frame.close();
-          await writer.write(resized);
-          resized.close();
+          const output = renderFrame(frame);
+          await writer.write(output);
+          output.close();
+          if (output !== frame) frame.close();
         } catch {
           try { frame.close(); } catch {}
           if (stopped) break;
@@ -162,15 +187,36 @@ function buildResizedTrack(
     } catch {
       /* source track ended or pipeline torn down */
     } finally {
-      try { await writer.close(); } catch {}
+      if (reader === ownReader) reader = null;
     }
   };
-  void pump();
+
+  const startPump = (source: MediaStreamTrack) => {
+    pumpPromise = pump(source, generation);
+  };
+  startPump(track);
+
+  const replaceSource = async (next: MediaStreamTrack) => {
+    if (stopped) {
+      try { next.stop(); } catch {}
+      throw new Error('Camera bridge is stopped');
+    }
+    const previous = currentSource;
+    generation += 1;
+    try { await reader?.cancel(); } catch {}
+    await pumpPromise.catch(() => {});
+    currentSource = next;
+    startPump(next);
+    try { previous.stop(); } catch {}
+  };
 
   const stop = () => {
     if (stopped) return;
     stopped = true;
-    try { reader.cancel(); } catch {}
+    generation += 1;
+    try { void reader?.cancel(); } catch {}
+    try { currentSource.stop(); } catch {}
+    try { void writer.close(); } catch {}
     try { (generator as any).stop?.(); } catch {}
   };
 
@@ -179,14 +225,14 @@ function buildResizedTrack(
     stop,
     setMuted: (next: boolean) => { muted = next; },
     setPaused: (next: boolean) => { paused = next; },
+    replaceSource,
   };
 }
 
 /**
- * Returns a stream whose single video track encodes at exactly `target`,
- * inserting a resize transform only when the camera's true coded frame size
- * differs from the target. Falls back to the original stream unchanged when the
- * platform lacks insertable streams, detection fails, or no resize is needed.
+ * Returns a stable stream whose source can be replaced while MediaRecorder runs.
+ * Frames are resized only when the camera's coded size differs from `target`.
+ * Falls back to the original stream when insertable streams are unavailable.
  */
 export async function enforceSelfVideoResolution(
   source: MediaStream,
@@ -211,14 +257,23 @@ export async function enforceSelfVideoResolution(
   const track = source.getVideoTracks()[0];
   if (!track) return noop;
 
-  // "Prefer auto resolution": record whatever Chrome/Meet already selected — skip
-  // the resize re-rasterization (and its per-frame cost) entirely. We still probe
-  // the true coded size once (one frame, cheap) so the bitrate can match what is
-  // actually encoded; getSettings() under-reports it under camera contention.
+  // Auto resolution still uses a pass-through generator so its source can change
+  // without changing MediaRecorder's track set. Frames are not re-rasterized.
   if (options.auto) {
-    log('self-video: preferring auto resolution; skipping resize enforcement');
+    log('self-video: preferring auto resolution; using switchable pass-through');
     const codedAuto = hasInsertableStreams() ? await detectCodedSize(track) : null;
-    return { ...noop, encodedSize: codedAuto ?? undefined };
+    if (!hasInsertableStreams()) return { ...noop, encodedSize: codedAuto ?? undefined };
+    const generated = buildGeneratedTrack(track);
+    return {
+      stream: new MediaStream([generated.track]),
+      stop: generated.stop,
+      resized: false,
+      generated: true,
+      replaceSource: generated.replaceSource,
+      setMuted: generated.setMuted,
+      setPaused: generated.setPaused,
+      encodedSize: codedAuto ?? undefined,
+    };
   }
 
   if (target.width <= 0 || target.height <= 0 || !hasInsertableStreams()) {
@@ -226,7 +281,19 @@ export async function enforceSelfVideoResolution(
   }
 
   const coded = await detectCodedSize(track);
-  if (!coded) return noop;
+  if (!coded) {
+    const generated = buildGeneratedTrack(track, target);
+    return {
+      stream: new MediaStream([generated.track]),
+      stop: generated.stop,
+      resized: true,
+      generated: true,
+      replaceSource: generated.replaceSource,
+      setMuted: generated.setMuted,
+      setPaused: generated.setPaused,
+      encodedSize: target,
+    };
+  }
 
   if (coded.width === target.width && coded.height === target.height) {
     logPerf(log, 'recorder', 'self_video_resolution_enforced', {
@@ -237,11 +304,20 @@ export async function enforceSelfVideoResolution(
       codedHeight: coded.height,
       resized: false,
     });
-    // Recording the source directly at the coded size — that IS the encoded size.
-    return { ...noop, encodedSize: coded };
+    const generated = buildGeneratedTrack(track);
+    return {
+      stream: new MediaStream([generated.track]),
+      stop: generated.stop,
+      resized: false,
+      generated: true,
+      replaceSource: generated.replaceSource,
+      setMuted: generated.setMuted,
+      setPaused: generated.setPaused,
+      encodedSize: coded,
+    };
   }
 
-  const { track: resizedTrack, stop, setMuted, setPaused } = buildResizedTrack(track, target.width, target.height);
+  const { track: resizedTrack, stop, setMuted, setPaused, replaceSource } = buildGeneratedTrack(track, target);
   logPerf(log, 'recorder', 'self_video_resolution_enforced', {
     stream: 'self-video',
     targetWidth: target.width,
@@ -251,5 +327,5 @@ export async function enforceSelfVideoResolution(
     resized: true,
   });
   // The resize forces the encoded buffer to the target size.
-  return { stream: new MediaStream([resizedTrack]), stop, resized: true, setMuted, setPaused, encodedSize: { width: target.width, height: target.height } };
+  return { stream: new MediaStream([resizedTrack]), stop, resized: true, generated: true, replaceSource, setMuted, setPaused, encodedSize: { width: target.width, height: target.height } };
 }

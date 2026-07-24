@@ -41,13 +41,21 @@ async function flushAsyncWork(): Promise<void> {
 }
 
 function makeTrack(kind: 'audio' | 'video', settings?: Record<string, unknown>) {
+  const currentSettings = { ...(settings ?? {}) };
   return {
     kind,
     muted: false,
     enabled: true,
     stop: jest.fn(),
     addEventListener: jest.fn(),
-    getSettings: () => settings ?? {},
+    getSettings: () => currentSettings,
+    getConstraints: jest.fn().mockReturnValue({}),
+    applyConstraints: jest.fn(async (constraints: MediaTrackConstraints) => {
+      const deviceId = constraints.deviceId;
+      if (deviceId && typeof deviceId === 'object' && 'exact' in deviceId) {
+        currentSettings.deviceId = Array.isArray(deviceId.exact) ? deviceId.exact[0] : deviceId.exact;
+      }
+    }),
   };
 }
 
@@ -191,6 +199,7 @@ describe('RecorderEngine', () => {
       enableMicMix: false,
     };
     engine = new RecorderEngine(deps);
+    (navigator.mediaDevices as any).enumerateDevices = jest.fn().mockResolvedValue([]);
     await resetExtensionSettingsToDefaults();
   });
 
@@ -292,6 +301,83 @@ describe('RecorderEngine', () => {
 
     expect(deps.reportCaptureDevices).toHaveBeenCalledWith({ microphone: 'Shure MV7' });
     await engine.stop();
+  });
+
+  it('changes the live microphone device without replacing the recording track', async () => {
+    const baseStream = makeStream({
+      audioTracks: [makeTrack('audio', { suppressLocalAudioPlayback: false })],
+      videoTracks: [makeTrack('video', { width: 1920, height: 1080 })],
+    });
+    const microphone = { ...makeTrack('audio', { deviceId: 'mic-1' }), label: 'Shure MV7' };
+    const replacement = { ...makeTrack('audio', { deviceId: 'mic-2' }), label: 'AirPods Pro' };
+    const stableTrack = makeTrack('audio');
+    const sources: Array<{ connect: jest.Mock; disconnect: jest.Mock }> = [];
+    (global as any).AudioContext = class {
+      destination = {};
+      resume = jest.fn().mockResolvedValue(undefined);
+      suspend = jest.fn().mockResolvedValue(undefined);
+      close = jest.fn().mockResolvedValue(undefined);
+      createMediaStreamDestination = jest.fn().mockReturnValue({ stream: makeStream({ audioTracks: [stableTrack] }) });
+      createMediaStreamSource = jest.fn(() => {
+        const source = { connect: jest.fn(), disconnect: jest.fn() };
+        sources.push(source);
+        return source;
+      });
+    };
+    (navigator.mediaDevices.getUserMedia as jest.Mock).mockImplementation(async (constraints: MediaStreamConstraints) => {
+      if ((constraints.video as any)?.mandatory?.chromeMediaSource) return baseStream;
+      if ((constraints.audio as any)?.deviceId?.exact === 'mic-2') {
+        return makeStream({ audioTracks: [replacement] });
+      }
+      if (constraints.audio && !constraints.video) return makeStream({ audioTracks: [microphone] });
+      throw new Error('Unexpected getUserMedia call');
+    });
+    (navigator.mediaDevices.enumerateDevices as jest.Mock).mockResolvedValue([
+      { kind: 'audioinput', deviceId: 'mic-2', label: 'AirPods Pro' },
+    ]);
+    deps.openTarget = jest.fn(async (filename: string, mimeType?: string) =>
+      new BufferedTarget(filename, mimeType || 'video/webm')
+    );
+
+    await engine.startFromStreamId('stream-id', makeRunConfig({ micMode: 'separate' }));
+    deps.reportCaptureDevices.mockClear();
+    (navigator.mediaDevices.getUserMedia as jest.Mock).mockClear();
+
+    await expect(engine.setInputDevice('microphone', 'mic-2')).resolves.toBe('AirPods Pro');
+
+    expect(navigator.mediaDevices.getUserMedia).toHaveBeenLastCalledWith({
+      audio: expect.objectContaining({ deviceId: { exact: 'mic-2' } }),
+    });
+    expect(sources).toHaveLength(2);
+    expect(sources[0].disconnect).toHaveBeenCalled();
+    expect(microphone.stop).toHaveBeenCalled();
+    expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(1);
+    expect(deps.reportCaptureDevices).toHaveBeenCalledWith({ microphone: 'AirPods Pro' });
+    await engine.stop();
+  });
+
+  it('reacquires a selected camera and swaps it into the stable video bridge', async () => {
+    const replacementTrack = { ...makeTrack('video', { deviceId: 'cam-2' }), label: 'FaceTime HD Camera' };
+    const replaceSource = jest.fn().mockResolvedValue(undefined);
+    (engine as any).state = 'recording';
+    (engine as any).recordSelfVideo = true;
+    (engine as any).recorderSettings = buildRecorderRuntimeSettingsSnapshot();
+    (engine as any).selfVideoReplaceSource = replaceSource;
+    (navigator.mediaDevices.getUserMedia as jest.Mock).mockResolvedValue(
+      makeStream({ videoTracks: [replacementTrack] })
+    );
+    (navigator.mediaDevices.enumerateDevices as jest.Mock).mockResolvedValue([
+      { kind: 'videoinput', deviceId: 'cam-2', label: 'FaceTime HD Camera' },
+    ]);
+
+    await expect(engine.setInputDevice('camera', 'cam-2')).resolves.toBe('FaceTime HD Camera');
+
+    expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledWith(expect.objectContaining({
+      audio: false,
+      video: expect.objectContaining({ deviceId: { exact: 'cam-2' } }),
+    }));
+    expect(replaceSource).toHaveBeenCalledWith(replacementTrack);
+    expect(deps.reportCaptureDevices).toHaveBeenCalledWith({ camera: 'FaceTime HD Camera' });
   });
 
   it('returns to idle once the last recorder stops and is ready for a new run', async () => {
@@ -538,7 +624,7 @@ describe('RecorderEngine', () => {
     await engine.startFromStreamId('stream-id', makeRunConfig({ micMode: 'mixed' }));
     const artifacts = await engine.stop();
 
-    expect(createMediaStreamDestination).toHaveBeenCalledTimes(1);
+    expect(createMediaStreamDestination).toHaveBeenCalledTimes(2);
     expect(artifacts.map((entry) => entry.stream)).toEqual(['tab']);
     expect(await toText(artifacts[0].artifact.file)).toBe('tab');
   });
@@ -871,8 +957,9 @@ describe('RecorderEngine', () => {
 
   it('mutes the microphone feeding the mixed tab recording', async () => {
     const createMediaStreamSource = jest.fn().mockReturnValue({ connect: jest.fn() });
+    const bridgeTrack = makeTrack('audio');
     const createMediaStreamDestination = jest.fn().mockReturnValue({
-      stream: makeStream({ audioTracks: [makeTrack('audio')] }),
+      stream: makeStream({ audioTracks: [bridgeTrack] }),
     });
     (global as any).AudioContext = jest.fn().mockImplementation(() => ({
       resume: jest.fn().mockResolvedValue(undefined),
@@ -899,7 +986,8 @@ describe('RecorderEngine', () => {
     await engine.startFromStreamId('stream-id', makeRunConfig({ micMode: 'mixed' }));
 
     engine.setMicMuted(true);
-    expect(micTrack.enabled).toBe(false);
+    expect(bridgeTrack.enabled).toBe(false);
+    expect(micTrack.enabled).toBe(true);
 
     await engine.stop();
   });
@@ -1084,10 +1172,10 @@ describe('RecorderEngine', () => {
     resume.mockClear();
 
     engine.setPaused(true);
-    expect(suspend).toHaveBeenCalledTimes(1);
+    expect(suspend).toHaveBeenCalledTimes(2);
 
     engine.setPaused(false);
-    expect(resume).toHaveBeenCalledTimes(1);
+    expect(resume).toHaveBeenCalledTimes(2);
 
     await engine.stop();
   });

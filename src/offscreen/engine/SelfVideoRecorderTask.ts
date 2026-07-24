@@ -42,6 +42,7 @@ export type SelfVideoRecorderCallbacks = {
     stop: () => void;
     setMuted: (muted: boolean) => void;
     setPaused: (paused: boolean) => void;
+    replaceSource?: (track: MediaStreamTrack) => Promise<void>;
     track?: MediaStreamTrack;
   }) => void;
 };
@@ -187,9 +188,9 @@ async function startWiredSelfVideoRecorder(
     if (selfVideoStreamStopped) return;
     selfVideoStreamStopped = true;
     enforced.stop();
-    // When resized, recordingStream is a separate generator track that also
-    // needs stopping; otherwise it IS selfVideo, so avoid stopping it twice.
-    if (enforced.resized) {
+    // A generated recordingStream is a separate track that also needs stopping;
+    // on the direct fallback it IS selfVideo, so avoid stopping it twice.
+    if (enforced.generated || enforced.resized) {
       try { recordingStream.getTracks().forEach((t) => t.stop()); } catch {}
     }
     try { selfVideo.getTracks().forEach((t) => t.stop()); } catch {}
@@ -202,6 +203,7 @@ async function startWiredSelfVideoRecorder(
     stop: stopSelfVideoStream,
     setMuted: enforced.setMuted,
     setPaused: enforced.setPaused,
+    replaceSource: enforced.replaceSource,
     track,
   });
 

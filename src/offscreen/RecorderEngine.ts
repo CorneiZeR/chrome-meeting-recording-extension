@@ -6,11 +6,11 @@
  * per-stream recording tasks live in ./engine/Tab|Mic|SelfVideoRecorderTask.
  */
 
-import { captureTabStreamFromId } from './RecorderCapture';
+import { captureTabStreamFromId, maybeGetMicStream, maybeGetSelfVideoStream } from './RecorderCapture';
 import { buildRecorderRuntimeSettingsSnapshot, type RecorderRuntimeSettingsSnapshot } from '../shared/settings';
-import { DEFAULT_RECORDING_RUN_CONFIG, isStoppablePhase, type CapturedTabResolution, type MicMode, type RecordingCaptureDevices, type RecordingRunConfig, type RecordingStream } from '../shared/recording';
+import { DEFAULT_RECORDING_RUN_CONFIG, isStoppablePhase, type CapturedTabResolution, type MicMode, type RecordingCaptureDevices, type RecordingInputDevice, type RecordingRunConfig, type RecordingStream } from '../shared/recording';
 import { describeMediaError } from './RecorderSupport';
-import type { MixedAudioMixer } from './RecorderAudio';
+import { SwitchableAudioInput, type MixedAudioMixer } from './RecorderAudio';
 import type { AudioPlaybackBridge } from './RecorderAudio';
 
 import { startTabRecorder } from './engine/TabRecorderTask';
@@ -51,7 +51,10 @@ export class RecorderEngine {
   private tabCaptureStream: MediaStream | null = null;
   private tabRecordingStream: MediaStream | null = null;
   private micStream: MediaStream | null = null;
+  private micInput: SwitchableAudioInput | null = null;
+  private selfVideoReplaceSource: ((track: MediaStreamTrack) => Promise<void>) | null = null;
   private tabResolution: CapturedTabResolution | undefined;
+  private recorderSettings: RecorderRuntimeSettingsSnapshot | null = null;
 
   private suffix = '';
   private micMode: MicMode = DEFAULT_RECORDING_RUN_CONFIG.micMode;
@@ -117,6 +120,43 @@ export class RecorderEngine {
     this.selfVideoSetMuted?.(muted);
   }
 
+  /** Switches a live input in place so its MediaRecorder keeps the same continuous track. */
+  async setInputDevice(device: RecordingInputDevice, deviceId: string): Promise<string> {
+    if (this.state !== 'recording') throw new Error('Input device can only be changed while recording');
+    const settings = this.recorderSettings;
+    if (!settings) throw new Error('Recorder settings are unavailable');
+
+    let replacement: MediaStream | null;
+    let track: MediaStreamTrack | undefined;
+    if (device === 'microphone') {
+      if (!this.micInput) throw new Error('Live microphone switching is unavailable in this browser');
+      replacement = await maybeGetMicStream(this.micMode, settings.microphone, this.deps, deviceId);
+      track = replacement?.getAudioTracks()[0];
+      if (!replacement || !track) throw new Error('Could not open the selected microphone');
+      try {
+        await this.micInput.replaceSource(replacement);
+      } catch (error) {
+        this.safeStopStream(replacement);
+        throw error;
+      }
+    } else {
+      if (!this.selfVideoReplaceSource) throw new Error('Live camera switching is unavailable in this browser');
+      replacement = await maybeGetSelfVideoStream(true, settings.selfVideo.profile, this.deps, deviceId);
+      track = replacement?.getVideoTracks()[0];
+      if (!replacement || !track) throw new Error('Could not open the selected camera');
+      try {
+        await this.selfVideoReplaceSource(track);
+      } catch (error) {
+        this.safeStopStream(replacement);
+        throw error;
+      }
+    }
+
+    const label = await this.resolveCapturedDeviceLabel(device, track, deviceId);
+    this.deps.reportCaptureDevices?.({ [device]: label });
+    return label;
+  }
+
   /**
    * Pauses or resumes the whole recording. Drives `MediaRecorder.pause()/resume()`
    * on every active recorder: the paused span is never gathered into the blob, so
@@ -138,6 +178,7 @@ export class RecorderEngine {
     // are already flowing when each recorder resumes gathering.
     if (!paused) {
       this.selfVideoSetPaused?.(false);
+      this.micInput?.resume();
       this.mixedAudio?.resume();
     }
 
@@ -157,6 +198,7 @@ export class RecorderEngine {
     // is being gathered, so the mixing/resize work is pure waste until resume.
     if (paused) {
       this.selfVideoSetPaused?.(true);
+      this.micInput?.suspend();
       this.mixedAudio?.suspend();
     }
   }
@@ -175,6 +217,7 @@ export class RecorderEngine {
     const runId = this.runId;
     this.micMode = options.micMode;
     this.recordSelfVideo = options.recordSelfVideo;
+    this.recorderSettings = recorderSettings;
     this.suffix = meetingSlug;
     const runStartedAt = nowMs();
     debugPerf(this.deps.log, 'lifecycle', 'start_requested', {
@@ -234,8 +277,18 @@ export class RecorderEngine {
     attachTabEndedHandler(baseStream, () => this.stopAllRecorders(), this.deps.log);
 
     if (options.micMode === 'mixed' || options.micMode === 'separate') {
-      this.micStream = await acquireMicStream(runId, () => this.runId, () => this.state, options.micMode, recorderSettings, this.deps);
-      this.reportCapturedDevice('microphone', this.micStream.getAudioTracks()[0]);
+      const source = await acquireMicStream(runId, () => this.runId, () => this.state, options.micMode, recorderSettings, this.deps);
+      this.reportCapturedDevice('microphone', source.getAudioTracks()[0]);
+      const bridge = new SwitchableAudioInput();
+      try {
+        this.micStream = await bridge.create(source);
+        this.micInput = bridge;
+      } catch (error) {
+        bridge.stop();
+        this.deps.warn('Switchable microphone bridge unavailable; using direct input', describeMediaError(error));
+        this.micStream = source;
+        this.micInput = null;
+      }
       this.applyMicMuteState();
     }
 
@@ -278,6 +331,8 @@ export class RecorderEngine {
             // cleanup runs would leave the device open — the mic indicator stays lit
             // after the recording ends. safeStopStream is idempotent, so this is safe
             // even when stopStream() already released it.
+            this.micInput?.stop();
+            this.micInput = null;
             this.safeStopStream(this.micStream);
             this.micStream = null;
             this.onTrackStopped('mic', artifact);
@@ -292,9 +347,10 @@ export class RecorderEngine {
       tasks.push(
         startSelfVideoRecorder(runId, () => this.runId, isStale, this.suffix, runStartedAt, this.recordSelfVideo, recorderSettings, this.deps, {
           onStarted: () => this.onRecorderStarted(),
-          onStopped: (artifact) => { this.selfVideoSetMuted = null; this.selfVideoSetPaused = null; this.onTrackStopped('self-video', artifact); },
+          onStopped: (artifact) => { this.selfVideoReplaceSource = null; this.selfVideoSetMuted = null; this.selfVideoSetPaused = null; this.onTrackStopped('self-video', artifact); },
           onWarning: (msg) => this.deps.reportWarning?.(msg),
           onStreamAcquired: (controls) => {
+            this.selfVideoReplaceSource = controls.replaceSource ?? null;
             this.reportCapturedDevice('camera', controls.track);
             stopStream = controls.stop;
             this.selfVideoSetMuted = controls.setMuted;
@@ -380,6 +436,8 @@ export class RecorderEngine {
     // Separate mic owns no `stopStream`; release its source here so the mic device
     // is freed when the recorder stops mid-session (mixed mic has no own target).
     if (stream === 'mic') {
+      this.micInput?.stop();
+      this.micInput = null;
       this.safeStopStream(this.micStream);
     }
     try { track.recorder.stop(); } catch (e) { this.deps.error(`${stream} stop error`, describeMediaError(e)); }
@@ -413,6 +471,21 @@ export class RecorderEngine {
     this.deps.reportCaptureDevices?.({ [device]: label });
   }
 
+  /** Resolves the chosen device label from the exact ID used for reacquisition. */
+  private async resolveCapturedDeviceLabel(
+    device: RecordingInputDevice,
+    track: MediaStreamTrack,
+    requestedDeviceId: string,
+  ): Promise<string> {
+    try {
+      const kind = device === 'microphone' ? 'audioinput' : 'videoinput';
+      const match = (await navigator.mediaDevices.enumerateDevices())
+        .find((candidate) => candidate.kind === kind && candidate.deviceId === requestedDeviceId);
+      if (match?.label.trim()) return match.label.trim();
+    } catch {}
+    return track.label?.trim() || 'Device name unavailable';
+  }
+
   private onRecorderStopped() {
     this.activeRecorders = Math.max(0, this.activeRecorders - 1);
     if (this.activeRecorders !== 0) return;
@@ -427,11 +500,14 @@ export class RecorderEngine {
     this.safeStopStream(this.tabCaptureStream);
     this.safeStopStream(this.tabRecordingStream);
     this.safeStopStream(this.micStream);
+    this.micInput?.stop(); this.micInput = null;
+    this.selfVideoReplaceSource = null;
     this.tabCaptureStream = null;
     this.tabRecordingStream = null;
     this.micStream = null;
     this.playback?.stop(); this.playback = null;
     this.mixedAudio?.stop(); this.mixedAudio = null;
+    this.recorderSettings = null;
     this.finalizedArtifacts = [];
 
     const resolveStop = this.resolveStop;
@@ -451,6 +527,8 @@ export class RecorderEngine {
     this.safeStopStream(this.tabCaptureStream);
     this.safeStopStream(this.tabRecordingStream);
     this.safeStopStream(this.micStream);
+    this.micInput?.stop(); this.micInput = null;
+    this.selfVideoReplaceSource = null;
     this.tabCaptureStream = null; this.tabRecordingStream = null; this.micStream = null;
     this.tabResolution = undefined;
     this.playback?.stop(); this.playback = null;
@@ -458,6 +536,7 @@ export class RecorderEngine {
     this.suffix = '';
     this.micMode = DEFAULT_RECORDING_RUN_CONFIG.micMode;
     this.recordSelfVideo = DEFAULT_RECORDING_RUN_CONFIG.recordSelfVideo;
+    this.recorderSettings = null;
     this.micMuted = false;
     this.cameraMuted = false;
     this.paused = false;
