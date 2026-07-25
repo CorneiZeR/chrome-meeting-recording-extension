@@ -53,6 +53,33 @@ function humanJoin(parts: string[]): string {
   return `${parts.slice(0, -1).join(', ')} & ${parts[parts.length - 1]}`;
 }
 
+/** Chrome exposes `default` as a virtual alias alongside the same physical input. */
+function normalizedInputLabel(label: string): string {
+  return label.trim().replace(/^default\s*[-:]\s*/i, '').replace(/\s+/g, ' ').toLocaleLowerCase();
+}
+
+/** Keeps a system-default alias only when it is not also represented by a physical device. */
+function uniqueInputDevices(devices: MediaDeviceInfo[], kind: MediaDeviceKind): MediaDeviceInfo[] {
+  const physicalLabels = new Set(
+    devices
+      .filter((item) => item.kind === kind && item.deviceId && item.deviceId !== 'default')
+      .map((item) => normalizedInputLabel(item.label))
+      .filter(Boolean)
+  );
+  return devices.filter((item) => {
+    if (item.kind !== kind || !item.deviceId) return false;
+    return item.deviceId !== 'default' || !physicalLabels.has(normalizedInputLabel(item.label));
+  });
+}
+
+/** Makes a retained browser alias clear without presenting it as duplicate hardware. */
+function inputDeviceLabel(item: MediaDeviceInfo, fallback: string): string {
+  const label = item.label.trim();
+  if (item.deviceId !== 'default') return label || fallback;
+  const target = normalizedInputLabel(label);
+  return target ? `System default — ${label.replace(/^default\s*[-:]\s*/i, '').trim()}` : 'System default';
+}
+
 /**
  * The popup is a fresh document each open and only learns the real phase from an
  * async status fetch. We mirror the last rendered phase into `localStorage` (the
@@ -446,7 +473,7 @@ export class PopupController {
       const devices = await navigator.mediaDevices?.enumerateDevices?.();
       if (this.activeDevicePicker !== device || this.devicePickerRequestId !== requestId) return;
       const kind: MediaDeviceKind = device === 'microphone' ? 'audioinput' : 'videoinput';
-      const available = (devices ?? []).filter((item) => item.kind === kind && item.deviceId);
+      const available = uniqueInputDevices(devices ?? [], kind);
       if (available.length === 0) {
         this.el.devicePickerList.replaceChildren(this.buildDevicePickerMessage(`No ${device === 'microphone' ? 'microphones' : 'cameras'} found`));
         return;
@@ -454,8 +481,8 @@ export class PopupController {
 
       const currentLabel = this.lastSession.capturedDevices?.[device];
       const options = available.map((item, index) => {
-        const label = item.label || `${device === 'microphone' ? 'Microphone' : 'Camera'} ${index + 1}`;
-        const selected = Boolean(currentLabel && item.label === currentLabel);
+        const label = inputDeviceLabel(item, `${device === 'microphone' ? 'Microphone' : 'Camera'} ${index + 1}`);
+        const selected = Boolean(currentLabel && normalizedInputLabel(item.label) === normalizedInputLabel(currentLabel));
         const option = document.createElement('button');
         option.type = 'button';
         option.className = 'device-picker-option';

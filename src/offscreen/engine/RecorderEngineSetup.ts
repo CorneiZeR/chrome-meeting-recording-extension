@@ -84,9 +84,10 @@ export async function acquireMicStream(
   currentState: () => string,
   micMode: MicMode,
   settings: RecorderRuntimeSettingsSnapshot,
-  deps: RecorderEngineDeps
+  deps: RecorderEngineDeps,
+  deviceId?: string,
 ): Promise<MediaStream> {
-  const mic = await maybeGetMicStream(micMode, settings.microphone, deps);
+  const mic = await maybeGetMicStream(micMode, settings.microphone, deps, deviceId);
   if (!mic?.getAudioTracks().length) {
     throw new Error('Microphone stream is required for mixed microphone mode');
   }

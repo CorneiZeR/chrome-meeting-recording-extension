@@ -39,6 +39,11 @@ export type {
   RecorderEngineDeps,
 } from './engine/RecorderEngineTypes';
 
+type DefaultInputDevice = {
+  deviceId: string;
+  label: string;
+};
+
 export class RecorderEngine {
   private readonly deps: RecorderEngineDeps;
 
@@ -55,6 +60,12 @@ export class RecorderEngine {
   private selfVideoReplaceSource: ((track: MediaStreamTrack) => Promise<void>) | null = null;
   private tabResolution: CapturedTabResolution | undefined;
   private recorderSettings: RecorderRuntimeSettingsSnapshot | null = null;
+  private defaultInputDevices: Partial<Record<RecordingInputDevice, DefaultInputDevice>> = {};
+  private followsDefaultInput: Record<RecordingInputDevice, boolean> = {
+    microphone: true,
+    camera: true,
+  };
+  private deviceChangeTimer: ReturnType<typeof setTimeout> | null = null;
 
   private suffix = '';
   private micMode: MicMode = DEFAULT_RECORDING_RUN_CONFIG.micMode;
@@ -79,6 +90,7 @@ export class RecorderEngine {
     // without a reference to the engine. Set the property in place rather than
     // copying, so deps the caller assigns later (e.g. openTarget) stay visible.
     this.deps.requestStopStream = (stream) => this.stopStream(stream);
+    navigator.mediaDevices?.addEventListener?.('devicechange', () => this.scheduleDefaultInputRefresh());
   }
 
   isRecording(): boolean {
@@ -122,6 +134,14 @@ export class RecorderEngine {
 
   /** Switches a live input in place so its MediaRecorder keeps the same continuous track. */
   async setInputDevice(device: RecordingInputDevice, deviceId: string): Promise<string> {
+    const label = await this.switchInputDevice(device, deviceId);
+    // A deliberate picker choice pins this input for the rest of the run. A new
+    // recording starts in follow-default mode again.
+    this.followsDefaultInput[device] = false;
+    return label;
+  }
+
+  private async switchInputDevice(device: RecordingInputDevice, deviceId: string): Promise<string> {
     if (this.state !== 'recording') throw new Error('Input device can only be changed while recording');
     const settings = this.recorderSettings;
     if (!settings) throw new Error('Recorder settings are unavailable');
@@ -155,6 +175,55 @@ export class RecorderEngine {
     const label = await this.resolveCapturedDeviceLabel(device, track, deviceId);
     this.deps.reportCaptureDevices?.({ [device]: label });
     return label;
+  }
+
+  /** Debounces the burst of devicechange events emitted while a headset connects. */
+  private scheduleDefaultInputRefresh(): void {
+    if (this.state !== 'recording') return;
+    if (this.deviceChangeTimer) clearTimeout(this.deviceChangeTimer);
+    this.deviceChangeTimer = setTimeout(() => {
+      this.deviceChangeTimer = null;
+      void this.refreshDefaultInputDevices();
+    }, 200);
+  }
+
+  /** Follows a newly-selected OS/browser default unless the user pinned an input. */
+  private async refreshDefaultInputDevices(): Promise<void> {
+    if (this.state !== 'recording') return;
+    const nextDefaults = await this.resolveDefaultInputDevices();
+    for (const device of ['microphone', 'camera'] as const) {
+      if (!this.followsDefaultInput[device]) continue;
+      if (device === 'microphone' && this.micMode === 'off') continue;
+      if (device === 'camera' && !this.recordSelfVideo) continue;
+      const previous = this.defaultInputDevices[device];
+      const next = nextDefaults[device];
+      if (!next || (previous?.deviceId === next.deviceId && previous.label === next.label)) continue;
+      try {
+        await this.switchInputDevice(device, next.deviceId);
+        this.defaultInputDevices[device] = next;
+        this.deps.log(`Followed new default ${device}:`, next.label || next.deviceId);
+      } catch (error) {
+        this.deps.warn(`Could not follow new default ${device}`, describeMediaError(error));
+      }
+    }
+  }
+
+  /** enumerateDevices orders the current default first for each input kind. */
+  private async resolveDefaultInputDevices(): Promise<Partial<Record<RecordingInputDevice, DefaultInputDevice>>> {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const first = (kind: MediaDeviceKind): DefaultInputDevice | undefined => {
+        const device = devices.find((candidate) => candidate.kind === kind && candidate.deviceId);
+        return device ? { deviceId: device.deviceId, label: device.label } : undefined;
+      };
+      return {
+        microphone: first('audioinput'),
+        camera: first('videoinput'),
+      };
+    } catch (error) {
+      this.deps.warn('Could not resolve current default capture devices', describeMediaError(error));
+      return {};
+    }
   }
 
   /**
@@ -228,6 +297,7 @@ export class RecorderEngine {
     });
 
     try {
+      this.defaultInputDevices = await this.resolveDefaultInputDevices();
       const tabRecorderStream = await this.acquireRecordingStreams(streamId, options, recorderSettings, runId);
       // A stop/discard may arrive while capture permissions or a device are still
       // resolving. Never start a recorder after that command; release the just-
@@ -277,7 +347,15 @@ export class RecorderEngine {
     attachTabEndedHandler(baseStream, () => this.stopAllRecorders(), this.deps.log);
 
     if (options.micMode === 'mixed' || options.micMode === 'separate') {
-      const source = await acquireMicStream(runId, () => this.runId, () => this.state, options.micMode, recorderSettings, this.deps);
+      const source = await acquireMicStream(
+        runId,
+        () => this.runId,
+        () => this.state,
+        options.micMode,
+        recorderSettings,
+        this.deps,
+        this.defaultInputDevices.microphone?.deviceId,
+      );
       this.reportCapturedDevice('microphone', source.getAudioTracks()[0]);
       const bridge = new SwitchableAudioInput();
       try {
@@ -345,7 +423,7 @@ export class RecorderEngine {
     if (this.recordSelfVideo) {
       let stopStream: (() => void) | undefined;
       tasks.push(
-        startSelfVideoRecorder(runId, () => this.runId, isStale, this.suffix, runStartedAt, this.recordSelfVideo, recorderSettings, this.deps, {
+        startSelfVideoRecorder(runId, () => this.runId, isStale, this.suffix, runStartedAt, this.recordSelfVideo, recorderSettings, this.deps, this.defaultInputDevices.camera?.deviceId, {
           onStarted: () => this.onRecorderStarted(),
           onStopped: (artifact) => { this.selfVideoReplaceSource = null; this.selfVideoSetMuted = null; this.selfVideoSetPaused = null; this.onTrackStopped('self-video', artifact); },
           onWarning: (msg) => this.deps.reportWarning?.(msg),
@@ -477,13 +555,15 @@ export class RecorderEngine {
     track: MediaStreamTrack,
     requestedDeviceId: string,
   ): Promise<string> {
+    const trackLabel = track.label?.trim();
+    if (trackLabel) return trackLabel;
     try {
       const kind = device === 'microphone' ? 'audioinput' : 'videoinput';
       const match = (await navigator.mediaDevices.enumerateDevices())
         .find((candidate) => candidate.kind === kind && candidate.deviceId === requestedDeviceId);
       if (match?.label.trim()) return match.label.trim();
     } catch {}
-    return track.label?.trim() || 'Device name unavailable';
+    return 'Device name unavailable';
   }
 
   private onRecorderStopped() {
@@ -508,6 +588,7 @@ export class RecorderEngine {
     this.playback?.stop(); this.playback = null;
     this.mixedAudio?.stop(); this.mixedAudio = null;
     this.recorderSettings = null;
+    this.clearDefaultInputTracking();
     this.finalizedArtifacts = [];
 
     const resolveStop = this.resolveStop;
@@ -537,6 +618,7 @@ export class RecorderEngine {
     this.micMode = DEFAULT_RECORDING_RUN_CONFIG.micMode;
     this.recordSelfVideo = DEFAULT_RECORDING_RUN_CONFIG.recordSelfVideo;
     this.recorderSettings = null;
+    this.clearDefaultInputTracking();
     this.micMuted = false;
     this.cameraMuted = false;
     this.paused = false;
@@ -545,6 +627,13 @@ export class RecorderEngine {
     this.finalizedArtifacts = [];
     this.stopPromise = null; this.resolveStop = null;
     this.pendingStartPromises = [];
+  }
+
+  private clearDefaultInputTracking(): void {
+    if (this.deviceChangeTimer) clearTimeout(this.deviceChangeTimer);
+    this.deviceChangeTimer = null;
+    this.defaultInputDevices = {};
+    this.followsDefaultInput = { microphone: true, camera: true };
   }
 
   private static readTabResolution(stream: MediaStream): CapturedTabResolution | undefined {

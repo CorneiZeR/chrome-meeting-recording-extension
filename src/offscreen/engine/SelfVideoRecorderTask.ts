@@ -90,9 +90,15 @@ async function acquireSelfVideoStream(
   recordSelfVideo: boolean,
   recorderSettings: RecorderRuntimeSettingsSnapshot,
   deps: RecorderEngineDeps,
+  deviceId?: string,
   onWarning?: (message: string) => void
 ): Promise<MediaStream | null> {
-  const selfVideo = await maybeGetSelfVideoStream(recordSelfVideo, recorderSettings.selfVideo.profile, deps);
+  const selfVideo = await maybeGetSelfVideoStream(
+    recordSelfVideo,
+    recorderSettings.selfVideo.profile,
+    deps,
+    deviceId,
+  );
 
   if (!selfVideo?.getVideoTracks().length || runId !== currentRunId() || isStale()) {
     selfVideo?.getTracks().forEach((t) => t.stop());
@@ -259,10 +265,18 @@ export async function startSelfVideoRecorder(
   recordSelfVideo: boolean,
   recorderSettings: RecorderRuntimeSettingsSnapshot,
   deps: RecorderEngineDeps,
+  deviceId: string | undefined,
   callbacks: SelfVideoRecorderCallbacks
 ): Promise<MediaRecorder | null> {
   const stream = await acquireSelfVideoStream(
-    runId, currentRunId, isStale, recordSelfVideo, recorderSettings, deps, callbacks.onWarning
+    runId,
+    currentRunId,
+    isStale,
+    recordSelfVideo,
+    recorderSettings,
+    deps,
+    deviceId,
+    callbacks.onWarning,
   );
   if (!stream) return null;
   return startWiredSelfVideoRecorder(stream, suffix, runStartedAt, recorderSettings, deps, callbacks);

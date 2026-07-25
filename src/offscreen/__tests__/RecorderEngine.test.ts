@@ -198,8 +198,9 @@ describe('RecorderEngine', () => {
       reportWarning: jest.fn(),
       enableMicMix: false,
     };
-    engine = new RecorderEngine(deps);
+    (navigator.mediaDevices as any).addEventListener = jest.fn();
     (navigator.mediaDevices as any).enumerateDevices = jest.fn().mockResolvedValue([]);
+    engine = new RecorderEngine(deps);
     await resetExtensionSettingsToDefaults();
   });
 
@@ -215,6 +216,10 @@ describe('RecorderEngine', () => {
 
   it('starts as idle and isRecording() is false', () => {
     expect(engine.isRecording()).toBe(false);
+    expect(navigator.mediaDevices.addEventListener).toHaveBeenCalledWith(
+      'devicechange',
+      expect.any(Function),
+    );
   });
 
   it('measures recorder start latency with one monotonic clock', async () => {
@@ -333,13 +338,19 @@ describe('RecorderEngine', () => {
       throw new Error('Unexpected getUserMedia call');
     });
     (navigator.mediaDevices.enumerateDevices as jest.Mock).mockResolvedValue([
-      { kind: 'audioinput', deviceId: 'mic-2', label: 'AirPods Pro' },
+      { kind: 'audioinput', deviceId: 'mic-1', label: 'Shure MV7' },
     ]);
     deps.openTarget = jest.fn(async (filename: string, mimeType?: string) =>
       new BufferedTarget(filename, mimeType || 'video/webm')
     );
 
     await engine.startFromStreamId('stream-id', makeRunConfig({ micMode: 'separate' }));
+    expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledWith({
+      audio: expect.objectContaining({ deviceId: { exact: 'mic-1' } }),
+    });
+    (navigator.mediaDevices.enumerateDevices as jest.Mock).mockResolvedValue([
+      { kind: 'audioinput', deviceId: 'mic-2', label: 'AirPods Pro' },
+    ]);
     deps.reportCaptureDevices.mockClear();
     (navigator.mediaDevices.getUserMedia as jest.Mock).mockClear();
 
@@ -352,6 +363,55 @@ describe('RecorderEngine', () => {
     expect(sources[0].disconnect).toHaveBeenCalled();
     expect(microphone.stop).toHaveBeenCalled();
     expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(1);
+    expect(deps.reportCaptureDevices).toHaveBeenCalledWith({ microphone: 'AirPods Pro' });
+    expect((engine as any).followsDefaultInput.microphone).toBe(false);
+    await engine.stop();
+  });
+
+  it('follows a newly connected default microphone during recording', async () => {
+    const baseStream = makeStream({
+      audioTracks: [makeTrack('audio', { suppressLocalAudioPlayback: false })],
+      videoTracks: [makeTrack('video', { width: 1920, height: 1080 })],
+    });
+    const builtIn = { ...makeTrack('audio', { deviceId: 'mic-1' }), label: 'Built-in Microphone' };
+    const airPods = { ...makeTrack('audio', { deviceId: 'mic-2' }), label: 'AirPods Pro' };
+    const stableTrack = makeTrack('audio');
+    (global as any).AudioContext = class {
+      destination = {};
+      resume = jest.fn().mockResolvedValue(undefined);
+      suspend = jest.fn().mockResolvedValue(undefined);
+      close = jest.fn().mockResolvedValue(undefined);
+      createMediaStreamDestination = jest.fn().mockReturnValue({ stream: makeStream({ audioTracks: [stableTrack] }) });
+      createMediaStreamSource = jest.fn().mockReturnValue({ connect: jest.fn(), disconnect: jest.fn() });
+    };
+    (navigator.mediaDevices.enumerateDevices as jest.Mock).mockResolvedValue([
+      { kind: 'audioinput', deviceId: 'mic-1', label: 'Built-in Microphone' },
+    ]);
+    (navigator.mediaDevices.getUserMedia as jest.Mock).mockImplementation(async (constraints: MediaStreamConstraints) => {
+      if ((constraints.video as any)?.mandatory?.chromeMediaSource) return baseStream;
+      if ((constraints.audio as any)?.deviceId?.exact === 'mic-2') {
+        return makeStream({ audioTracks: [airPods] });
+      }
+      if (constraints.audio && !constraints.video) return makeStream({ audioTracks: [builtIn] });
+      throw new Error('Unexpected getUserMedia call');
+    });
+    deps.openTarget = jest.fn(async (filename: string, mimeType?: string) =>
+      new BufferedTarget(filename, mimeType || 'video/webm')
+    );
+
+    await engine.startFromStreamId('stream-id', makeRunConfig({ micMode: 'separate' }));
+    (navigator.mediaDevices.enumerateDevices as jest.Mock).mockResolvedValue([
+      { kind: 'audioinput', deviceId: 'mic-2', label: 'AirPods Pro' },
+    ]);
+    deps.reportCaptureDevices.mockClear();
+    (navigator.mediaDevices.getUserMedia as jest.Mock).mockClear();
+
+    await (engine as any).refreshDefaultInputDevices();
+
+    expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledWith({
+      audio: expect.objectContaining({ deviceId: { exact: 'mic-2' } }),
+    });
+    expect(builtIn.stop).toHaveBeenCalled();
     expect(deps.reportCaptureDevices).toHaveBeenCalledWith({ microphone: 'AirPods Pro' });
     await engine.stop();
   });
@@ -480,6 +540,10 @@ describe('RecorderEngine', () => {
     const selfVideoStream = makeStream({
       videoTracks: [makeTrack('video', { width: 1280, height: 720, frameRate: 30 })],
     });
+    (navigator.mediaDevices.enumerateDevices as jest.Mock).mockResolvedValue([
+      { kind: 'audioinput', deviceId: 'mic-default', label: 'AirPods Pro' },
+      { kind: 'videoinput', deviceId: 'cam-default', label: 'FaceTime HD Camera' },
+    ]);
 
     (navigator.mediaDevices.getUserMedia as jest.Mock).mockImplementation(async (constraints: MediaStreamConstraints) => {
       if ((constraints.video as any)?.mandatory?.chromeMediaSource) return baseStream;
@@ -493,6 +557,14 @@ describe('RecorderEngine', () => {
     await engine.startFromStreamId('stream-id', makeRunConfig({
       micMode: 'separate',
       recordSelfVideo: true,
+    }));
+
+    expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledWith({
+      audio: expect.objectContaining({ deviceId: { exact: 'mic-default' } }),
+    });
+    expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledWith(expect.objectContaining({
+      audio: false,
+      video: expect.objectContaining({ deviceId: { exact: 'cam-default' } }),
     }));
     await flushAsyncWork();
 

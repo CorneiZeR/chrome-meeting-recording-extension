@@ -1130,6 +1130,48 @@ describe('PopupController', () => {
       expect(elements.devicePicker.hidden).toBe(true);
     });
 
+    it('hides Chrome’s duplicate default microphone alias when the same physical input is listed', async () => {
+      (navigator.mediaDevices.enumerateDevices as jest.Mock).mockResolvedValue([
+        { kind: 'audioinput', deviceId: 'default', label: 'Default - MacBook Pro Microphone (Built-in)' },
+        { kind: 'audioinput', deviceId: 'mic-built-in', label: 'MacBook Pro Microphone (Built-in)' },
+        { kind: 'audioinput', deviceId: 'mic-airpods', label: 'AirPods Pro' },
+      ]);
+      mockSendMessage.mockResolvedValueOnce(recordingSession({
+        capturedDevices: { microphone: 'MacBook Pro Microphone (Built-in)' },
+      }));
+      controller.init();
+      await flush();
+
+      elements.micDeviceTrigger.click();
+      await flush();
+
+      const options = Array.from((elements.devicePickerList as HTMLElement)
+        .querySelectorAll<HTMLButtonElement>('.device-picker-option'));
+      expect(options).toHaveLength(2);
+      expect(options.map((option) => option.dataset.deviceId)).toEqual(['mic-built-in', 'mic-airpods']);
+      expect(options.map((option) => option.textContent)).not.toContain(expect.stringContaining('Default -'));
+    });
+
+    it('retains a standalone system-default microphone when Chrome has no matching physical input', async () => {
+      (navigator.mediaDevices.enumerateDevices as jest.Mock).mockResolvedValue([
+        { kind: 'audioinput', deviceId: 'default', label: 'Default - MacBook Pro Microphone (Built-in)' },
+      ]);
+      mockSendMessage.mockResolvedValueOnce(recordingSession({
+        capturedDevices: { microphone: 'MacBook Pro Microphone (Built-in)' },
+      }));
+      controller.init();
+      await flush();
+
+      elements.micDeviceTrigger.click();
+      await flush();
+
+      const option = (elements.devicePickerList as HTMLElement)
+        .querySelector<HTMLButtonElement>('.device-picker-option')!;
+      expect(option.dataset.deviceId).toBe('default');
+      expect(option.textContent).toContain('System default — MacBook Pro Microphone (Built-in)');
+      expect(option.getAttribute('aria-selected')).toBe('true');
+    });
+
     it('shows only cameras in the camera device sheet', async () => {
       (navigator.mediaDevices.enumerateDevices as jest.Mock).mockResolvedValue([
         { kind: 'audioinput', deviceId: 'mic-1', label: 'Shure MV7' },
