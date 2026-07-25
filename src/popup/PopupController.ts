@@ -38,7 +38,13 @@ import { createRuntimeTab, queryActiveTab } from '../platform/chrome/tabs';
 import { sendToBackground, sendToContent } from '../shared/messages';
 import type { BgToPopup, CommandResult } from '../shared/protocol';
 import { isDevBuild, isTestRuntime } from '../shared/build';
-import type { RecordingPhase, RecordingRunConfig, RecordingStatusView, UploadJob } from '../shared/recording';
+import type {
+  RecordingInputDevice,
+  RecordingPhase,
+  RecordingRunConfig,
+  RecordingStatusView,
+  UploadJob,
+} from '../shared/recording';
 import type { RecordingHistoryEntry } from '../shared/recordingHistory';
 
 /** Joins labels as "a", "a & b", or "a, b & c". */
@@ -95,6 +101,8 @@ export class PopupController {
   /** Last phase/session, replayed when a tab is clicked without a new background push. */
   private lastPhase: RecordingPhase = 'idle';
   private lastSession?: RecordingStatusView;
+  private activeDevicePicker: RecordingInputDevice | null = null;
+  private devicePickerRequestId = 0;
 
   constructor(el: PopupElements) {
     this.el = el;
@@ -127,6 +135,7 @@ export class PopupController {
     this.wireMic();
     this.wireMuteMic();
     this.wireHideCamera();
+    this.wireDevicePicker();
     this.wirePause();
     this.wireSettingsLink();
     this.wireRecordingsLink();
@@ -147,6 +156,7 @@ export class PopupController {
     this.captionPoller.stop();
     this.sessionTabs.dispose();
     this.confirmDialog.dispose();
+    this.closeDevicePicker(false);
   }
 
   /**
@@ -170,6 +180,7 @@ export class PopupController {
     // live-recording intervals (we're not on the recording view).
     const job = this.sessionTabs.activeJob(session);
     if (job) {
+      this.closeDevicePicker(false);
       this.timer.stop();
       this.captionPoller.stop();
       if (this.el.sessionTabs) this.el.sessionTabs.hidden = true;
@@ -201,6 +212,7 @@ export class PopupController {
       this.timer.sync(phase, session);
       this.captionPoller.start();
     } else {
+      this.closeDevicePicker(false);
       this.timer.stop();
       this.captionPoller.stop();
       // The recording this prompt refers to is gone (it stopped on its own, or
@@ -316,11 +328,13 @@ export class PopupController {
     row.hidden = !active;
     if (!active) {
       this.micMuted = false;
+      if (this.el.micDeviceTrigger) this.el.micDeviceTrigger.disabled = true;
       return;
     }
 
     if (this.el.micModeLabel) this.el.micModeLabel.textContent = micMode.toUpperCase();
     this.updateDeviceLabel(this.el.micDeviceLabel, session?.capturedDevices?.microphone, 'microphone', session?.phase);
+    if (this.el.micDeviceTrigger) this.el.micDeviceTrigger.disabled = session?.phase !== 'recording';
     this.micMuted = session?.micMuted === true;
     this.renderTogglePill(btn, this.micMuted, '[data-mute-label]');
   }
@@ -370,11 +384,13 @@ export class PopupController {
     row.hidden = !active;
     if (!active) {
       this.cameraMuted = false;
+      if (this.el.cameraDeviceTrigger) this.el.cameraDeviceTrigger.disabled = true;
       return;
     }
 
     this.cameraMuted = session?.cameraMuted === true;
     this.updateDeviceLabel(this.el.cameraDeviceLabel, session?.capturedDevices?.camera, 'camera', session?.phase);
+    if (this.el.cameraDeviceTrigger) this.el.cameraDeviceTrigger.disabled = session?.phase !== 'recording';
     const cameraMode = document.getElementById('camera-mode-label');
     if (cameraMode) {
       cameraMode.textContent = '720P';
@@ -393,6 +409,123 @@ export class PopupController {
     const text = label || (phase === 'starting' ? 'Connecting…' : `${device === 'microphone' ? 'Microphone' : 'Camera'} unavailable`);
     el.textContent = text;
     el.title = label ? `Current ${device}: ${label}` : text;
+  }
+
+  /** Opens the reference-style bottom sheet and switches the active track in place. */
+  private wireDevicePicker(): void {
+    this.el.micDeviceTrigger?.addEventListener('click', () => void this.openDevicePicker('microphone'));
+    this.el.cameraDeviceTrigger?.addEventListener('click', () => void this.openDevicePicker('camera'));
+    this.el.devicePickerClose?.addEventListener('click', () => this.closeDevicePicker());
+    this.el.devicePicker?.querySelector<HTMLElement>('[data-device-picker-dismiss]')
+      ?.addEventListener('click', () => this.closeDevicePicker());
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && this.activeDevicePicker) this.closeDevicePicker();
+    });
+  }
+
+  private async openDevicePicker(device: RecordingInputDevice): Promise<void> {
+    if (this.lastSession?.phase !== 'recording' || !this.el.devicePicker || !this.el.devicePickerList) return;
+
+    const requestId = ++this.devicePickerRequestId;
+    this.activeDevicePicker = device;
+    this.el.devicePicker.hidden = false;
+    if (this.el.devicePickerTitle) this.el.devicePickerTitle.textContent = device.toUpperCase();
+    if (this.el.devicePickerTrack) this.el.devicePickerTrack.textContent = device === 'microphone' ? 'Audio track' : 'Video track';
+    if (this.el.devicePickerMode) {
+      this.el.devicePickerMode.textContent = device === 'microphone'
+        ? (this.lastSession.runConfig?.micMode ?? 'separate').toUpperCase()
+        : '720P';
+    }
+    if (this.el.devicePickerError) {
+      this.el.devicePickerError.hidden = true;
+      this.el.devicePickerError.textContent = '';
+    }
+    this.el.devicePickerList.replaceChildren(this.buildDevicePickerMessage('Loading devices…'));
+
+    try {
+      const devices = await navigator.mediaDevices?.enumerateDevices?.();
+      if (this.activeDevicePicker !== device || this.devicePickerRequestId !== requestId) return;
+      const kind: MediaDeviceKind = device === 'microphone' ? 'audioinput' : 'videoinput';
+      const available = (devices ?? []).filter((item) => item.kind === kind && item.deviceId);
+      if (available.length === 0) {
+        this.el.devicePickerList.replaceChildren(this.buildDevicePickerMessage(`No ${device === 'microphone' ? 'microphones' : 'cameras'} found`));
+        return;
+      }
+
+      const currentLabel = this.lastSession.capturedDevices?.[device];
+      const options = available.map((item, index) => {
+        const label = item.label || `${device === 'microphone' ? 'Microphone' : 'Camera'} ${index + 1}`;
+        const selected = Boolean(currentLabel && item.label === currentLabel);
+        const option = document.createElement('button');
+        option.type = 'button';
+        option.className = 'device-picker-option';
+        option.dataset.deviceId = item.deviceId;
+        option.setAttribute('role', 'option');
+        option.setAttribute('aria-selected', String(selected));
+
+        const copy = document.createElement('span');
+        copy.className = 'device-picker-option-label';
+        copy.textContent = label;
+        option.append(copy);
+        if (selected) {
+          const check = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+          check.setAttribute('class', 'device-picker-check');
+          check.setAttribute('viewBox', '0 0 16 16');
+          check.setAttribute('aria-hidden', 'true');
+          check.innerHTML = '<path d="M3 8.2l3.1 3.1L13 4.7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>';
+          option.append(check);
+        }
+        option.addEventListener('click', () => void this.selectInputDevice(item.deviceId));
+        return option;
+      });
+      this.el.devicePickerList.replaceChildren(...options);
+      options.find((option) => option.getAttribute('aria-selected') === 'true')?.focus();
+    } catch (error: unknown) {
+      console.error('[popup] enumerateDevices error', error);
+      if (this.activeDevicePicker === device && this.devicePickerRequestId === requestId) {
+        this.el.devicePickerList.replaceChildren(this.buildDevicePickerMessage('Unable to list devices'));
+      }
+    }
+  }
+
+  private buildDevicePickerMessage(text: string): HTMLElement {
+    const message = document.createElement('div');
+    message.className = 'device-picker-empty';
+    message.textContent = text;
+    return message;
+  }
+
+  private async selectInputDevice(deviceId: string): Promise<void> {
+    const device = this.activeDevicePicker;
+    if (!device || !deviceId || !this.el.devicePickerList) return;
+    const options = Array.from(this.el.devicePickerList.querySelectorAll<HTMLButtonElement>('.device-picker-option'));
+    options.forEach((option) => { option.disabled = true; });
+    if (this.el.devicePickerError) this.el.devicePickerError.hidden = true;
+
+    try {
+      const response = await sendToBackground({ type: 'SET_INPUT_DEVICE', device, deviceId });
+      if (response.ok === false) throw new Error(response.error || `Failed to change ${device}`);
+      this.state.applySession(response.session);
+      const label = response.session.capturedDevices?.[device];
+      this.toast(`${device === 'microphone' ? 'Microphone' : 'Camera'} changed${label ? ` to ${label}` : ''}`);
+      this.closeDevicePicker();
+    } catch (error: unknown) {
+      console.error('[popup] SET_INPUT_DEVICE error', error);
+      options.forEach((option) => { option.disabled = false; });
+      if (this.el.devicePickerError) {
+        this.el.devicePickerError.hidden = false;
+        this.el.devicePickerError.textContent = error instanceof Error ? error.message : `Failed to change ${device}`;
+      }
+    }
+  }
+
+  private closeDevicePicker(restoreFocus = true): void {
+    const device = this.activeDevicePicker;
+    this.devicePickerRequestId += 1;
+    this.activeDevicePicker = null;
+    if (this.el.devicePicker) this.el.devicePicker.hidden = true;
+    if (!restoreFocus || !device) return;
+    (device === 'microphone' ? this.el.micDeviceTrigger : this.el.cameraDeviceTrigger)?.focus();
   }
 
   private wirePause() {

@@ -232,7 +232,10 @@
             </svg></span>
           <div class="srow-main">
             <div class="srow-title">Microphone <span id="mic-mode-label" class="srow-mode"></span></div>
-            <div id="mic-device-label" class="srow-device" title="Current microphone">Connecting…</div>
+            <button id="mic-device-trigger" class="device-trigger" type="button" aria-haspopup="dialog"
+              aria-controls="device-picker" title="Change microphone">
+              <span id="mic-device-label" class="srow-device">Connecting…</span>
+            </button>
           </div>
           <button id="mute-mic" class="switch on" type="button" aria-pressed="false"
             title="Mute the microphone (records silence) without stopping the recording">
@@ -249,7 +252,10 @@
             </svg></span>
           <div class="srow-main">
             <div class="srow-title">Camera <span id="camera-mode-label" class="srow-mode">720P</span></div>
-            <div id="camera-device-label" class="srow-device" title="Current camera">Connecting…</div>
+            <button id="camera-device-trigger" class="device-trigger" type="button" aria-haspopup="dialog"
+              aria-controls="device-picker" title="Change camera">
+              <span id="camera-device-label" class="srow-device">Connecting…</span>
+            </button>
           </div>
           <button id="hide-camera" class="switch on" type="button" aria-pressed="false"
             title="Hide the camera (records black frames) without stopping the recording">
@@ -278,6 +284,24 @@
           title="Discard this recording and permanently delete its captured media">
           Discard
         </button>
+      </div>
+
+      <div id="device-picker" class="device-picker" role="dialog" aria-modal="true"
+        aria-labelledby="device-picker-title" hidden>
+        <div class="device-picker-scrim" data-device-picker-dismiss></div>
+        <div class="device-picker-sheet">
+          <div class="device-picker-head">
+            <span id="device-picker-title" class="device-picker-title">MICROPHONE</span>
+            <button id="device-picker-close" class="device-picker-close" type="button" aria-label="Close device picker">✕</button>
+          </div>
+          <div id="device-picker-list" class="device-picker-list" role="listbox" aria-busy="false"></div>
+          <div id="device-picker-error" class="device-picker-error" role="status" hidden></div>
+          <div class="device-picker-divider"></div>
+          <div class="device-picker-meta">
+            <span id="device-picker-track">Audio track</span>
+            <span id="device-picker-mode">SEPARATE</span>
+          </div>
+        </div>
       </div>
     </section>
 

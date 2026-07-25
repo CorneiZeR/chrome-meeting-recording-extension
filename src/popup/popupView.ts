@@ -49,10 +49,19 @@ export type PopupElements = {
   micRow: HTMLElement | null;
   micModeLabel: HTMLElement | null;
   micDeviceLabel: HTMLElement | null;
+  micDeviceTrigger: HTMLButtonElement | null;
   muteMicBtn: HTMLButtonElement | null;
   cameraRow: HTMLElement | null;
   cameraDeviceLabel: HTMLElement | null;
+  cameraDeviceTrigger: HTMLButtonElement | null;
   hideCameraBtn: HTMLButtonElement | null;
+  devicePicker: HTMLElement | null;
+  devicePickerTitle: HTMLElement | null;
+  devicePickerList: HTMLElement | null;
+  devicePickerError: HTMLElement | null;
+  devicePickerTrack: HTMLElement | null;
+  devicePickerMode: HTMLElement | null;
+  devicePickerClose: HTMLButtonElement | null;
   pauseBtn: HTMLButtonElement | null;
   stopBtn: HTMLButtonElement | null;
   /** Destructive active-recording action; optional for lightweight view tests. */

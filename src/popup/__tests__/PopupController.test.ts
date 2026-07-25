@@ -93,11 +93,20 @@ describe('PopupController', () => {
       micRow: document.createElement('div'),
       micModeLabel: document.createElement('span'),
       micDeviceLabel: document.createElement('span'),
+      micDeviceTrigger: document.createElement('button'),
       micMeterBars: Array.from({ length: 7 }, () => document.createElement('span')),
       muteMicBtn: pill('data-mute-label'),
       cameraRow: document.createElement('div'),
       cameraDeviceLabel: document.createElement('span'),
+      cameraDeviceTrigger: document.createElement('button'),
       hideCameraBtn: pill('data-camera-label'),
+      devicePicker: document.createElement('div'),
+      devicePickerTitle: document.createElement('span'),
+      devicePickerList: document.createElement('div'),
+      devicePickerError: document.createElement('div'),
+      devicePickerTrack: document.createElement('span'),
+      devicePickerMode: document.createElement('span'),
+      devicePickerClose: document.createElement('button'),
       pauseBtn: pill('data-pause-label'),
       stopBtn: document.createElement('button'),
       discardBtn: document.createElement('button'),
@@ -133,6 +142,11 @@ describe('PopupController', () => {
       recordingStatusEl: document.createElement('div'),
     };
     elements.recordSelfVideoCheckbox.type = 'checkbox';
+    elements.devicePicker.hidden = true;
+    const pickerScrim = document.createElement('button');
+    pickerScrim.setAttribute('data-device-picker-dismiss', '');
+    elements.devicePicker.append(pickerScrim, elements.devicePickerList);
+    (navigator.mediaDevices as any).enumerateDevices = jest.fn().mockResolvedValue([]);
 
     const optLocal = document.createElement('option');
     optLocal.value = 'local';
@@ -1071,6 +1085,76 @@ describe('PopupController', () => {
       expect(elements.micDeviceLabel.title).toBe('Current microphone: Shure MV7');
       expect(elements.cameraDeviceLabel.textContent).toBe('Logitech Brio');
       expect(elements.cameraDeviceLabel.title).toBe('Current camera: Logitech Brio');
+    });
+
+    it('lists live microphones in the device sheet and changes the recording input in place', async () => {
+      (navigator.mediaDevices.enumerateDevices as jest.Mock).mockResolvedValue([
+        { kind: 'audioinput', deviceId: 'mic-1', label: 'Shure MV7' },
+        { kind: 'videoinput', deviceId: 'cam-1', label: 'Logitech Brio' },
+        { kind: 'audioinput', deviceId: 'mic-2', label: 'AirPods Pro' },
+      ]);
+      mockSendMessage.mockResolvedValueOnce(recordingSession({
+        capturedDevices: { microphone: 'Shure MV7', camera: 'Logitech Brio' },
+      }));
+      controller.init();
+      await flush();
+
+      elements.micDeviceTrigger.click();
+      await flush();
+
+      expect(elements.devicePicker.hidden).toBe(false);
+      expect(elements.devicePickerTitle.textContent).toBe('MICROPHONE');
+      expect(elements.devicePickerTrack.textContent).toBe('Audio track');
+      expect(elements.devicePickerMode.textContent).toBe('SEPARATE');
+      const options = (elements.devicePickerList as HTMLElement)
+        .querySelectorAll<HTMLButtonElement>('.device-picker-option');
+      expect(options).toHaveLength(2);
+      expect(options[0].textContent).toContain('Shure MV7');
+      expect(options[0].getAttribute('aria-selected')).toBe('true');
+      expect(options[1].textContent).toContain('AirPods Pro');
+
+      mockSendMessage.mockClear();
+      mockSendMessage.mockResolvedValueOnce({
+        ok: true,
+        ...recordingSession({ capturedDevices: { microphone: 'AirPods Pro', camera: 'Logitech Brio' } }),
+      });
+      options[1].click();
+      await flush();
+
+      expect(mockSendMessage).toHaveBeenCalledWith({
+        type: 'SET_INPUT_DEVICE',
+        device: 'microphone',
+        deviceId: 'mic-2',
+      });
+      expect(elements.micDeviceLabel.textContent).toBe('AirPods Pro');
+      expect(elements.devicePicker.hidden).toBe(true);
+    });
+
+    it('shows only cameras in the camera device sheet', async () => {
+      (navigator.mediaDevices.enumerateDevices as jest.Mock).mockResolvedValue([
+        { kind: 'audioinput', deviceId: 'mic-1', label: 'Shure MV7' },
+        { kind: 'videoinput', deviceId: 'cam-1', label: 'Logitech Brio' },
+        { kind: 'videoinput', deviceId: 'cam-2', label: 'FaceTime HD Camera' },
+      ]);
+      mockSendMessage.mockResolvedValueOnce(recordingSession({
+        capturedDevices: { microphone: 'Shure MV7', camera: 'Logitech Brio' },
+      }));
+      controller.init();
+      await flush();
+
+      elements.cameraDeviceTrigger.click();
+      await flush();
+
+      expect(elements.devicePickerTitle.textContent).toBe('CAMERA');
+      expect(elements.devicePickerTrack.textContent).toBe('Video track');
+      expect(elements.devicePickerMode.textContent).toBe('720P');
+      const options = (elements.devicePickerList as HTMLElement)
+        .querySelectorAll<HTMLButtonElement>('.device-picker-option');
+      expect(options).toHaveLength(2);
+      expect(Array.from(options).map((option) => option.textContent)).toEqual([
+        expect.stringContaining('Logitech Brio'),
+        expect.stringContaining('FaceTime HD Camera'),
+      ]);
     });
 
     it('shows the mic row and mutes the mic on its pill', async () => {
