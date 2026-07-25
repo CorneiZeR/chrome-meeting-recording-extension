@@ -32,23 +32,25 @@ export type SettingsElements = {
   micAutoGain: HTMLInputElement | null;
   chunkDefaultTimeslice: HTMLInputElement | null;
   chunkExtendedTimeslice: HTMLInputElement | null;
+  themeCycle: HTMLButtonElement | null;
+  professionalToggle: HTMLButtonElement | null;
+  professionalFields: HTMLElement | null;
+  professionalSummary: HTMLElement | null;
   saveBtn: HTMLButtonElement | null;
   resetBtn: HTMLButtonElement | null;
   status: HTMLElement | null;
 };
 
 type SettingsDocument = Document & {
-  __recorderSettingsTooltipControllerBound__?: boolean;
+  __recorderSettingsSelectAbortController__?: AbortController;
 };
-
-const TOOLTIP_TOGGLE_SELECTOR = '.tooltip-toggle';
 
 export class SettingsController {
   constructor(private readonly el: SettingsElements) {}
 
   /** Loads saved settings into the form and wires save/reset + the tooltip controller. */
   async init(): Promise<void> {
-    this.wireTooltipController();
+    this.wireConsoleControls();
 
     try {
       const stored = await loadExtensionSettingsFromStorage();
@@ -114,6 +116,7 @@ export class SettingsController {
     if (el.micAutoGain) el.micAutoGain.checked = settings.professional.microphoneAutoGainControl;
     if (el.chunkDefaultTimeslice) el.chunkDefaultTimeslice.value = String(settings.professional.chunkDefaultTimesliceMs);
     if (el.chunkExtendedTimeslice) el.chunkExtendedTimeslice.value = String(settings.professional.chunkExtendedTimesliceMs);
+    this.syncConsoleControls();
   }
 
   /** Reads the current form state into the storage payload expected by settings normalization. */
@@ -144,54 +147,199 @@ export class SettingsController {
     };
   }
 
-  /** Resolves the tooltip bubble controlled by a given icon button. */
-  private getTooltipBubble(toggle: HTMLButtonElement): HTMLElement | null {
-    const tooltipId = toggle.getAttribute('aria-controls');
-    return tooltipId ? document.getElementById(tooltipId) : null;
-  }
+  /** Wires the reference console controls to the existing form fields. */
+  private wireConsoleControls(): void {
+    this.el.themeCycle?.addEventListener('click', () => {
+      this.cycleSelect(this.el.theme);
+      if (this.el.theme) applyThemePreference(this.el.theme.value as ExtensionSettings['appearance']['theme']);
+      this.syncConsoleControls();
+    });
 
-  /** Opens or closes one tooltip bubble and keeps ARIA state in sync. */
-  private setTooltipOpen(toggle: HTMLButtonElement, open: boolean): void {
-    const bubble = this.getTooltipBubble(toggle);
-    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
-    if (!bubble) return;
-    bubble.hidden = !open;
-  }
+    this.wireSelectControls();
 
-  /** Closes every currently open tooltip except an optional active toggle. */
-  private closeOpenTooltips(except?: HTMLButtonElement): void {
-    document.querySelectorAll<HTMLButtonElement>(`${TOOLTIP_TOGGLE_SELECTOR}[aria-expanded="true"]`)
-      .forEach((toggle) => {
-        if (toggle === except) return;
-        this.setTooltipOpen(toggle, false);
+    document.querySelectorAll<HTMLElement>('[data-checkbox]').forEach((control) => {
+      control.addEventListener('click', (event) => {
+        const target = (event.target as Element | null)?.closest<HTMLButtonElement>('[data-value]');
+        const input = document.getElementById(control.dataset.checkbox ?? '') as HTMLInputElement | null;
+        if (!target || !input) return;
+        input.checked = target.dataset.value === 'true';
+        input.dispatchEvent(new Event('change', { bubbles: true }));
       });
+    });
+
+    this.el.professionalToggle?.addEventListener('click', () => {
+      const isOpen = this.el.professionalToggle?.getAttribute('aria-expanded') === 'true';
+      this.setProfessionalOpen(!isOpen);
+    });
+
+    document.querySelectorAll<HTMLInputElement | HTMLSelectElement>('input, select').forEach((control) => {
+      control.addEventListener('change', () => {
+        if (control === this.el.theme) applyThemePreference(control.value as ExtensionSettings['appearance']['theme']);
+        this.syncConsoleControls();
+      });
+    });
   }
 
-  /** Wires a single delegated tooltip controller for the entire settings page. */
-  private wireTooltipController(): void {
+  /** Advances the titlebar theme control and emits its normal change event. */
+  private cycleSelect(select: HTMLSelectElement | null): void {
+    if (!select || select.options.length === 0) return;
+    select.selectedIndex = (select.selectedIndex + 1) % select.options.length;
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+
+  /** Wires popup-style listboxes to the form-backed settings selects. */
+  private wireSelectControls(): void {
     const settingsDocument = document as SettingsDocument;
-    if (settingsDocument.__recorderSettingsTooltipControllerBound__) return;
-    settingsDocument.__recorderSettingsTooltipControllerBound__ = true;
+    settingsDocument.__recorderSettingsSelectAbortController__?.abort();
+    const abortController = new AbortController();
+    settingsDocument.__recorderSettingsSelectAbortController__ = abortController;
+    const listenerOptions = { signal: abortController.signal };
+    const triggers = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-select]'));
+    const close = (trigger: HTMLButtonElement) => {
+      const optionsId = trigger.getAttribute('aria-controls');
+      const options = optionsId ? document.getElementById(optionsId) : null;
+      if (options) options.hidden = true;
+      trigger.setAttribute('aria-expanded', 'false');
+    };
+    const closeAll = (except?: HTMLButtonElement) => {
+      triggers.forEach((trigger) => {
+        if (trigger !== except) close(trigger);
+      });
+    };
+    const optionsFor = (trigger: HTMLButtonElement): HTMLElement | null => {
+      const optionsId = trigger.getAttribute('aria-controls');
+      return optionsId ? document.getElementById(optionsId) : null;
+    };
+    const choose = (trigger: HTMLButtonElement, value: string) => {
+      const select = document.getElementById(trigger.dataset.select ?? '') as HTMLSelectElement | null;
+      if (!select) return;
+      select.value = value;
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+      this.syncConsoleControls();
+      close(trigger);
+      trigger.focus();
+    };
+    const focusOption = (options: HTMLElement, index: number) => {
+      const items = Array.from(options.querySelectorAll<HTMLButtonElement>('[role="option"]'));
+      items[Math.max(0, Math.min(index, items.length - 1))]?.focus();
+    };
+    const open = (trigger: HTMLButtonElement, initialOffset = 0) => {
+      const options = optionsFor(trigger);
+      if (!options) return;
+      closeAll(trigger);
+      options.hidden = false;
+      trigger.setAttribute('aria-expanded', 'true');
+      const selected = Array.from(options.querySelectorAll<HTMLButtonElement>('[role="option"]'))
+        .findIndex((option) => option.getAttribute('aria-selected') === 'true');
+      focusOption(options, selected + initialOffset);
+    };
+
+    triggers.forEach((trigger) => {
+      const options = optionsFor(trigger);
+      if (!options) return;
+      trigger.addEventListener('click', () => {
+        if (options.hidden) open(trigger);
+        else close(trigger);
+      });
+      trigger.addEventListener('keydown', (event) => {
+        if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+          event.preventDefault();
+          open(trigger, event.key === 'ArrowDown' ? 0 : -1);
+        }
+        if (event.key === 'Home' || event.key === 'End') {
+          event.preventDefault();
+          open(trigger, event.key === 'Home' ? -Number.MAX_SAFE_INTEGER : Number.MAX_SAFE_INTEGER);
+        }
+      });
+      options.addEventListener('click', (event) => {
+        const option = (event.target as Element | null)?.closest<HTMLButtonElement>('[role="option"]');
+        if (option?.dataset.value) choose(trigger, option.dataset.value);
+      });
+      options.addEventListener('keydown', (event) => {
+        const items = Array.from(options.querySelectorAll<HTMLButtonElement>('[role="option"]'));
+        const index = items.indexOf(document.activeElement as HTMLButtonElement);
+        if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+          event.preventDefault();
+          focusOption(options, index + (event.key === 'ArrowDown' ? 1 : -1));
+        } else if (event.key === 'Home' || event.key === 'End') {
+          event.preventDefault();
+          focusOption(options, event.key === 'Home' ? 0 : items.length - 1);
+        } else if (event.key === 'Escape') {
+          event.preventDefault();
+          close(trigger);
+          trigger.focus();
+        }
+      });
+    });
 
     document.addEventListener('click', (event) => {
-      const target = event.target;
-      if (!(target instanceof Element)) return;
-
-      const toggle = target.closest(TOOLTIP_TOGGLE_SELECTOR) as HTMLButtonElement | null;
-      if (toggle) {
-        event.preventDefault();
-        const shouldOpen = toggle.getAttribute('aria-expanded') !== 'true';
-        this.closeOpenTooltips(toggle);
-        this.setTooltipOpen(toggle, shouldOpen);
-        return;
-      }
-
-      if (target.closest('.tooltip-shell')) return;
-      this.closeOpenTooltips();
-    });
-
+      const target = event.target as Node;
+      triggers.forEach((trigger) => {
+        const options = optionsFor(trigger);
+        if (options && !options.hidden && !trigger.contains(target) && !options.contains(target)) close(trigger);
+      });
+    }, listenerOptions);
     document.addEventListener('keydown', (event) => {
-      if (event.key === 'Escape') this.closeOpenTooltips();
+      if (event.key === 'Escape') closeAll();
+    }, listenerOptions);
+  }
+
+  /** Synchronizes the visual console controls with their form-backed values. */
+  private syncConsoleControls(): void {
+    document.querySelectorAll<HTMLButtonElement>('[data-select]').forEach((control) => {
+      const select = document.getElementById(control.dataset.select ?? '') as HTMLSelectElement | null;
+      const label = control.querySelector<HTMLElement>('.value-cycle-label');
+      if (!select || !label) return;
+      label.textContent = select.options[select.selectedIndex]?.textContent?.trim() ?? '';
+      control.title = label.textContent;
+      const optionsId = control.getAttribute('aria-controls');
+      const options = optionsId ? document.getElementById(optionsId) : null;
+      options?.querySelectorAll<HTMLButtonElement>('[role="option"]').forEach((option) => {
+        option.setAttribute('aria-selected', String(option.dataset.value === select.value));
+      });
+      if (control.dataset.select === 'recording-mode' && options) {
+        const selectedIcon = options.querySelector<SVGElement>(`[role="option"][data-value="${select.value}"] .select-option-icon`);
+        const currentIcon = control.querySelector<SVGElement>('.storage-icon');
+        if (selectedIcon && currentIcon) {
+          const icon = selectedIcon.cloneNode(true) as SVGElement;
+          icon.classList.replace('select-option-icon', 'storage-icon');
+          currentIcon.replaceWith(icon);
+        }
+      }
     });
+
+    document.querySelectorAll<HTMLElement>('[data-checkbox]').forEach((control) => {
+      const input = document.getElementById(control.dataset.checkbox ?? '') as HTMLInputElement | null;
+      if (!input) return;
+      control.querySelectorAll<HTMLButtonElement>('[data-value]').forEach((button) => {
+        button.setAttribute('aria-pressed', String((button.dataset.value === 'true') === input.checked));
+      });
+    });
+
+    const settings = this.readSettingsFromForm() as ExtensionSettings;
+    const tabResolution = settings.professional.tabResolutionPreset.split('x')[1] ?? '';
+    const tabType = settings.professional.tabContentType === 'video' ? 'VIDEO' : 'TEXT';
+    const dsp = settings.professional.microphoneEchoCancellation
+      && settings.professional.microphoneNoiseSuppression
+      && settings.professional.microphoneAutoGainControl
+      ? 'DSP ON'
+      : !settings.professional.microphoneEchoCancellation
+        && !settings.professional.microphoneNoiseSuppression
+        && !settings.professional.microphoneAutoGainControl
+        ? 'DSP OFF'
+        : 'DSP CUSTOM';
+    if (this.el.professionalSummary) {
+      this.el.professionalSummary.textContent = `CAM ${settings.professional.selfVideoFrameRate}FPS · TAB ${tabType} ${tabResolution}P @${settings.professional.tabMaxFrameRate}FPS · ${dsp}`;
+    }
+    if (this.el.themeCycle && this.el.theme) {
+      this.el.themeCycle.setAttribute('aria-label', `Theme: ${this.el.theme.value}. Click to cycle theme.`);
+      this.el.themeCycle.title = `Theme: ${this.el.theme.value}. Click to cycle theme.`;
+    }
+  }
+
+  /** Opens or closes the Professional rows without disturbing the settings values. */
+  private setProfessionalOpen(open: boolean): void {
+    this.el.professionalToggle?.setAttribute('aria-expanded', String(open));
+    if (this.el.professionalFields) this.el.professionalFields.hidden = !open;
   }
 }

@@ -98,7 +98,7 @@ describe('settings page', () => {
     expect(document.documentElement.dataset.theme).toBe('light');
   });
 
-  it('toggles tooltips on click and closes them on outside click or Escape', async () => {
+  it('keeps the console controls synchronized and collapses Professional parameters', async () => {
     jest.doMock('./shared/settings', () => ({
       DEFAULT_EXTENSION_SETTINGS: savedSettings,
       loadExtensionSettingsFromStorage: jest.fn().mockResolvedValue(savedSettings),
@@ -111,20 +111,36 @@ describe('settings page', () => {
     });
     await Promise.resolve();
 
-    const toggle = document.querySelector('.tooltip-toggle') as HTMLButtonElement;
-    const bubble = document.getElementById(toggle.getAttribute('aria-controls')!) as HTMLElement;
+    const storage = document.querySelector<HTMLButtonElement>('[data-select="recording-mode"]')!;
+    const storageLabel = storage.querySelector('.value-cycle-label');
+    expect(storageLabel?.textContent).toBe('Google Drive');
 
-    toggle.click();
-    expect(toggle.getAttribute('aria-expanded')).toBe('true');
-    expect(bubble.hidden).toBe(false);
+    storage.click();
+    expect(storage.getAttribute('aria-expanded')).toBe('true');
+    expect(document.getElementById('recording-mode-options')?.hidden).toBe(false);
+    expect((document.getElementById('recording-mode') as HTMLSelectElement).value).toBe('drive');
 
-    document.body.click();
-    expect(toggle.getAttribute('aria-expanded')).toBe('false');
-    expect(bubble.hidden).toBe(true);
-
-    toggle.click();
+    (document.querySelector('[data-select="recording-mode"]') as HTMLButtonElement).focus();
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
-    expect(toggle.getAttribute('aria-expanded')).toBe('false');
-    expect(bubble.hidden).toBe(true);
+    expect(storage.getAttribute('aria-expanded')).toBe('false');
+
+    storage.click();
+    (document.querySelector('#recording-mode-options [data-value="opfs"]') as HTMLButtonElement).click();
+    expect((document.getElementById('recording-mode') as HTMLSelectElement).value).toBe('opfs');
+    expect(storageLabel?.textContent).toBe('OPFS (Local Disk)');
+    expect(storage.getAttribute('aria-expanded')).toBe('false');
+    expect(document.querySelector('#recording-mode-options [data-value="opfs"]')?.getAttribute('aria-selected')).toBe('true');
+    expect(document.querySelector('#recording-mode-options [data-value="drive"]')?.getAttribute('aria-selected')).toBe('false');
+
+    const separateCamera = document.querySelector<HTMLButtonElement>('[data-checkbox="separate-camera"] [data-value="false"]')!;
+    separateCamera.click();
+    expect((document.getElementById('separate-camera') as HTMLInputElement).checked).toBe(false);
+    expect(separateCamera.getAttribute('aria-pressed')).toBe('true');
+
+    const professionalToggle = document.getElementById('professional-toggle') as HTMLButtonElement;
+    const professionalFields = document.getElementById('professional-fields') as HTMLElement;
+    professionalToggle.click();
+    expect(professionalToggle.getAttribute('aria-expanded')).toBe('false');
+    expect(professionalFields.hidden).toBe(true);
   });
 });

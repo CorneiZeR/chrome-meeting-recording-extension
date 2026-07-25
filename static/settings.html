@@ -2,196 +2,188 @@
 <html>
 <head>
   <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Recorder Settings</title>
   <link rel="stylesheet" href="styles/settings.css" />
 </head>
 <body>
-  <main>
-    <h1>Recorder Settings</h1>
-    <p class="intro">
-      Configure the defaults used when you start a recording, plus the advanced capture parameters
-      that shape tab, camera, microphone, and chunking behavior.
-    </p>
-
-    <section class="section">
-      <h2>Appearance</h2>
-      <div class="field-grid">
-        <div class="field-label">
-          <label for="theme">Theme</label>
-          <span class="tooltip-shell">
-            <button class="tooltip-toggle" type="button" aria-label="Explain theme setting" aria-controls="tooltip-theme" aria-expanded="false">?</button>
-            <span id="tooltip-theme" class="tooltip-bubble" role="tooltip" hidden>Follow your operating system by default, or keep the extension in light or dark mode.</span>
-          </span>
-        </div>
-        <select id="theme">
-          <option value="system">System</option>
-          <option value="light">Light</option>
-          <option value="dark">Dark</option>
-        </select>
+  <main class="settings-console" aria-labelledby="settings-title">
+    <header class="settings-titlebar">
+      <div class="brand-lockup">
+        <span class="ready-dot" title="Ready to record" aria-hidden="true"></span>
+        <span>Meet Recorder</span>
       </div>
-    </section>
+      <button id="theme-cycle" class="theme-cycle" type="button" title="Theme" aria-label="Theme: system. Click to cycle theme.">SETTINGS</button>
+      <select id="theme" class="sr-only" tabindex="-1" aria-hidden="true">
+        <option value="system">System</option>
+        <option value="light">Light</option>
+        <option value="dark">Dark</option>
+      </select>
+    </header>
 
-    <section class="section">
-      <h2>Basic</h2>
-      <div class="field-grid">
-        <div class="field-label">
-          <label for="recording-mode">Default recording mode</label>
-          <span class="tooltip-shell">
-            <button class="tooltip-toggle" type="button" aria-label="Explain default recording mode" aria-controls="tooltip-recording-mode" aria-expanded="false">?</button>
-            <span id="tooltip-recording-mode" class="tooltip-bubble" role="tooltip" hidden>Choose where finished recordings go by default. Drive uploads happen after capture stops.</span>
-          </span>
+    <div class="settings-body">
+      <h1 id="settings-title">Recorder Settings</h1>
+      <p class="intro">Defaults used when you start a recording. Hover any label for what it does; changes apply after Save.</p>
+
+      <section class="settings-section" aria-labelledby="basic-heading">
+        <h2 id="basic-heading" class="section-eyebrow">BASIC</h2>
+
+        <div class="setting-row">
+          <label for="recording-mode" title="Where recordings are saved when you start capturing.">Default recording mode</label>
+          <div class="settings-select">
+            <button id="recording-mode-trigger" class="value-cycle value-cycle--storage" type="button" data-select="recording-mode" aria-label="Default recording mode" aria-haspopup="listbox" aria-expanded="false" aria-controls="recording-mode-options"><svg class="storage-icon" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4.5 13a3 3 0 01-.3-5.99A4 4 0 0112 6.5a2.75 2.75 0 01-.25 5.5H4.5z"></path></svg><span class="value-cycle-label"></span><svg class="value-chevron" viewBox="0 0 10 6" aria-hidden="true"><path d="M0 0l5 6 5-6z"></path></svg></button>
+            <div id="recording-mode-options" class="settings-select-options" role="listbox" aria-label="Default recording mode" hidden>
+              <button type="button" role="option" data-value="drive" aria-selected="false"><svg class="select-option-icon" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4.5 13a3 3 0 01-.3-5.99A4 4 0 0112 6.5a2.75 2.75 0 01-.25 5.5H4.5z"></path></svg>Google Drive <svg class="select-check" width="12" height="10" viewBox="0 0 14 11" fill="none" aria-hidden="true"><path d="M1.5 6l3.5 3.5L12.5 1.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+              <button type="button" role="option" data-value="opfs" aria-selected="false"><svg class="select-option-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 4.2A1.2 1.2 0 013.2 3h3l1.4 1.6h4.2A1.2 1.2 0 0113 5.8v5.4a1.2 1.2 0 01-1.2 1.2H3.2A1.2 1.2 0 012 11.2z" stroke="currentColor" stroke-width="1.4"></path></svg>Local downloads <svg class="select-check" width="12" height="10" viewBox="0 0 14 11" fill="none" aria-hidden="true"><path d="M1.5 6l3.5 3.5L12.5 1.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+            </div>
+          </div>
+          <select id="recording-mode" class="sr-only" tabindex="-1" aria-hidden="true">
+            <option value="opfs">OPFS (Local Disk)</option>
+            <option value="drive">Google Drive</option>
+          </select>
         </div>
-        <select id="recording-mode">
-          <option value="opfs">OPFS (Local Disk)</option>
-          <option value="drive">Google Drive</option>
-        </select>
 
-        <div class="field-label">
-          <label for="mic-mode">Default microphone mode</label>
-          <span class="tooltip-shell">
-            <button class="tooltip-toggle" type="button" aria-label="Explain default microphone mode" aria-controls="tooltip-mic-mode" aria-expanded="false">?</button>
-            <span id="tooltip-mic-mode" class="tooltip-bubble" role="tooltip" hidden>Sets whether your microphone is ignored, mixed into the tab file, or saved as a separate file by default.</span>
-          </span>
+        <div class="setting-row">
+          <label for="mic-mode" title="Sets whether your microphone is ignored, mixed into the tab file, or saved as a separate file by default.">Default microphone mode</label>
+          <div class="settings-select">
+            <button id="mic-mode-trigger" class="value-cycle" type="button" data-select="mic-mode" aria-label="Default microphone mode" aria-haspopup="listbox" aria-expanded="false" aria-controls="mic-mode-options"><span class="value-cycle-label"></span><svg class="value-chevron" viewBox="0 0 10 6" aria-hidden="true"><path d="M0 0l5 6 5-6z"></path></svg></button>
+            <div id="mic-mode-options" class="settings-select-options" role="listbox" aria-label="Default microphone mode" hidden>
+              <button type="button" role="option" data-value="separate" aria-selected="false">Save microphone separately <svg class="select-check" width="12" height="10" viewBox="0 0 14 11" fill="none" aria-hidden="true"><path d="M1.5 6l3.5 3.5L12.5 1.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+              <button type="button" role="option" data-value="mixed" aria-selected="false">Mix into tab audio <svg class="select-check" width="12" height="10" viewBox="0 0 14 11" fill="none" aria-hidden="true"><path d="M1.5 6l3.5 3.5L12.5 1.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+              <button type="button" role="option" data-value="off" aria-selected="false">Don't record microphone <svg class="select-check" width="12" height="10" viewBox="0 0 14 11" fill="none" aria-hidden="true"><path d="M1.5 6l3.5 3.5L12.5 1.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+            </div>
+          </div>
+          <select id="mic-mode" class="sr-only" tabindex="-1" aria-hidden="true">
+            <option value="off">Do not record microphone</option>
+            <option value="mixed">Mix microphone into tab recording</option>
+            <option value="separate">Save microphone separately</option>
+          </select>
         </div>
-        <select id="mic-mode">
-          <option value="off">Do not record microphone</option>
-          <option value="mixed">Mix microphone into tab recording</option>
-          <option value="separate">Save microphone separately</option>
-        </select>
 
-        <div class="field-label">
-          <label for="separate-camera">Record camera separately by default</label>
-          <span class="tooltip-shell">
-            <button class="tooltip-toggle" type="button" aria-label="Explain separate camera capture" aria-controls="tooltip-separate-camera" aria-expanded="false">?</button>
-            <span id="tooltip-separate-camera" class="tooltip-bubble" role="tooltip" hidden>When enabled, the extension asks for your camera and writes it as its own recording file by default.</span>
-          </span>
+        <div class="setting-row">
+          <label for="separate-camera" title="When enabled, the extension asks for your camera and writes it as its own recording file by default.">Record camera separately</label>
+          <div class="segment-control" data-checkbox="separate-camera" role="group" aria-label="Record camera separately">
+            <button type="button" data-value="false">OFF</button><button type="button" data-value="true">ON</button>
+          </div>
+          <input id="separate-camera" class="sr-only" type="checkbox" tabindex="-1" aria-hidden="true" />
         </div>
-        <input id="separate-camera" type="checkbox" />
 
-        <div class="field-label">
-          <label for="self-video-resolution-preset">Camera resolution</label>
-          <span class="tooltip-shell">
-            <button class="tooltip-toggle" type="button" aria-label="Explain camera resolution" aria-controls="tooltip-self-video-resolution" aria-expanded="false">?</button>
-            <span id="tooltip-self-video-resolution" class="tooltip-bubble" role="tooltip" hidden>Select the preferred camera capture size. When Meet camera is off, separate camera recording can enforce this preset more strongly. Otherwise Chrome can still deliver a lower resolution.</span>
-          </span>
+        <div class="setting-row">
+          <label for="self-video-resolution-preset" title="Select the preferred camera capture size. Chrome can still deliver a lower resolution.">Camera resolution</label>
+          <div class="settings-select">
+            <button id="self-video-resolution-preset-trigger" class="value-cycle value-cycle--mono" type="button" data-select="self-video-resolution-preset" aria-label="Camera resolution" aria-haspopup="listbox" aria-expanded="false" aria-controls="self-video-resolution-preset-options"><span class="value-cycle-label"></span><svg class="value-chevron" viewBox="0 0 10 6" aria-hidden="true"><path d="M0 0l5 6 5-6z"></path></svg></button>
+            <div id="self-video-resolution-preset-options" class="settings-select-options settings-select-options--compact" role="listbox" aria-label="Camera resolution" hidden>
+              <button type="button" role="option" data-value="640x360" aria-selected="false">640 × 360 <svg class="select-check" width="12" height="10" viewBox="0 0 14 11" fill="none" aria-hidden="true"><path d="M1.5 6l3.5 3.5L12.5 1.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+              <button type="button" role="option" data-value="854x480" aria-selected="false">854 × 480 <svg class="select-check" width="12" height="10" viewBox="0 0 14 11" fill="none" aria-hidden="true"><path d="M1.5 6l3.5 3.5L12.5 1.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+              <button type="button" role="option" data-value="1280x720" aria-selected="false">1280 × 720 <svg class="select-check" width="12" height="10" viewBox="0 0 14 11" fill="none" aria-hidden="true"><path d="M1.5 6l3.5 3.5L12.5 1.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+              <button type="button" role="option" data-value="1920x1080" aria-selected="false">1920 × 1080 <svg class="select-check" width="12" height="10" viewBox="0 0 14 11" fill="none" aria-hidden="true"><path d="M1.5 6l3.5 3.5L12.5 1.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+            </div>
+          </div>
+          <select id="self-video-resolution-preset" class="sr-only" tabindex="-1" aria-hidden="true">
+            <option value="640x360">640 × 360</option>
+            <option value="854x480">854 × 480</option>
+            <option value="1280x720">1280 × 720</option>
+            <option value="1920x1080">1920 × 1080</option>
+          </select>
         </div>
-        <select id="self-video-resolution-preset">
-          <option value="640x360">640x360</option>
-          <option value="854x480">854x480</option>
-          <option value="1280x720">1280x720</option>
-          <option value="1920x1080">1920x1080</option>
-        </select>
 
-        <div class="field-label">
-          <label for="self-video-auto-resolution">Prefer the automatically selected resolution</label>
-          <span class="tooltip-shell">
-            <button class="tooltip-toggle" type="button" aria-label="Explain automatic camera resolution" aria-controls="tooltip-self-video-auto-resolution" aria-expanded="false">?</button>
-            <span id="tooltip-self-video-auto-resolution" class="tooltip-bubble" role="tooltip" hidden>Record the camera at whatever resolution the browser (or an active Meet call) already selected, instead of forcing the preset above. Skips the per-frame resize step — useful when the camera is shared with Meet.</span>
-          </span>
+        <div class="setting-row">
+          <label for="self-video-auto-resolution" title="Record the camera at whatever resolution the browser or active Meet call already selected, instead of forcing the preset above.">Prefer auto-selected resolution</label>
+          <div class="segment-control" data-checkbox="self-video-auto-resolution" role="group" aria-label="Prefer auto-selected resolution">
+            <button type="button" data-value="false">OFF</button><button type="button" data-value="true">ON</button>
+          </div>
+          <input id="self-video-auto-resolution" class="sr-only" type="checkbox" tabindex="-1" aria-hidden="true" />
         </div>
-        <input id="self-video-auto-resolution" type="checkbox" />
-      </div>
-    </section>
+      </section>
 
-    <section class="section">
-      <h2>Professional</h2>
-      <div class="field-grid">
-        <div class="field-label">
-          <label for="self-video-frame-rate">Camera frame rate (FPS)</label>
-          <span class="tooltip-shell">
-            <button class="tooltip-toggle" type="button" aria-label="Explain camera frame rate" aria-controls="tooltip-self-video-frame-rate" aria-expanded="false">?</button>
-            <span id="tooltip-self-video-frame-rate" class="tooltip-bubble" role="tooltip" hidden>Controls the requested camera motion smoothness. Higher values can use more bandwidth and CPU.</span>
-          </span>
+      <section class="settings-section professional-section" aria-labelledby="professional-heading">
+        <h2 id="professional-heading" class="section-eyebrow">PROFESSIONAL</h2>
+        <button id="professional-toggle" class="professional-toggle" type="button" aria-expanded="true" aria-controls="professional-fields">
+          <span><strong>Professional parameters</strong><small id="professional-summary"></small></span>
+          <svg class="toggle-chevron" width="11" height="7" viewBox="0 0 10 6" aria-hidden="true"><path d="M0 6l5-6 5 6z" /></svg>
+        </button>
+
+        <div id="professional-fields" class="professional-fields">
+          <div class="setting-row">
+            <label for="self-video-frame-rate" title="Controls the requested camera motion smoothness. Higher values can use more bandwidth and CPU.">Camera frame rate</label>
+            <span class="number-control"><input id="self-video-frame-rate" type="number" min="1" max="120" /><small>FPS</small></span>
+          </div>
+
+          <div class="setting-row">
+            <label for="tab-content-type" title="The default quality preset for the tab encoder. You can override it per recording from the popup.">Default tab content type</label>
+            <div class="settings-select">
+              <button id="tab-content-type-trigger" class="value-cycle" type="button" data-select="tab-content-type" aria-label="Default tab content type" aria-haspopup="listbox" aria-expanded="false" aria-controls="tab-content-type-options"><span class="value-cycle-label"></span><svg class="value-chevron" viewBox="0 0 10 6" aria-hidden="true"><path d="M0 0l5 6 5-6z"></path></svg></button>
+              <div id="tab-content-type-options" class="settings-select-options" role="listbox" aria-label="Default tab content type" hidden>
+                <button type="button" role="option" data-value="screen" aria-selected="false">Text / Detail <svg class="select-check" width="12" height="10" viewBox="0 0 14 11" fill="none" aria-hidden="true"><path d="M1.5 6l3.5 3.5L12.5 1.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+                <button type="button" role="option" data-value="video" aria-selected="false">Video / Animation <svg class="select-check" width="12" height="10" viewBox="0 0 14 11" fill="none" aria-hidden="true"><path d="M1.5 6l3.5 3.5L12.5 1.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+              </div>
+            </div>
+            <select id="tab-content-type" class="sr-only" tabindex="-1" aria-hidden="true">
+              <option value="screen">Text / Detail</option>
+              <option value="video">Video / Animation</option>
+            </select>
+          </div>
+
+          <div class="setting-row">
+            <label for="tab-resolution-preset" title="Sets the requested maximum tab capture size. Chrome may still deliver a different size.">Tab resolution</label>
+            <div class="settings-select">
+              <button id="tab-resolution-preset-trigger" class="value-cycle value-cycle--mono" type="button" data-select="tab-resolution-preset" aria-label="Tab resolution" aria-haspopup="listbox" aria-expanded="false" aria-controls="tab-resolution-preset-options"><span class="value-cycle-label"></span><svg class="value-chevron" viewBox="0 0 10 6" aria-hidden="true"><path d="M0 0l5 6 5-6z"></path></svg></button>
+              <div id="tab-resolution-preset-options" class="settings-select-options settings-select-options--compact" role="listbox" aria-label="Tab resolution" hidden>
+                <button type="button" role="option" data-value="640x360" aria-selected="false">640 × 360 <svg class="select-check" width="12" height="10" viewBox="0 0 14 11" fill="none" aria-hidden="true"><path d="M1.5 6l3.5 3.5L12.5 1.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+                <button type="button" role="option" data-value="854x480" aria-selected="false">854 × 480 <svg class="select-check" width="12" height="10" viewBox="0 0 14 11" fill="none" aria-hidden="true"><path d="M1.5 6l3.5 3.5L12.5 1.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+                <button type="button" role="option" data-value="1280x720" aria-selected="false">1280 × 720 <svg class="select-check" width="12" height="10" viewBox="0 0 14 11" fill="none" aria-hidden="true"><path d="M1.5 6l3.5 3.5L12.5 1.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+                <button type="button" role="option" data-value="1920x1080" aria-selected="false">1920 × 1080 <svg class="select-check" width="12" height="10" viewBox="0 0 14 11" fill="none" aria-hidden="true"><path d="M1.5 6l3.5 3.5L12.5 1.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+              </div>
+            </div>
+            <select id="tab-resolution-preset" class="sr-only" tabindex="-1" aria-hidden="true">
+              <option value="640x360">640 × 360</option>
+              <option value="854x480">854 × 480</option>
+              <option value="1280x720">1280 × 720</option>
+              <option value="1920x1080">1920 × 1080</option>
+            </select>
+          </div>
+
+          <div class="setting-row">
+            <label for="tab-max-frame-rate" title="Caps the requested tab frame rate. Chrome tab capture is hard-limited to 30 FPS.">Tab capture max frame rate</label>
+            <span class="number-control"><input id="tab-max-frame-rate" type="number" min="1" max="30" /><small>FPS</small></span>
+          </div>
+
+          <div class="setting-row">
+            <label for="mic-echo-cancellation" title="Asks Chrome to reduce playback echo leaking back into the microphone stream.">Echo cancellation</label>
+            <div class="segment-control" data-checkbox="mic-echo-cancellation" role="group" aria-label="Echo cancellation"><button type="button" data-value="false">OFF</button><button type="button" data-value="true">ON</button></div>
+            <input id="mic-echo-cancellation" class="sr-only" type="checkbox" tabindex="-1" aria-hidden="true" />
+          </div>
+
+          <div class="setting-row">
+            <label for="mic-noise-suppression" title="Requests background-noise cleanup on the microphone track before it is recorded.">Noise suppression</label>
+            <div class="segment-control" data-checkbox="mic-noise-suppression" role="group" aria-label="Noise suppression"><button type="button" data-value="false">OFF</button><button type="button" data-value="true">ON</button></div>
+            <input id="mic-noise-suppression" class="sr-only" type="checkbox" tabindex="-1" aria-hidden="true" />
+          </div>
+
+          <div class="setting-row">
+            <label for="mic-auto-gain" title="Lets Chrome automatically boost or lower microphone volume while capturing audio.">Auto gain control</label>
+            <div class="segment-control" data-checkbox="mic-auto-gain" role="group" aria-label="Auto gain control"><button type="button" data-value="false">OFF</button><button type="button" data-value="true">ON</button></div>
+            <input id="mic-auto-gain" class="sr-only" type="checkbox" tabindex="-1" aria-hidden="true" />
+          </div>
+
+          <div class="setting-row">
+            <label for="chunk-default-timeslice" title="Controls how often the microphone MediaRecorder flushes audio to storage.">Microphone chunk timeslice</label>
+            <span class="number-control"><input id="chunk-default-timeslice" type="number" min="250" max="60000" /><small>MS</small></span>
+          </div>
+
+          <div class="setting-row">
+            <label for="chunk-extended-timeslice" title="Controls how often the tab and camera recorders flush video to storage.">Tab &amp; camera chunk timeslice</label>
+            <span class="number-control"><input id="chunk-extended-timeslice" type="number" min="250" max="60000" /><small>MS</small></span>
+          </div>
         </div>
-        <input id="self-video-frame-rate" type="number" min="1" max="120" />
-
-        <div class="field-label">
-          <label for="tab-content-type">Default tab content type</label>
-          <span class="tooltip-shell">
-            <button class="tooltip-toggle" type="button" aria-label="Explain tab content type" aria-controls="tooltip-tab-content-type" aria-expanded="false">?</button>
-            <span id="tooltip-tab-content-type" class="tooltip-bubble" role="tooltip" hidden>The default preset; you can override it per-recording from the popup. Selects the quality factor for the tab encoder. Screen targets ~1.5 Mbps at 1080p30, appropriate for UI, code, and slides. Video targets ~5 Mbps at 1080p30, preserving motion detail for video playback or animations.</span>
-          </span>
-        </div>
-        <select id="tab-content-type">
-          <option value="screen">Screen / UI / Code</option>
-          <option value="video">Video / Animation</option>
-        </select>
-
-        <div class="field-label">
-          <label for="tab-resolution-preset">Tab resolution</label>
-          <span class="tooltip-shell">
-            <button class="tooltip-toggle" type="button" aria-label="Explain tab resolution" aria-controls="tooltip-tab-resolution" aria-expanded="false">?</button>
-            <span id="tooltip-tab-resolution" class="tooltip-bubble" role="tooltip" hidden>Sets the requested maximum tab capture size. Chrome may still deliver a different size depending on the page, display scale, and browser limits.</span>
-          </span>
-        </div>
-        <select id="tab-resolution-preset">
-          <option value="640x360">640x360</option>
-          <option value="854x480">854x480</option>
-          <option value="1280x720">1280x720</option>
-          <option value="1920x1080">1920x1080</option>
-        </select>
-
-        <div class="field-label">
-          <label for="tab-max-frame-rate">Tab capture max frame rate (FPS)</label>
-          <span class="tooltip-shell">
-            <button class="tooltip-toggle" type="button" aria-label="Explain tab frame rate" aria-controls="tooltip-tab-max-frame-rate" aria-expanded="false">?</button>
-            <span id="tooltip-tab-max-frame-rate" class="tooltip-bubble" role="tooltip" hidden>Caps the requested tab frame rate. Chrome tab capture is hard-limited to 30 FPS regardless of this value; setting it lower (e.g. 15) reduces CPU use and file size proportionally.</span>
-          </span>
-        </div>
-        <input id="tab-max-frame-rate" type="number" min="1" max="30" />
-
-        <div class="field-label">
-          <label for="mic-echo-cancellation">Microphone echo cancellation</label>
-          <span class="tooltip-shell">
-            <button class="tooltip-toggle" type="button" aria-label="Explain echo cancellation" aria-controls="tooltip-mic-echo-cancellation" aria-expanded="false">?</button>
-            <span id="tooltip-mic-echo-cancellation" class="tooltip-bubble" role="tooltip" hidden>Asks Chrome to reduce playback echo leaking back into the microphone stream.</span>
-          </span>
-        </div>
-        <input id="mic-echo-cancellation" type="checkbox" />
-
-        <div class="field-label">
-          <label for="mic-noise-suppression">Microphone noise suppression</label>
-          <span class="tooltip-shell">
-            <button class="tooltip-toggle" type="button" aria-label="Explain noise suppression" aria-controls="tooltip-mic-noise-suppression" aria-expanded="false">?</button>
-            <span id="tooltip-mic-noise-suppression" class="tooltip-bubble" role="tooltip" hidden>Requests background-noise cleanup on the microphone track before it is recorded.</span>
-          </span>
-        </div>
-        <input id="mic-noise-suppression" type="checkbox" />
-
-        <div class="field-label">
-          <label for="mic-auto-gain">Microphone auto gain control</label>
-          <span class="tooltip-shell">
-            <button class="tooltip-toggle" type="button" aria-label="Explain auto gain control" aria-controls="tooltip-mic-auto-gain" aria-expanded="false">?</button>
-            <span id="tooltip-mic-auto-gain" class="tooltip-bubble" role="tooltip" hidden>Lets Chrome automatically boost or lower microphone volume while capturing audio.</span>
-          </span>
-        </div>
-        <input id="mic-auto-gain" type="checkbox" />
-
-        <div class="field-label">
-          <label for="chunk-default-timeslice">Microphone chunk timeslice (ms)</label>
-          <span class="tooltip-shell">
-            <button class="tooltip-toggle" type="button" aria-label="Explain microphone chunk timeslice" aria-controls="tooltip-chunk-default-timeslice" aria-expanded="false">?</button>
-            <span id="tooltip-chunk-default-timeslice" class="tooltip-bubble" role="tooltip" hidden>Controls how often the microphone MediaRecorder flushes audio to storage. Smaller values reduce potential data loss on a crash but increase write overhead.</span>
-          </span>
-        </div>
-        <input id="chunk-default-timeslice" type="number" min="250" max="60000" />
-
-        <div class="field-label">
-          <label for="chunk-extended-timeslice">Tab and camera chunk timeslice (ms)</label>
-          <span class="tooltip-shell">
-            <button class="tooltip-toggle" type="button" aria-label="Explain tab and camera chunk timeslice" aria-controls="tooltip-chunk-extended-timeslice" aria-expanded="false">?</button>
-            <span id="tooltip-chunk-extended-timeslice" class="tooltip-bubble" role="tooltip" hidden>Controls how often the tab and camera recorders flush video to storage. Larger values reduce write churn; the microphone also uses this interval when the extended-timeslice performance flag is on.</span>
-          </span>
-        </div>
-        <input id="chunk-extended-timeslice" type="number" min="250" max="60000" />
-      </div>
-    </section>
-
-    <div class="actions">
-      <button id="save-settings">Save</button>
-      <button id="reset-settings" type="button">Reset to defaults</button>
-      <span id="status"></span>
+      </section>
     </div>
+
+    <footer class="settings-footer">
+      <button id="save-settings" type="button"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>Save changes</button>
+      <button id="reset-settings" type="button">Reset to defaults</button>
+      <span id="status" role="status" aria-live="polite"></span>
+    </footer>
   </main>
 
   <script src="settings.js"></script>
