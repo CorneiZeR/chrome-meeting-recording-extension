@@ -70,6 +70,7 @@ export type PopupCancelUploadJob = { type: 'CANCEL_UPLOAD_JOB'; jobId: string };
 /** Reads one bounded, newest-first page of recording history. */
 export type PopupListRecordingHistory = { type: 'LIST_RECORDING_HISTORY'; cursor?: RecordingHistoryCursor };
 export type PopupRenameRecordingHistory = { type: 'RENAME_RECORDING_HISTORY'; id: string; name: string };
+export type PopupSetRecordingHistoryNote = { type: 'SET_RECORDING_HISTORY_NOTE'; id: string; note: string };
 export type PopupRemoveRecordingHistory = { type: 'REMOVE_RECORDING_HISTORY'; id: string };
 export type PopupOpenRecordingHistoryFile = { type: 'OPEN_RECORDING_HISTORY_FILE'; recordingId: string; fileId: string };
 
@@ -88,6 +89,7 @@ export type PopupToBg =
   | PopupCancelUploadJob
   | PopupListRecordingHistory
   | PopupRenameRecordingHistory
+  | PopupSetRecordingHistoryNote
   | PopupRemoveRecordingHistory
   | PopupOpenRecordingHistoryFile;
 
@@ -106,6 +108,7 @@ export type PopupToBgResponse<T extends PopupToBg> =
   T extends PopupCancelUploadJob ? CommandResult :
   T extends PopupListRecordingHistory ? { ok: true; entries: RecordingHistoryEntry[]; nextCursor?: RecordingHistoryCursor } | { ok: false; error: string } :
   T extends PopupRenameRecordingHistory ? { ok: true; entry?: RecordingHistoryEntry } | { ok: false; error: string } :
+  T extends PopupSetRecordingHistoryNote ? { ok: true; entry?: RecordingHistoryEntry } | { ok: false; error: string } :
   T extends PopupRemoveRecordingHistory ? { ok: true; removed: boolean } | { ok: false; error: string } :
   T extends PopupOpenRecordingHistoryFile ? { ok: true } | { ok: false; error: string } :
   never;

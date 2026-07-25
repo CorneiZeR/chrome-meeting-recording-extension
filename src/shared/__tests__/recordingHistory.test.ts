@@ -5,6 +5,8 @@ describe('recording history durable-data boundaries', () => {
     expect(normalizeRecordingHistoryEntry({
       id: ' recording:1 ',
       name: ' Standup ',
+      note: '  Review decisions. ',
+      durationMs: 61_000,
       createdAt: 1,
       storageMode: 'drive',
       files: [
@@ -14,6 +16,8 @@ describe('recording history durable-data boundaries', () => {
     })).toEqual({
       id: 'recording:1',
       name: 'Standup',
+      note: 'Review decisions.',
+      durationMs: 61_000,
       createdAt: 1,
       storageMode: 'drive',
       status: 'complete',
@@ -25,5 +29,7 @@ describe('recording history durable-data boundaries', () => {
     expect(normalizeRecordingHistoryEntry({ id: 'x', files: [] })).toBeUndefined();
     expect(isRecordingHistoryMessage({ type: 'LIST_RECORDING_HISTORY', cursor: { createdAt: 'now', id: 'x' } })).toBe(false);
     expect(isRecordingHistoryMessage({ type: 'LIST_RECORDING_HISTORY', cursor: { createdAt: 1, id: 'x' } })).toBe(true);
+    expect(isRecordingHistoryMessage({ type: 'SET_RECORDING_HISTORY_NOTE', id: 'x', note: 'Follow up' })).toBe(true);
+    expect(isRecordingHistoryMessage({ type: 'SET_RECORDING_HISTORY_NOTE', id: 'x', note: 1 })).toBe(false);
   });
 });

@@ -16,6 +16,10 @@ export type RecordingHistoryFile = {
 export type RecordingHistoryEntry = {
   id: string;
   name: string;
+  /** Optional user-authored context for a recording. */
+  note?: string;
+  /** Captured duration when the recorder runtime supplied it. Legacy rows omit it. */
+  durationMs?: number;
   userNamed?: true;
   createdAt: number;
   storageMode: StorageMode;
@@ -35,6 +39,7 @@ export type RecordingHistoryPage = {
 export type RecordingHistoryMessage =
   | { type: 'LIST_RECORDING_HISTORY'; cursor?: RecordingHistoryCursor }
   | { type: 'RENAME_RECORDING_HISTORY'; id: string; name: string }
+  | { type: 'SET_RECORDING_HISTORY_NOTE'; id: string; note: string }
   | { type: 'REMOVE_RECORDING_HISTORY'; id: string }
   | { type: 'OPEN_RECORDING_HISTORY_FILE'; recordingId: string; fileId: string };
 
@@ -69,9 +74,17 @@ export function normalizeRecordingHistoryEntry(value: unknown): RecordingHistory
   const deletedAt = typeof candidate.deletedAt === 'number' && Number.isFinite(candidate.deletedAt)
     ? candidate.deletedAt
     : undefined;
+  const note = typeof candidate.note === 'string' && candidate.note.trim()
+    ? candidate.note.trim()
+    : undefined;
+  const durationMs = typeof candidate.durationMs === 'number' && Number.isFinite(candidate.durationMs) && candidate.durationMs >= 0
+    ? candidate.durationMs
+    : undefined;
   return {
     id,
     name,
+    ...(note ? { note } : {}),
+    ...(durationMs != null ? { durationMs } : {}),
     ...(candidate.userNamed === true ? { userNamed: true as const } : {}),
     createdAt,
     storageMode,
@@ -134,6 +147,9 @@ export function isRecordingHistoryMessage(value: unknown): value is RecordingHis
   }
   if (message.type === 'RENAME_RECORDING_HISTORY') {
     return typeof message.id === 'string' && message.id.length > 0 && typeof message.name === 'string';
+  }
+  if (message.type === 'SET_RECORDING_HISTORY_NOTE') {
+    return typeof message.id === 'string' && message.id.length > 0 && typeof message.note === 'string';
   }
   if (message.type === 'REMOVE_RECORDING_HISTORY') {
     return typeof message.id === 'string' && message.id.length > 0;

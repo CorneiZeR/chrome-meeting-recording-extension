@@ -37,6 +37,15 @@ export class RecordingHistoryService {
     return updated?.deletedAt ? undefined : updated;
   }
 
+  async setNote(id: string, note: string): Promise<RecordingHistoryEntry | undefined> {
+    const normalized = note.trim();
+    const updated = await this.repository.update(id, (current) => {
+      if (!current || current.deletedAt) return current;
+      return normalized ? { ...current, note: normalized } : { ...current, note: undefined };
+    });
+    return updated?.deletedAt ? undefined : updated;
+  }
+
   async remove(id: string): Promise<boolean> {
     let removed = false;
     await this.repository.update(id, (current) => {

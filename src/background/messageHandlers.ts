@@ -132,7 +132,7 @@ export function registerMessageHandlers({ L, session, perfDebugStore, controller
 
     (async () => {
       if (
-        ['LIST_RECORDING_HISTORY', 'RENAME_RECORDING_HISTORY', 'REMOVE_RECORDING_HISTORY', 'OPEN_RECORDING_HISTORY_FILE'].includes(msg.type)
+        ['LIST_RECORDING_HISTORY', 'RENAME_RECORDING_HISTORY', 'SET_RECORDING_HISTORY_NOTE', 'REMOVE_RECORDING_HISTORY', 'OPEN_RECORDING_HISTORY_FILE'].includes(msg.type)
         && !isRecordingHistoryMessage(msg)
       ) {
         throw new Error('Malformed recording history request');
@@ -144,6 +144,10 @@ export function registerMessageHandlers({ L, session, perfDebugStore, controller
       if (msg.type === 'RENAME_RECORDING_HISTORY') {
         if (!history) throw new Error('Recording history is unavailable');
         sendResponse({ ok: true, entry: await history.rename(msg.id, msg.name) }); return;
+      }
+      if (msg.type === 'SET_RECORDING_HISTORY_NOTE') {
+        if (!history) throw new Error('Recording history is unavailable');
+        sendResponse({ ok: true, entry: await history.setNote(msg.id, msg.note) }); return;
       }
       if (msg.type === 'REMOVE_RECORDING_HISTORY') {
         if (!history) throw new Error('Recording history is unavailable');
@@ -168,7 +172,7 @@ export function registerMessageHandlers({ L, session, perfDebugStore, controller
     })().catch((err) => {
       console.error('[background] top-level error', err);
       const error = String(err);
-      if (isPopupToBgMessage(msg) && ['LIST_RECORDING_HISTORY', 'RENAME_RECORDING_HISTORY', 'REMOVE_RECORDING_HISTORY', 'OPEN_RECORDING_HISTORY_FILE'].includes(msg.type)) {
+      if (isPopupToBgMessage(msg) && ['LIST_RECORDING_HISTORY', 'RENAME_RECORDING_HISTORY', 'SET_RECORDING_HISTORY_NOTE', 'REMOVE_RECORDING_HISTORY', 'OPEN_RECORDING_HISTORY_FILE'].includes(msg.type)) {
         sendResponse({ ok: false, error });
       } else {
         session.fail(error);

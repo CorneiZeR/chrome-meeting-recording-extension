@@ -41,6 +41,18 @@ describe('RecordingHistoryService', () => {
     expect(await repo.get('r1')).toBeDefined();
   });
 
+  it('persists a user note and clears it without changing the recording files', async () => {
+    const repo = new MemoryRepository();
+    const service = new RecordingHistoryService(repo, jest.fn(), () => 10);
+    await service.createPending('r1', [{ id: 'r1:tab', stream: 'tab', filename: 'demo-recording.webm' }], 'local');
+
+    await service.setNote('r1', '  Review decisions at 42:10.  ');
+    expect(await repo.get('r1')).toEqual(expect.objectContaining({ note: 'Review decisions at 42:10.' }));
+
+    await service.setNote('r1', '');
+    expect((await repo.get('r1'))?.note).toBeUndefined();
+  });
+
   it('keeps an already available local fallback available when a retry fails', async () => {
     const repo = new MemoryRepository();
     const service = new RecordingHistoryService(repo, jest.fn(), () => 10);

@@ -13,7 +13,9 @@ if (list && empty && error && loadMore instanceof HTMLButtonElement) {
   let controller: RecordingsController;
   const view = new RecordingsView(list, empty, error, loadMore, {
     rename: (id, name) => void controller.rename(id, name),
+    note: (id, note) => void controller.setNote(id, note),
     remove: (id) => void controller.remove(id),
+    removeMany: (ids) => void controller.removeMany(ids),
     openLocal: (recordingId, fileId) => void controller.openLocal(recordingId, fileId),
     loadMore: () => void controller.loadMore(),
   });

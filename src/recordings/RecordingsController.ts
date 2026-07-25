@@ -21,12 +21,37 @@ export class RecordingsController {
     } catch (error) { this.view.showError(error instanceof Error ? error.message : String(error)); }
   }
 
+  async setNote(id: string, note: string) {
+    try {
+      const response = await sendToBackground({ type: 'SET_RECORDING_HISTORY_NOTE', id, note });
+      if (!response.ok) throw new Error(response.error);
+      this.entries = response.entry
+        ? this.entries.map((entry) => entry.id === id ? response.entry! : entry)
+        : this.entries.filter((entry) => entry.id !== id);
+      this.render();
+    } catch (error) { this.view.showError(error instanceof Error ? error.message : String(error)); }
+  }
+
   async remove(id: string) {
     if (!confirm('Remove this item from recording history? Files will not be deleted.')) return;
     try {
       const response = await sendToBackground({ type: 'REMOVE_RECORDING_HISTORY', id });
       if (!response.ok) throw new Error(response.error);
       if (response.removed) this.entries = this.entries.filter((entry) => entry.id !== id);
+      this.render();
+    } catch (error) { this.view.showError(error instanceof Error ? error.message : String(error)); }
+  }
+
+  async removeMany(ids: string[]) {
+    const uniqueIds = [...new Set(ids)].filter((id) => this.entries.some((entry) => entry.id === id));
+    if (!uniqueIds.length) return;
+    if (!confirm(`Remove ${uniqueIds.length} item${uniqueIds.length === 1 ? '' : 's'} from recording history? Files will not be deleted.`)) return;
+    try {
+      for (const id of uniqueIds) {
+        const response = await sendToBackground({ type: 'REMOVE_RECORDING_HISTORY', id });
+        if (!response.ok) throw new Error(response.error);
+        if (response.removed) this.entries = this.entries.filter((entry) => entry.id !== id);
+      }
       this.render();
     } catch (error) { this.view.showError(error instanceof Error ? error.message : String(error)); }
   }

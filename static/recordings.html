@@ -1,3 +1,25 @@
 <!doctype html>
-<html><head><meta charset="utf-8"><title>Recording history</title><link rel="stylesheet" href="styles/recordings.css"></head>
-<body><main><header><a href="popup.html" aria-label="Back to recorder">‹</a><div><h1>Recordings</h1><p>History is separate from files saved locally or in Google Drive.</p></div></header><p id="recordings-error" class="error" hidden></p><p id="recordings-empty" class="empty" hidden>No recordings yet.</p><section id="recordings-list" aria-live="polite"></section><button id="recordings-load-more" class="load-more" type="button" hidden>Load more</button></main><script src="recordings.js"></script></body></html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Recordings · Meet Recorder</title>
+    <link rel="stylesheet" href="styles/recordings.css">
+  </head>
+  <body>
+    <main class="recordings-page">
+      <header class="recordings-header">
+        <a class="recordings-brand" href="popup.html" aria-label="Back to Meet Recorder">
+          <span class="recordings-brand__indicator" aria-hidden="true"></span>
+          <span>Meet Recorder</span>
+        </a>
+        <p class="recordings-header__label">RECORDINGS</p>
+      </header>
+      <p id="recordings-error" class="recordings-error" role="alert" hidden></p>
+      <p id="recordings-empty" class="recordings-empty" hidden>No recordings yet.</p>
+      <section id="recordings-list" class="recordings-list" aria-live="polite" aria-label="Recording history"></section>
+      <button id="recordings-load-more" class="load-more" type="button" hidden>Load more</button>
+    </main>
+    <script src="recordings.js"></script>
+  </body>
+</html>
