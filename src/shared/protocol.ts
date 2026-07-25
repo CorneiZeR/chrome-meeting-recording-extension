@@ -13,6 +13,7 @@ import type {
   RecordingStatusView,
   RecordingPhase,
   RecordingCaptureDevices,
+  RecordingInputDevice,
   CapturedTabResolution,
   UploadJob,
   UploadSummary,
@@ -56,6 +57,8 @@ export type PopupGetDriveToken = { type: 'GET_DRIVE_TOKEN'; refresh?: boolean };
 export type PopupSetMicMuted = { type: 'SET_MIC_MUTED'; muted: boolean };
 /** Toggles the camera on the live self-video recording; it emits black frames while hidden. */
 export type PopupSetCameraMuted = { type: 'SET_CAMERA_MUTED'; muted: boolean };
+/** Switches the live microphone or camera track to a different enumerated input. */
+export type PopupSetInputDevice = { type: 'SET_INPUT_DEVICE'; device: RecordingInputDevice; deviceId: string };
 /** Pauses/resumes the whole recording; the paused span is absent from the files (seamless join). */
 export type PopupSetPaused = { type: 'SET_PAUSED'; paused: boolean };
 /** Dismisses a finished background upload job's tab (ADR-0004). */
@@ -78,6 +81,7 @@ export type PopupToBg =
   | PopupGetDriveToken
   | PopupSetMicMuted
   | PopupSetCameraMuted
+  | PopupSetInputDevice
   | PopupSetPaused
   | PopupDismissUploadJob
   | PopupRetryUploadJob
@@ -95,6 +99,7 @@ export type PopupToBgResponse<T extends PopupToBg> =
   T extends PopupGetDriveToken ? DriveTokenResponse :
   T extends PopupSetMicMuted ? CommandResult :
   T extends PopupSetCameraMuted ? CommandResult :
+  T extends PopupSetInputDevice ? CommandResult :
   T extends PopupSetPaused ? CommandResult :
   T extends PopupDismissUploadJob ? { session: RecordingStatusView } :
   T extends PopupRetryUploadJob ? CommandResult :
@@ -169,6 +174,7 @@ export type BgToOffscreenRpc =
   | RpcRequest<{ type: 'OFFSCREEN_DISCARD' }>
   | RpcRequest<{ type: 'OFFSCREEN_SET_MIC_MUTED'; muted: boolean }>
   | RpcRequest<{ type: 'OFFSCREEN_SET_CAMERA_MUTED'; muted: boolean }>
+  | RpcRequest<{ type: 'OFFSCREEN_SET_INPUT_DEVICE'; device: RecordingInputDevice; deviceId: string }>
   | RpcRequest<{ type: 'OFFSCREEN_SET_PAUSED'; paused: boolean }>
   | RpcRequest<{ type: 'OFFSCREEN_RETRY_UPLOAD'; jobId: string }>
   | RpcRequest<{ type: 'OFFSCREEN_CANCEL_UPLOAD'; jobId: string }>;

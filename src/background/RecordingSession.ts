@@ -12,6 +12,7 @@ import {
   type DesiredState,
   type ObservedState,
   type RecordingRunConfig,
+  type RecordingInputDevice,
   type RecordingSessionSnapshot,
   type UploadJob,
   type UploadSummary,
@@ -199,6 +200,19 @@ export class RecordingSession {
     this.snapshot = {
       ...this.snapshot,
       cameraMuted: muted || undefined,
+      updatedAt: Date.now(),
+    };
+    return this.commit();
+  }
+
+  /** Replaces one captured-device label after a successful live source switch. */
+  setCapturedDevice(device: RecordingInputDevice, label: string): RecordingSessionSnapshot {
+    this.snapshot = {
+      ...this.snapshot,
+      capturedDevices: {
+        ...this.snapshot.capturedDevices,
+        [device]: label,
+      },
       updatedAt: Date.now(),
     };
     return this.commit();

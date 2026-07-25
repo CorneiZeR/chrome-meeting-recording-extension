@@ -331,6 +331,68 @@ describe('offscreen rpc handlers', () => {
     });
   });
 
+  describe('OFFSCREEN_SET_INPUT_DEVICE', () => {
+    it('rejects device changes until the engine is fully recording', async () => {
+      const engine = {
+        getDebugState: jest.fn().mockReturnValue('starting'),
+        setInputDevice: jest.fn(),
+      };
+      const { port, listener } = wire({ engine });
+
+      await listener({
+        __id: 'device-1',
+        type: 'OFFSCREEN_SET_INPUT_DEVICE',
+        device: 'microphone',
+        deviceId: 'mic-2',
+      });
+
+      expect(responseFor(port, 'device-1')).toEqual({
+        ok: false,
+        error: 'Input device can only be changed while recording',
+      });
+      expect(engine.setInputDevice).not.toHaveBeenCalled();
+    });
+
+    it('returns the post-switch device label from the engine', async () => {
+      const engine = {
+        getDebugState: jest.fn().mockReturnValue('recording'),
+        setInputDevice: jest.fn().mockResolvedValue('FaceTime HD Camera'),
+      };
+      const { port, listener } = wire({ engine });
+
+      await listener({
+        __id: 'device-2',
+        type: 'OFFSCREEN_SET_INPUT_DEVICE',
+        device: 'camera',
+        deviceId: 'cam-2',
+      });
+
+      expect(engine.setInputDevice).toHaveBeenCalledWith('camera', 'cam-2');
+      expect(responseFor(port, 'device-2')).toEqual({ ok: true, label: 'FaceTime HD Camera' });
+    });
+
+    it('validates the device kind and id before calling the engine', async () => {
+      const engine = {
+        getDebugState: jest.fn().mockReturnValue('recording'),
+        setInputDevice: jest.fn(),
+      };
+      const { port, listener } = wire({ engine });
+
+      await listener({
+        __id: 'device-3',
+        type: 'OFFSCREEN_SET_INPUT_DEVICE',
+        device: 'speaker',
+        deviceId: '',
+      });
+
+      expect(responseFor(port, 'device-3')).toEqual({
+        ok: false,
+        error: 'Missing or invalid input device',
+      });
+      expect(engine.setInputDevice).not.toHaveBeenCalled();
+    });
+  });
+
   describe('OFFSCREEN_SET_PAUSED', () => {
     it('rejects a pause request when the recorder is not active', async () => {
       const engine = { isRecording: jest.fn().mockReturnValue(false), setPaused: jest.fn() };

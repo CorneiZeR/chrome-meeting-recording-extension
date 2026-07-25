@@ -126,6 +126,24 @@ async function handleOffscreenSetCameraMuted(
   return { ok: true };
 }
 
+async function handleOffscreenSetInputDevice(
+  msg: Extract<BgToOffscreenRpc, { type: 'OFFSCREEN_SET_INPUT_DEVICE' }>,
+  deps: RpcHandlerDeps
+): Promise<{ ok: boolean; label?: string; error?: string }> {
+  if (deps.engine.getDebugState() !== 'recording') {
+    return { ok: false, error: 'Input device can only be changed while recording' };
+  }
+  if ((msg.device !== 'microphone' && msg.device !== 'camera') || typeof msg.deviceId !== 'string' || !msg.deviceId) {
+    return { ok: false, error: 'Missing or invalid input device' };
+  }
+  try {
+    const label = await deps.engine.setInputDevice(msg.device, msg.deviceId);
+    return { ok: true, label };
+  } catch (error) {
+    return { ok: false, error: describeRuntimeError(error) };
+  }
+}
+
 async function handleOffscreenSetPaused(
   msg: Extract<BgToOffscreenRpc, { type: 'OFFSCREEN_SET_PAUSED' }>,
   deps: RpcHandlerDeps
@@ -190,6 +208,7 @@ export function wirePortHandlers(port: chrome.runtime.Port, deps: RpcHandlerDeps
       OFFSCREEN_DISCARD: ()    => handleOffscreenDiscard(deps),
       OFFSCREEN_SET_MIC_MUTED: (msg) => handleOffscreenSetMicMuted(msg, deps),
       OFFSCREEN_SET_CAMERA_MUTED: (msg) => handleOffscreenSetCameraMuted(msg, deps),
+      OFFSCREEN_SET_INPUT_DEVICE: (msg) => handleOffscreenSetInputDevice(msg, deps),
       OFFSCREEN_SET_PAUSED: (msg) => handleOffscreenSetPaused(msg, deps),
       OFFSCREEN_RETRY_UPLOAD: (msg) => handleOffscreenRetryUpload(msg, deps),
       OFFSCREEN_CANCEL_UPLOAD: (msg) => handleOffscreenCancelUpload(msg, deps),

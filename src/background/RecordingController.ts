@@ -23,7 +23,7 @@ import { loadRecorderRuntimeSettingsSnapshot } from '../shared/settings';
 import type { RecorderRuntimeSettingsSnapshot } from '../shared/settings';
 import { getPerfSettingsSnapshot } from '../shared/perf';
 import { type CommandResult } from '../shared/protocol';
-import { isStoppablePhase, parseRunConfig, toStatusView } from '../shared/recording';
+import { isStoppablePhase, parseRunConfig, toStatusView, type RecordingInputDevice } from '../shared/recording';
 import type { OffscreenManager } from './OffscreenManager';
 import type { RecordingSession } from './RecordingSession';
 
@@ -291,6 +291,39 @@ export class RecordingController {
       return this.ok();
     } catch (e: any) {
       return this.fail(`SET_CAMERA_MUTED failed: ${e?.message || e}`);
+    }
+  }
+
+  /** Switches a live microphone/camera source while preserving the recorder timeline. */
+  async setInputDevice(device: RecordingInputDevice, deviceId: string): Promise<CommandResult> {
+    const snapshot = this.session.getSnapshot();
+    if (snapshot.phase !== 'recording') {
+      return this.fail('Input device can only be changed while recording');
+    }
+    if (device === 'microphone') {
+      const micMode = snapshot.runConfig?.micMode;
+      if (micMode !== 'mixed' && micMode !== 'separate') {
+        return this.fail('This recording has no microphone');
+      }
+    } else if (device === 'camera') {
+      if (snapshot.runConfig?.recordSelfVideo !== true) return this.fail('This recording has no camera');
+    } else {
+      return this.fail('Invalid input device type');
+    }
+    if (typeof deviceId !== 'string' || !deviceId) return this.fail('Missing input device');
+
+    try {
+      await this.offscreen.ensureReady();
+      const result = await this.offscreen.rpc<{ ok: boolean; label?: string; error?: string }>({
+        type: 'OFFSCREEN_SET_INPUT_DEVICE',
+        device,
+        deviceId,
+      });
+      if (!result?.ok || !result.label) return this.fail(result?.error || 'Input device change failed in offscreen');
+      this.session.setCapturedDevice(device, result.label);
+      return this.ok();
+    } catch (error: any) {
+      return this.fail(`SET_INPUT_DEVICE failed: ${error?.message || error}`);
     }
   }
 

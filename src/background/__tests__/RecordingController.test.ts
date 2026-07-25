@@ -379,6 +379,70 @@ describe('RecordingController', () => {
     });
   });
 
+  describe('setInputDevice', () => {
+    const startRun = (micMode: 'mixed' | 'separate' | 'off', recordSelfVideo: boolean) => {
+      session.start({ storageMode: 'local', micMode, recordSelfVideo }, { targetTabId: 42 });
+      session.applyOffscreenPhase({ phase: 'recording' });
+    };
+
+    it('switches the microphone through offscreen and mirrors its new label', async () => {
+      startRun('separate', true);
+      offscreen.rpc.mockResolvedValueOnce({ ok: true, label: 'AirPods Pro' });
+
+      const result = await controller.setInputDevice('microphone', 'mic-2');
+
+      expect(offscreen.ensureReady).toHaveBeenCalled();
+      expect(offscreen.rpc).toHaveBeenCalledWith({
+        type: 'OFFSCREEN_SET_INPUT_DEVICE',
+        device: 'microphone',
+        deviceId: 'mic-2',
+      });
+      expect(result.ok).toBe(true);
+      expect(session.getSnapshot().capturedDevices?.microphone).toBe('AirPods Pro');
+    });
+
+    it('switches the camera through the same live-input command', async () => {
+      startRun('off', true);
+      offscreen.rpc.mockResolvedValueOnce({ ok: true, label: 'FaceTime HD Camera' });
+
+      const result = await controller.setInputDevice('camera', 'cam-2');
+
+      expect(offscreen.rpc).toHaveBeenCalledWith({
+        type: 'OFFSCREEN_SET_INPUT_DEVICE',
+        device: 'camera',
+        deviceId: 'cam-2',
+      });
+      expect(result.ok).toBe(true);
+      expect(session.getSnapshot().capturedDevices?.camera).toBe('FaceTime HD Camera');
+    });
+
+    it('rejects unavailable inputs and requests outside the active recording phase', async () => {
+      expect(await controller.setInputDevice('microphone', 'mic-2')).toEqual(
+        expect.objectContaining({ ok: false, error: 'Input device can only be changed while recording' })
+      );
+      startRun('off', false);
+      expect(await controller.setInputDevice('microphone', 'mic-2')).toEqual(
+        expect.objectContaining({ ok: false, error: 'This recording has no microphone' })
+      );
+      expect(await controller.setInputDevice('camera', 'cam-2')).toEqual(
+        expect.objectContaining({ ok: false, error: 'This recording has no camera' })
+      );
+      expect(offscreen.rpc).not.toHaveBeenCalled();
+    });
+
+    it('keeps recording and retains the previous label if switching fails', async () => {
+      startRun('mixed', false);
+      session.setCapturedDevice('microphone', 'Shure MV7');
+      offscreen.rpc.mockResolvedValueOnce({ ok: false, error: 'device disconnected' });
+
+      const result = await controller.setInputDevice('microphone', 'mic-2');
+
+      expect(result).toEqual(expect.objectContaining({ ok: false, error: 'device disconnected' }));
+      expect(session.getSnapshot().phase).toBe('recording');
+      expect(session.getSnapshot().capturedDevices?.microphone).toBe('Shure MV7');
+    });
+  });
+
   describe('setPaused', () => {
     const startRun = () =>
       session.start({ storageMode: 'local', micMode: 'off', recordSelfVideo: false }, { targetTabId: 42 });
