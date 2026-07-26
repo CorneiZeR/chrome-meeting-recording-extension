@@ -34,10 +34,11 @@ import {
   type PopupElements,
 } from './popupView';
 import { downloadFile } from '../platform/chrome/downloads';
-import { createRuntimeTab, queryActiveTab } from '../platform/chrome/tabs';
+import { createExternalTab, createRuntimeTab, queryActiveTab } from '../platform/chrome/tabs';
 import { sendToBackground, sendToContent } from '../shared/messages';
 import type { BgToPopup, CommandResult } from '../shared/protocol';
 import { isDevBuild, isTestRuntime } from '../shared/build';
+import { formatBytes } from '../shared/format';
 import type {
   RecordingInputDevice,
   RecordingPhase,
@@ -46,6 +47,7 @@ import type {
   UploadJob,
 } from '../shared/recording';
 import type { RecordingHistoryEntry } from '../shared/recordingHistory';
+import { formatDuration } from './popupStatus';
 
 /** Joins labels as "a", "a & b", or "a, b & c". */
 function humanJoin(parts: string[]): string {
@@ -95,6 +97,29 @@ type PendingPermissionStart = {
   runConfig: RecordingRunConfig;
 };
 
+type PopupDetailTarget =
+  | { kind: 'recording'; entry: RecordingHistoryEntry }
+  | { kind: 'upload'; job: UploadJob };
+
+function recordingDetailDate(timestamp: number): string {
+  return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    .format(new Date(timestamp))
+    .toUpperCase();
+}
+
+function recordingDetailDuration(entry: RecordingHistoryEntry): string {
+  return entry.durationMs == null ? '—' : formatDuration(entry.durationMs);
+}
+
+function detailPercent(value: number): number {
+  return Math.round(Math.min(1, Math.max(0, value)) * 100);
+}
+
+const DETAIL_OPEN_ICON = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M6 4h6v6M11.5 4.5L5 11" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const DETAIL_RENAME_ICON = '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M10.5 2.8l2.7 2.7M3 11.4l7.6-7.6 2.7 2.7L5.6 14l-3 .4z" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const DETAIL_DRIVE_ICON = '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4.5 13a3 3 0 01-.3-5.99A4 4 0 0112 6.5a2.75 2.75 0 01-.25 5.5H4.5z"/></svg>';
+const DETAIL_LINK_ICON = '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M6.5 9.5a2.5 2.5 0 003.5 0l2-2a2.5 2.5 0 00-3.5-3.5l-1 1M9.5 6.5a2.5 2.5 0 00-3.5 0l-2 2a2.5 2.5 0 003.5 3.5l1-1" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
 function readCachedPhase(): RecordingPhase {
   try {
     const v = localStorage.getItem(LAST_PHASE_KEY);
@@ -124,6 +149,8 @@ export class PopupController {
   private paused = false;
   /** A local history screen must not be overwritten by the async initial state refresh. */
   private showingRecordings = false;
+  /** Detail is pushed from the compact history view and keeps that view's context live. */
+  private detailTarget: PopupDetailTarget | null = null;
   private pendingPermissionStart: PendingPermissionStart | null = null;
   /** Last phase/session, replayed when a tab is clicked without a new background push. */
   private lastPhase: RecordingPhase = 'idle';
@@ -166,6 +193,7 @@ export class PopupController {
     this.wirePause();
     this.wireSettingsLink();
     this.wireRecordingsLink();
+    this.wireRecordingDetail();
     this.wireDiagnosticsLink();
     document.getElementById('upload-job-transcript')?.addEventListener('click', () => this.el.saveBtn?.click());
     this.sessionTabs.wireEvents();
@@ -198,7 +226,20 @@ export class PopupController {
     // `showRecordingsView` awaits the history query. The initial status refresh can
     // resolve in that gap; retaining the explicit local view prevents setup and
     // history from rendering together (and makes the popup scroll under its footer).
-    if (this.showingRecordings) return;
+    if (this.showingRecordings) {
+      const detail = this.detailTarget;
+      if (detail?.kind === 'upload') {
+        const current = session?.uploadJobs?.find((job) => job.id === detail.job.id);
+        if (current) {
+          if (current.status === 'completed' && current.historyId) void this.promoteCompletedDetailUpload(current);
+          else {
+            this.detailTarget = { kind: 'upload', job: current };
+            this.renderRecordingDetail();
+          }
+        }
+      }
+      return;
+    }
     this.sessionTabs.sync(phase, session);
     if (this.el.discardBtn) this.el.discardBtn.hidden = phase !== 'starting' && phase !== 'recording';
     this.updateHeaderPhase(phase, session?.paused === true);
@@ -722,10 +763,51 @@ export class PopupController {
     document.getElementById('see-all-recordings')?.addEventListener('click', () => void createRuntimeTab('recordings.html'));
   }
 
+  private wireRecordingDetail(): void {
+    const back = document.getElementById('recording-detail-back');
+    const menuButton = document.getElementById('recording-detail-menu-button');
+    const menu = document.getElementById('recording-detail-menu');
+    const closeMenu = () => {
+      if (menu) menu.hidden = true;
+      menuButton?.setAttribute('aria-expanded', 'false');
+    };
+
+    back?.addEventListener('click', () => void this.showRecordingsView());
+    menuButton?.addEventListener('click', () => {
+      if (!menu) return;
+      const opening = menu.hidden;
+      menu.hidden = !opening;
+      menuButton.setAttribute('aria-expanded', String(opening));
+    });
+    document.addEventListener('click', (event) => {
+      if (menu && !menu.hidden && !menu.contains(event.target as Node) && !menuButton?.contains(event.target as Node)) closeMenu();
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') closeMenu();
+    });
+    document.getElementById('recording-detail-copy')?.addEventListener('click', () => void this.copyDetailDriveLink());
+    document.getElementById('recording-detail-rename')?.addEventListener('click', () => this.startDetailRename());
+    document.getElementById('recording-detail-delete')?.addEventListener('click', () => void this.deleteDetailRecording());
+    document.getElementById('recording-detail-diagnostics')?.addEventListener('click', () => void createRuntimeTab('debug.html'));
+    document.getElementById('recording-detail-settings')?.addEventListener('click', () => void createRuntimeTab('settings.html'));
+  }
+
+  private closeRecordingDetailMenu(): void {
+    const menu = document.getElementById('recording-detail-menu');
+    const button = document.getElementById('recording-detail-menu-button');
+    if (menu) menu.hidden = true;
+    button?.setAttribute('aria-expanded', 'false');
+  }
+
   private async showRecordingsView(): Promise<void> {
     const recordings = document.getElementById('view-recordings');
     if (!recordings) return;
     this.showingRecordings = true;
+    this.detailTarget = null;
+    this.closeRecordingDetailMenu();
+    const detail = document.getElementById('view-recording-detail');
+    if (detail) detail.hidden = true;
+    if (this.el.ppHeader) this.el.ppHeader.hidden = false;
     if (this.el.sessionTabs) this.el.sessionTabs.hidden = true;
     for (const id of ['view-config', 'view-permission', 'view-recording', 'view-finalizing', 'view-upload']) {
       const view = document.getElementById(id);
@@ -767,15 +849,373 @@ export class PopupController {
   private hideRecordingsView(): void {
     const recordings = document.getElementById('view-recordings');
     if (recordings) recordings.hidden = true;
+    const detail = document.getElementById('view-recording-detail');
+    if (detail) detail.hidden = true;
+    if (this.el.ppHeader) this.el.ppHeader.hidden = false;
+    this.detailTarget = null;
+    this.closeRecordingDetailMenu();
     this.showingRecordings = false;
     const title = this.el.ppHeader?.querySelector<HTMLElement>('.brand-name');
     if (title) title.textContent = 'Meet Recorder';
     this.onPhaseChange(this.lastPhase, this.lastSession);
   }
 
+  private showRecordingDetail(target: PopupDetailTarget): void {
+    const detail = document.getElementById('view-recording-detail');
+    if (!detail) return;
+    this.showingRecordings = true;
+    this.detailTarget = target;
+    this.closeRecordingDetailMenu();
+    if (this.el.sessionTabs) this.el.sessionTabs.hidden = true;
+    if (this.el.ppHeader) this.el.ppHeader.hidden = true;
+    for (const id of ['view-config', 'view-permission', 'view-recording', 'view-finalizing', 'view-upload', 'view-recordings']) {
+      const view = document.getElementById(id);
+      if (view) view.hidden = true;
+    }
+    detail.hidden = false;
+    this.renderRecordingDetail();
+  }
+
+  private renderRecordingDetail(): void {
+    const target = this.detailTarget;
+    const content = document.getElementById('recording-detail-content');
+    if (!target || !content) return;
+    content.replaceChildren();
+    if (target.kind === 'recording') this.renderSavedRecordingDetail(content, target.entry);
+    else this.renderUploadRecordingDetail(content, target.job);
+
+    const link = this.detailDriveLink();
+    const copy = document.getElementById('recording-detail-copy') as HTMLButtonElement | null;
+    const rename = document.getElementById('recording-detail-rename') as HTMLButtonElement | null;
+    const remove = document.getElementById('recording-detail-delete') as HTMLButtonElement | null;
+    const diagnostics = document.getElementById('recording-detail-diagnostics') as HTMLButtonElement | null;
+    if (copy) copy.disabled = !link;
+    if (rename) rename.hidden = target.kind !== 'recording';
+    if (remove) remove.hidden = target.kind !== 'recording';
+    if (diagnostics) diagnostics.hidden = !isDevBuild();
+  }
+
+  private renderSavedRecordingDetail(content: HTMLElement, entry: RecordingHistoryEntry): void {
+    const titleRow = document.createElement('div');
+    titleRow.className = 'recording-detail-title-row';
+    const title = document.createElement('h2');
+    title.id = 'recording-detail-title';
+    title.className = 'recording-detail-title';
+    title.textContent = entry.name;
+    title.title = entry.name;
+    const rename = document.createElement('button');
+    rename.type = 'button';
+    rename.className = 'recording-detail-rename';
+    rename.setAttribute('aria-label', 'Rename recording');
+    rename.title = 'Rename';
+    rename.innerHTML = DETAIL_RENAME_ICON;
+    rename.addEventListener('click', () => this.startDetailRename());
+    titleRow.append(title, rename);
+
+    const meta = document.createElement('p');
+    meta.className = 'recording-detail-meta';
+    const totalBytes = entry.files.reduce((total, file) => total + (file.bytes ?? 0), 0);
+    meta.textContent = `${recordingDetailDate(entry.createdAt)} · ${recordingDetailDuration(entry)} · ${entry.files.length} ${entry.files.length === 1 ? 'FILE' : 'FILES'} · ${totalBytes ? formatBytes(totalBytes) : '—'}`;
+
+    const destination = document.createElement('p');
+    destination.className = 'recording-detail-eyebrow';
+    destination.textContent = entry.files.some((file) => file.destination === 'drive') ? 'IN GOOGLE DRIVE' : 'ON LOCAL DISK';
+    const files = document.createElement('div');
+    files.className = 'recording-detail-files';
+    for (const file of entry.files) files.appendChild(this.renderDetailFile(entry, file));
+    content.append(titleRow, meta, destination, files);
+
+    const transcript = entry.files.find((file) => /\.(vtt|txt)$/i.test(file.filename));
+    const transcriptButton = document.createElement('button');
+    transcriptButton.type = 'button';
+    transcriptButton.className = 'recording-detail-transcript';
+    transcriptButton.innerHTML = '<span><svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 2.5v6.4M5.3 6.2L8 8.9l2.7-2.7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M3.2 12.5h9.6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>Transcript</span><span></span>';
+    const transcriptMeta = transcriptButton.querySelector('span:last-child');
+    if (transcriptMeta) {
+      transcriptMeta.textContent = transcript
+        ? `${transcript.filename.split('.').pop()?.toUpperCase() ?? 'TEXT'} · ${typeof transcript.bytes === 'number' ? formatBytes(transcript.bytes) : '—'}`
+        : 'VTT · —';
+    }
+    transcriptButton.addEventListener('click', () => {
+      if (transcript) void this.openDetailFile(entry, transcript);
+      else this.toast('Transcript is not available for this recording.');
+    });
+    content.appendChild(transcriptButton);
+    content.appendChild(this.renderDetailFooter());
+  }
+
+  private renderDetailFile(entry: RecordingHistoryEntry, file: RecordingHistoryEntry['files'][number]): HTMLElement {
+    const row = document.createElement('div');
+    row.className = 'recording-detail-file';
+    const name = document.createElement('span');
+    name.className = 'recording-detail-file-name';
+    name.textContent = file.filename;
+    name.title = file.filename;
+    const actions = document.createElement('span');
+    actions.className = 'recording-detail-file-actions';
+    const size = document.createElement('span');
+    size.className = 'recording-detail-file-size';
+    size.textContent = typeof file.bytes === 'number' ? formatBytes(file.bytes) : '—';
+    actions.appendChild(size);
+    if ((file.destination === 'drive' && file.webViewLink) || (file.destination === 'local' && file.downloadId && file.status === 'available')) {
+      const open = document.createElement('button');
+      open.type = 'button';
+      open.className = 'recording-detail-file-open';
+      open.setAttribute('aria-label', `Open ${file.filename}`);
+      open.innerHTML = DETAIL_OPEN_ICON;
+      open.addEventListener('click', () => void this.openDetailFile(entry, file));
+      actions.appendChild(open);
+    }
+    row.append(name, actions);
+    return row;
+  }
+
+  private renderDetailFooter(): HTMLElement {
+    const footer = document.createElement('footer');
+    footer.className = 'recording-detail-footer';
+    const link = this.detailDriveLink();
+    const open = document.createElement('button');
+    open.type = 'button';
+    open.className = 'btn recording-detail-open-drive';
+    open.disabled = !link;
+    open.innerHTML = DETAIL_DRIVE_ICON;
+    open.append('Open in Google Drive');
+    open.addEventListener('click', () => { if (link) void createExternalTab(link); });
+    const copy = document.createElement('button');
+    copy.type = 'button';
+    copy.className = 'btn btn-secondary recording-detail-copy-link';
+    copy.disabled = !link;
+    copy.innerHTML = DETAIL_LINK_ICON;
+    copy.append('Copy Drive link');
+    copy.addEventListener('click', () => void this.copyDetailDriveLink());
+    footer.append(open, copy);
+    return footer;
+  }
+
+  private renderUploadRecordingDetail(content: HTMLElement, job: UploadJob): void {
+    const title = document.createElement('h2');
+    title.className = 'recording-detail-title';
+    title.style.marginTop = '16px';
+    title.textContent = job.label;
+    title.title = job.label;
+    const meta = document.createElement('p');
+    meta.className = 'recording-detail-meta';
+    meta.style.marginTop = '4px';
+    meta.style.marginBottom = '16px';
+    meta.textContent = `${recordingDetailDate(job.startedAt)} · ${job.status === 'uploading' ? 'UPLOADING' : job.status.toUpperCase()}`;
+    const progress = document.createElement('div');
+    progress.className = 'recording-detail-upload-progress';
+    const percent = detailPercent(job.progress);
+    progress.innerHTML = `<span class="recording-detail-upload-percent">${percent}%</span><span class="recording-detail-upload-label">to Google Drive</span>`;
+    const track = document.createElement('div');
+    track.className = 'recording-detail-progress';
+    const fill = document.createElement('span');
+    fill.style.width = `${percent}%`;
+    track.appendChild(fill);
+    const eyebrow = document.createElement('p');
+    eyebrow.className = 'recording-detail-eyebrow';
+    eyebrow.style.marginBottom = '12px';
+    eyebrow.textContent = `${job.files.length} ${job.files.length === 1 ? 'FILE' : 'FILES'}`;
+    const files = document.createElement('div');
+    files.className = 'recording-detail-upload-files';
+    for (const file of job.files) {
+      const item = document.createElement('div');
+      const complete = file.status === 'uploaded';
+      item.className = `recording-detail-upload-file${complete ? ' recording-detail-upload-file--done' : ''}`;
+      const head = document.createElement('div');
+      head.className = 'recording-detail-upload-file-head';
+      const name = document.createElement('span');
+      name.className = 'recording-detail-upload-file-name';
+      name.textContent = file.filename;
+      name.title = file.filename;
+      const status = document.createElement('span');
+      status.className = 'recording-detail-upload-file-status';
+      if (complete) status.innerHTML = '<svg width="11" height="11" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M3 7.2l2.6 2.6L11 4.4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>DONE';
+      else if (typeof file.bytes === 'number') status.textContent = `${formatBytes(Math.round(file.bytes * job.progress))} / ${formatBytes(file.bytes)}`;
+      else status.textContent = file.status === 'retry-pending' ? 'RETRYING' : 'UPLOADING';
+      head.append(name, status);
+      const fileTrack = document.createElement('div');
+      fileTrack.className = 'recording-detail-progress';
+      fileTrack.style.height = '5px';
+      fileTrack.style.margin = '0';
+      const fileFill = document.createElement('span');
+      fileFill.style.width = `${complete ? 100 : percent}%`;
+      fileTrack.appendChild(fileFill);
+      item.append(head, fileTrack);
+      files.appendChild(item);
+    }
+    content.append(title, meta, progress, track, eyebrow, files);
+    const footer = document.createElement('footer');
+    footer.className = 'recording-detail-footer';
+    const cancel = document.createElement('button');
+    cancel.type = 'button';
+    cancel.className = 'btn btn-secondary';
+    cancel.textContent = 'Cancel upload';
+    cancel.disabled = job.status !== 'uploading';
+    cancel.addEventListener('click', () => void this.cancelDetailUpload(job, cancel));
+    footer.appendChild(cancel);
+    content.appendChild(footer);
+  }
+
+  private detailDriveLink(): string | undefined {
+    if (this.detailTarget?.kind === 'upload') {
+      return this.detailTarget.job.folderWebViewLink ?? this.detailTarget.job.files.find((file) => file.webViewLink)?.webViewLink;
+    }
+    return this.detailTarget?.entry.files.find((file) => file.destination === 'drive' && file.webViewLink)?.webViewLink;
+  }
+
+  /** Once the background finalizes a job, replace its progress view with durable history. */
+  private async promoteCompletedDetailUpload(job: UploadJob): Promise<void> {
+    try {
+      const response = await sendToBackground({ type: 'LIST_RECORDING_HISTORY' });
+      const entry = response.ok ? response.entries.find((candidate) => candidate.id === job.historyId) : undefined;
+      if (entry && this.detailTarget?.kind === 'upload' && this.detailTarget.job.id === job.id) {
+        this.detailTarget = { kind: 'recording', entry };
+        this.renderRecordingDetail();
+        return;
+      }
+    } catch {
+      // The progress detail remains usable until history is available on the next refresh.
+    }
+    if (this.detailTarget?.kind === 'upload' && this.detailTarget.job.id === job.id) {
+      this.detailTarget = { kind: 'upload', job };
+      this.renderRecordingDetail();
+    }
+  }
+
+  private async openDetailFile(entry: RecordingHistoryEntry, file: RecordingHistoryEntry['files'][number]): Promise<void> {
+    if (file.destination === 'drive' && file.webViewLink) {
+      await createExternalTab(file.webViewLink);
+      return;
+    }
+    if (file.destination === 'local' && file.downloadId && file.status === 'available') {
+      const response = await sendToBackground({ type: 'OPEN_RECORDING_HISTORY_FILE', recordingId: entry.id, fileId: file.id });
+      if (response.ok === false) this.toast(response.error || 'Could not open the local file');
+    }
+  }
+
+  private async copyDetailDriveLink(): Promise<void> {
+    const link = this.detailDriveLink();
+    if (!link) {
+      this.toast('No Google Drive link is available yet.');
+      return;
+    }
+    try {
+      if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(link);
+      else {
+        const input = document.createElement('textarea');
+        input.value = link;
+        input.setAttribute('readonly', '');
+        input.style.position = 'fixed';
+        input.style.opacity = '0';
+        document.body.appendChild(input);
+        input.select();
+        document.execCommand('copy');
+        input.remove();
+      }
+      this.toast('Google Drive link copied.');
+    } catch {
+      this.toast('Could not copy the Google Drive link.');
+    }
+  }
+
+  private startDetailRename(): void {
+    if (this.detailTarget?.kind !== 'recording') return;
+    this.closeRecordingDetailMenu();
+    const title = document.getElementById('recording-detail-title');
+    if (!title || title.parentElement?.querySelector('.recording-detail-title-input')) return;
+    const input = document.createElement('input');
+    input.className = 'recording-detail-title-input';
+    input.value = this.detailTarget.entry.name;
+    input.setAttribute('aria-label', 'Recording name');
+    title.replaceWith(input);
+    input.focus();
+    input.select();
+    let committing = false;
+    let cancelled = false;
+    const restore = () => this.renderRecordingDetail();
+    const commit = async () => {
+      if (committing || cancelled) return;
+      const name = input.value.trim();
+      if (!name) { restore(); return; }
+      const target = this.detailTarget;
+      if (!target || target.kind !== 'recording') return;
+      if (name === target.entry.name) { restore(); return; }
+      committing = true;
+      try {
+        const response = await sendToBackground({ type: 'RENAME_RECORDING_HISTORY', id: target.entry.id, name });
+        if (response.ok === false) {
+          this.toast(response.error || 'Could not rename this recording');
+          restore();
+          return;
+        }
+        this.detailTarget = { kind: 'recording', entry: response.entry ?? { ...target.entry, name, userNamed: true } };
+        this.renderRecordingDetail();
+      } catch {
+        this.toast('Could not rename this recording');
+        restore();
+      }
+    };
+    input.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') { event.preventDefault(); void commit(); }
+      if (event.key === 'Escape') { cancelled = true; restore(); }
+    });
+    input.addEventListener('blur', () => void commit());
+  }
+
+  private async deleteDetailRecording(): Promise<void> {
+    const target = this.detailTarget;
+    if (target?.kind !== 'recording' || this.confirmDialog.isOpen()) return;
+    this.closeRecordingDetailMenu();
+    const confirmed = await this.confirmDialog.ask({
+      title: 'Delete this recording?',
+      message: 'This removes it from Recordings. Files already saved to Google Drive or your computer are not deleted.',
+      confirmLabel: 'Delete recording',
+      cancelLabel: 'Keep recording',
+      tone: 'danger',
+    });
+    if (!confirmed) return;
+    try {
+      const response = await sendToBackground({ type: 'REMOVE_RECORDING_HISTORY', id: target.entry.id });
+      if (response.ok === false || !response.removed) {
+        this.toast(response.ok === false ? response.error || 'Could not delete this recording' : 'Could not delete this recording');
+        return;
+      }
+      await this.showRecordingsView();
+      void this.refreshRecordingsCount();
+    } catch {
+      this.toast('Could not delete this recording');
+    }
+  }
+
+  private async cancelDetailUpload(job: UploadJob, button: HTMLButtonElement): Promise<void> {
+    if (button.disabled) return;
+    button.disabled = true;
+    try {
+      const response = await sendToBackground({ type: 'CANCEL_UPLOAD_JOB', jobId: job.id });
+      if (response.ok === false) {
+        button.disabled = false;
+        this.toast(response.error || 'This upload is no longer active');
+        return;
+      }
+      this.toast('Canceling upload — downloading locally…');
+    } catch {
+      button.disabled = false;
+      this.toast('Could not cancel this upload');
+    }
+  }
+
   private renderPopupRecording(entry: RecordingHistoryEntry): HTMLElement {
     const row = document.createElement('div');
     row.className = 'popup-recording-row';
+    row.tabIndex = 0;
+    row.setAttribute('role', 'button');
+    row.setAttribute('aria-label', `Open ${entry.name}`);
+    const openDetail = () => this.showRecordingDetail({ kind: 'recording', entry });
+    row.addEventListener('click', openDetail);
+    row.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openDetail(); }
+    });
     const copy = document.createElement('div');
     const title = document.createElement('div');
     title.className = 'popup-recording-title';
@@ -790,8 +1230,8 @@ export class PopupController {
     open.setAttribute('aria-label', `Open ${entry.name}`);
     // This is the supplied design's source icon, kept as a real SVG control rather
     // than the word “Open”, so popup history rows retain their compact 52px rhythm.
-    open.innerHTML = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M6 4h6v6M11.5 4.5L5 11" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-    open.addEventListener('click', () => void createRuntimeTab('recordings.html'));
+    open.innerHTML = DETAIL_OPEN_ICON;
+    open.addEventListener('click', (event) => { event.stopPropagation(); openDetail(); });
     row.append(copy, open);
     return row;
   }
@@ -800,12 +1240,20 @@ export class PopupController {
   private renderPopupUpload(job: UploadJob): HTMLElement {
     const row = document.createElement('div');
     row.className = 'popup-recording-upload';
+    row.tabIndex = 0;
+    row.setAttribute('role', 'button');
+    row.setAttribute('aria-label', `Open upload ${job.label}`);
+    const openDetail = () => this.showRecordingDetail({ kind: 'upload', job });
+    row.addEventListener('click', openDetail);
+    row.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openDetail(); }
+    });
     const head = document.createElement('div');
     head.className = 'popup-recording-upload-head';
     const title = document.createElement('span');
     title.textContent = job.label;
     const status = document.createElement('span');
-    const percent = Math.round(Math.min(1, Math.max(0, job.progress)) * 100);
+    const percent = detailPercent(job.progress);
     status.textContent = `UPLOADING ${percent}%`;
     head.append(title, status);
     const track = document.createElement('div');

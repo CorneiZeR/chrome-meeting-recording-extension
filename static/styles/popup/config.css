@@ -72,13 +72,17 @@
 .link-btn { border: 0; background: transparent; color: var(--ink-3); font-size: 11px; }
 
 .popup-recordings-list { margin-top: 6px; border-top: 1px solid var(--divider); }
-.popup-recording-row { display: flex; align-items: center; justify-content: space-between; min-height: 52px; gap: 10px; border-bottom: 1px solid var(--divider); }
+.popup-recording-row { display: flex; align-items: center; justify-content: space-between; min-height: 52px; gap: 10px; border-bottom: 1px solid var(--divider); cursor: pointer; }
+.popup-recording-row:hover,
+.popup-recording-row:focus-visible { background: var(--secondary-hover); outline: 0; }
 .popup-recording-title { overflow: hidden; color: var(--ink); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
 .popup-recording-meta { margin-top: 2px; color: var(--ink-4); font: 500 10px 'IBM Plex Mono', monospace; letter-spacing: .04em; }
 .popup-recording-open { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; flex: 0 0 14px; margin: 0; padding: 0; border: 0; background: transparent; color: var(--ink); cursor: pointer; }
 .popup-recording-open svg { width: 14px; height: 14px; }
 .popup-recordings-empty { display: flex; align-items: center; justify-content: center; min-height: 52px; margin: 0 0 16px; padding: 0; border-top: 1px solid var(--divider); color: var(--ink-3); text-align: center; }
-.popup-recording-upload { padding: 12px 0 13px; border-top: 1px solid var(--divider); }
+.popup-recording-upload { padding: 12px 0 13px; border-top: 1px solid var(--divider); cursor: pointer; }
+.popup-recording-upload:hover,
+.popup-recording-upload:focus-visible { background: var(--secondary-hover); outline: 0; }
 .popup-recording-upload-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
 .popup-recording-upload-head span:first-child { min-width: 0; overflow: hidden; color: var(--ink); font-size: 13px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
 .popup-recording-upload-head span:last-child { flex: 0 0 auto; color: var(--ink-3); font: 600 9.5px 'IBM Plex Mono', monospace; letter-spacing: .04em; white-space: nowrap; }
@@ -88,6 +92,62 @@
 .recordings-footer .btn-secondary { display: inline-flex; align-items: center; justify-content: center; width: 100%; height: 44px; gap: 8px; }
 .recordings-footer .btn-secondary svg:first-child { width: 14px; height: 14px; }
 .recordings-footer .btn-secondary svg:last-child { width: 12px; height: 12px; }
+
+/* Pushed recording detail — the design's 300px panel is the popup itself. */
+.recording-detail-popup { margin: -18px; }
+.recording-detail-header { display: flex; align-items: center; justify-content: space-between; height: 52px; padding: 0 14px 0 10px; border-bottom: 1px solid var(--divider); }
+.recording-detail-back { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 8px 0 5px; border: 0; border-radius: 6px; background: transparent; color: var(--ink-2); font: 600 13px 'Space Grotesk', sans-serif; cursor: pointer; }
+.recording-detail-back svg { color: var(--warn-label); }
+.recording-detail-back:hover,
+.recording-detail-back:focus-visible { background: var(--secondary-hover); outline: 0; }
+.recording-detail-menu-wrap { position: relative; }
+.recording-detail-menu { top: 32px; width: 210px; }
+.recording-detail-popup .menu-row:disabled { opacity: .45; cursor: not-allowed; }
+#recording-detail-content { padding: 0 18px; }
+.recording-detail-title-row { display: flex; align-items: center; gap: 8px; margin: 16px 0 4px; }
+.recording-detail-title { min-width: 0; margin: 0; overflow: hidden; color: var(--ink); font-size: 19px; font-weight: 700; letter-spacing: -.02em; line-height: 24px; text-overflow: ellipsis; white-space: nowrap; }
+.recording-detail-title-input { width: 100%; height: 28px; min-width: 0; padding: 0 4px; border: 1px solid var(--warn); border-radius: 4px; background: var(--surface); color: var(--ink); font: 700 19px 'Space Grotesk', sans-serif; letter-spacing: -.02em; outline: 0; }
+.recording-detail-rename { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; flex: 0 0 auto; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--ink-4); cursor: pointer; }
+.recording-detail-rename:hover,
+.recording-detail-rename:focus-visible { background: var(--secondary-hover); color: var(--ink-2); outline: 0; }
+.recording-detail-rename svg { width: 13px; height: 13px; }
+.recording-detail-meta { min-height: 13px; margin: 0 0 18px; color: var(--ink-3); font: 500 10.5px 'IBM Plex Mono', monospace; letter-spacing: 0; white-space: nowrap; }
+.recording-detail-eyebrow { margin: 0; color: var(--ink-4); font: 600 9.5px 'Space Grotesk', sans-serif; letter-spacing: .14em; }
+.recording-detail-files { margin: 7px 0 16px; }
+.recording-detail-file { display: flex; align-items: center; justify-content: space-between; height: 44px; gap: 8px; border-top: 1px solid var(--divider); }
+.recording-detail-file:last-child { border-bottom: 1px solid var(--divider); }
+.recording-detail-file-name { min-width: 0; overflow: hidden; color: var(--ink-2); font-size: 12.5px; text-overflow: ellipsis; white-space: nowrap; }
+.recording-detail-file-actions { display: inline-flex; align-items: center; flex: 0 0 auto; gap: 9px; }
+.recording-detail-file-size { color: var(--ink-4); font: 500 10.5px 'IBM Plex Mono', monospace; white-space: nowrap; }
+.recording-detail-file-open { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--ink); cursor: pointer; }
+.recording-detail-file-open:hover,
+.recording-detail-file-open:focus-visible { background: var(--secondary-hover); outline: 0; }
+.recording-detail-file-open svg { width: 14px; height: 14px; }
+.recording-detail-transcript { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 38px; margin: 0 0 16px; padding: 0 13px; border: 0; border-radius: 11px; background: var(--tile); color: var(--ink); font: 600 12.5px 'Space Grotesk', sans-serif; cursor: pointer; }
+.recording-detail-transcript span:first-child { display: inline-flex; align-items: center; gap: 8px; }
+.recording-detail-transcript span:last-child { color: var(--ink-3); font: 500 10px 'IBM Plex Mono', monospace; letter-spacing: .06em; }
+.recording-detail-transcript svg { width: 13px; height: 13px; }
+.recording-detail-footer { margin: 16px -18px 0; padding: 14px 18px; border-top: 1px solid var(--divider); background: var(--raised); }
+.recording-detail-footer .btn { width: 100%; }
+.recording-detail-open-drive { background: var(--ink); color: var(--surface); box-shadow: none; }
+.recording-detail-open-drive:hover:not(:disabled) { background: var(--ink-2); }
+.recording-detail-copy-link { margin-top: 8px; }
+.recording-detail-open-drive svg,
+.recording-detail-copy-link svg { width: 14px; height: 14px; }
+.recording-detail-copy-link svg { width: 13px; height: 13px; }
+.recording-detail-upload-progress { display: flex; align-items: baseline; gap: 8px; margin: 0 0 4px; }
+.recording-detail-upload-percent { color: var(--ink); font-size: 34px; font-weight: 700; letter-spacing: -.02em; line-height: 1; font-variant-numeric: tabular-nums; }
+.recording-detail-upload-label { color: var(--ink-3); font-size: 12.5px; }
+.recording-detail-progress { height: 6px; overflow: hidden; margin: 12px 0 18px; border-radius: 999px; background: var(--tile); }
+.recording-detail-progress > span { display: block; height: 100%; border-radius: inherit; background: var(--ink); }
+.recording-detail-upload-files { margin: 0 0 16px; }
+.recording-detail-upload-file { margin: 0 0 13px; }
+.recording-detail-upload-file:last-child { margin-bottom: 0; }
+.recording-detail-upload-file-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
+.recording-detail-upload-file-name { min-width: 0; overflow: hidden; color: var(--ink-2); font-size: 12.5px; text-overflow: ellipsis; white-space: nowrap; }
+.recording-detail-upload-file-status { flex: 0 0 auto; color: var(--ink-3); font: 500 10.5px 'IBM Plex Mono', monospace; white-space: nowrap; }
+.recording-detail-upload-file--done .recording-detail-upload-file-status { display: inline-flex; align-items: center; gap: 5px; color: var(--ready); }
+.recording-detail-upload-file--done .recording-detail-progress > span { background: var(--ready); }
 
 .permission-hero { padding: 16px 6px 14px; text-align: center; }
 .permission-hero-mark { display: inline-flex; align-items: center; justify-content: center; width: 52px; height: 52px; margin-bottom: 15px; border-radius: 6px; background: #eef1ff; color: #4a63c8; font: 600 24px 'IBM Plex Mono', monospace; }
