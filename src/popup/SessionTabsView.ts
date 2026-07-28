@@ -157,6 +157,11 @@ export class SessionTabsView {
     return session?.uploadJobs?.find((j) => j.id === this.selectedTab) ?? null;
   }
 
+  /** Selects a known tab programmatically (used by deterministic popup previews). */
+  select(tab: 'live' | string): void {
+    this.selectTab(tab);
+  }
+
   /** Clears pending auto-dismiss timers (call from the controller's destroy). */
   dispose(): void {
     for (const timer of this.fadeTimers.values()) clearTimeout(timer);

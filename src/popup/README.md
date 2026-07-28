@@ -1,6 +1,6 @@
 # Popup — the control panel (state-driven, non-authoritative UI)
 
-> The browser-action UI: start/stop/discard, live recording controls (mute/hide/pause), transcript download, permission priming, history navigation, and detached-upload controls. It is **created fresh every time the user opens it and destroyed on close** — so it owns *no* truth; it renders from the background's authoritative session. For symbol-level structure use codegraph (`codegraph_explore "PopupController SessionTabsView RecordingTimer CaptionPoller"`). The entry `../popup.ts` is intentionally thin (reads DOM, hands to `PopupController`), and `PopupController` is itself a **thin orchestrator** that delegates the recording timer, caption poll, and session-tab/upload UI to focused collaborators.
+> The browser-action UI: start/stop/discard, live recording controls (mute/hide/pause), transcript download, permission priming, history navigation, and detached-upload controls. It is **created fresh every time the user opens it and destroyed on close** — so it owns *no* truth; it renders from the background's authoritative session. For symbol-level structure use codegraph (`codegraph_explore "PopupController SessionTabsView RecordingTimer CaptionPoller"`). The entry `../popup.ts` is intentionally thin (boots the shared shell and controller), and `PopupController` is itself a **thin orchestrator** that delegates the recording timer, caption poll, and session-tab/upload UI to focused collaborators.
 
 > **Archetype:** *Interactive Surface*. The defining constraint is that this UI is **ephemeral and not the source of truth** — it must render correctly from state it doesn't own, every time it reopens, with live controls that never interrupt the recording. So this README leads with the view-state model and the authority/reconciliation rules. If you read one section, read **The authority model**.
 
@@ -10,11 +10,11 @@ A **dumb-but-careful renderer of the background's session.** Open the popup mid-
 
 ## Popup state gallery
 
-Run `npm run popup:gallery`, then open the local URL printed by the command. The development gallery loads the real `static/popup.html` and popup styles into isolated frames, removes the extension runtime script, and applies deterministic scenarios for setup, permissions, recording, saving/uploads, history, details, and overlays. This makes every important layout visible together without starting a recording or granting browser permissions.
+Run `npm run popup:gallery`, then open the local URL printed by the command. Every card loads the real `popup.html` and normal popup bundle in an isolated frame. A development-only preview adapter supplies deterministic state for setup, permissions, recording, saving/uploads, history, details, and overlays; the production controller and shell still render every element. This makes every important layout visible together without starting a recording or granting browser permissions.
 
 The gallery toolbar switches light/dark/system theme, tests 300/320/360 px viewports, filters states, pauses animation, and overlays element bounds. Each card also has a focused URL suitable for screenshots and bug reports. In a development extension build the same gallery is available from **Menu → Popup gallery**; production builds omit both the gallery page bundle and the visible menu action.
 
-Scenario mutations live in `gallery/popupStories.ts`. Its test loads `static/popup.html` and applies every story, so removed or renamed popup targets fail loudly instead of leaving a silently stale gallery.
+Scenarios in `gallery/popupStories.ts` are domain fixtures, never selector mutations. `popupPreviewState.ts` defines the fixture seam, `popupBootstrap.ts` owns the one shared element map, and `PopupController.renderPreview` renders fixtures through the same view code used in production. The gallery test boots every story against the current `static/popup.html`, so markup/controller drift fails in CI rather than leaving a silently stale card.
 
 ## State-driven views
 

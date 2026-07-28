@@ -88,6 +88,17 @@ export class PopupStateController {
     this.handleUploadSummary(snapshot.phase, snapshot.uploadSummary);
   }
 
+  /**
+   * Applies an explicit deterministic session for the development preview.
+   * Unlike a real idle background snapshot, an idle preview may intentionally
+   * carry a run configuration so the setup form can exercise each option.
+   */
+  applyPreviewSession(snapshot: RecordingStatusView): void {
+    this.setActiveRunConfig(snapshot.runConfig ? { ...snapshot.runConfig } : createDefaultRunConfig());
+    this.setActiveWarnings(snapshot.warnings);
+    this.callbacks.onPhaseChange(snapshot.phase, snapshot);
+  }
+
   /** Builds the persistent status line text based on current phase, pause state, and warnings. */
   buildPersistentStatus(phase: RecordingPhase, paused = false): string {
     const warning = describeRecordingWarnings(this.activeWarnings);

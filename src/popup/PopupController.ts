@@ -13,6 +13,11 @@ import { MicPermissionService } from './MicPermissionService';
 import { RecordingTimer } from './RecordingTimer';
 import { SessionTabsView } from './SessionTabsView';
 import { PopupStateController } from './controllers/PopupStateController';
+import type {
+  PopupPreviewDeviceOption,
+  PopupPreviewPermissionState,
+  PopupPreviewState,
+} from './popupPreviewState';
 import {
   buildDiscardConfirmMessage,
   buildLocalSaveFailedAlert,
@@ -90,7 +95,7 @@ function inputDeviceLabel(item: MediaDeviceInfo, fallback: string): string {
  */
 const LAST_PHASE_KEY = 'meetRecorder.lastPhase';
 
-type PermissionQueryState = 'granted' | 'denied' | 'prompt' | 'unknown';
+type PermissionQueryState = PopupPreviewPermissionState;
 
 type PendingPermissionStart = {
   tabId: number;
@@ -157,6 +162,8 @@ export class PopupController {
   private lastSession?: RecordingStatusView;
   private activeDevicePicker: RecordingInputDevice | null = null;
   private devicePickerRequestId = 0;
+  /** Preview rendering must never start Chrome polling or live UI timers. */
+  private previewing = false;
 
   constructor(el: PopupElements) {
     this.el = el;
@@ -199,6 +206,49 @@ export class PopupController {
     this.sessionTabs.wireEvents();
     void this.refreshRecordingsCount();
     void this.state.refreshInitialState();
+  }
+
+  /**
+   * Renders a deterministic development fixture through the production popup
+   * controller. This is intentionally a data seam, not a second DOM renderer:
+   * gallery stories provide only values that Chrome/background would normally
+   * supply, while this controller continues to own the resulting markup.
+   */
+  renderPreview(preview: PopupPreviewState): void {
+    this.previewing = true;
+    this.captionPoller.stop();
+    this.closeDevicePicker(false);
+
+    if (preview.screen === 'permission') {
+      this.showingRecordings = false;
+      this.detailTarget = null;
+      this.renderPermissionView(preview.microphone, preview.camera);
+      return;
+    }
+
+    if (preview.screen === 'recording-detail') {
+      this.showingRecordings = false;
+      this.detailTarget = null;
+      this.showRecordingDetail(preview.target);
+      return;
+    }
+
+    if (preview.screen === 'recordings') {
+      this.showingRecordings = false;
+      this.detailTarget = null;
+      const session = preview.session ?? { phase: 'idle' as const, runConfig: null, updatedAt: 0 };
+      this.state.applyPreviewSession(session);
+      this.showRecordingsViewWithEntries(preview.entries);
+      return;
+    }
+
+    this.showingRecordings = false;
+    this.detailTarget = null;
+    this.state.applyPreviewSession(preview.session);
+    if (preview.selectedUploadJobId) this.sessionTabs.select(preview.selectedUploadJobId);
+    this.renderPreviewTranscript(preview.transcriptActive === true);
+    this.renderPreviewSetup(preview.setup);
+    if (preview.devicePicker) this.renderPreviewDevicePicker(preview.devicePicker.device, preview.devicePicker.options);
   }
 
   /** Clears transient timers when the popup is torn down. */
@@ -278,7 +328,8 @@ export class PopupController {
       this.updatePauseControl(phase, session);
       if (this.el.stopBtn) this.el.stopBtn.disabled = false;
       this.timer.sync(phase, session);
-      this.captionPoller.start();
+      if (this.previewing) this.captionPoller.stop();
+      else this.captionPoller.start();
     } else {
       this.closeDevicePicker(false);
       this.timer.stop();
@@ -296,6 +347,27 @@ export class PopupController {
     if (!this.statusTimer) {
       setStatusText(this.el, this.persistentStatus);
     }
+  }
+
+  /** Renders the one poll-owned recording indicator from a deterministic fixture. */
+  private renderPreviewTranscript(active: boolean): void {
+    if (this.el.chipTranscriptLabel) this.el.chipTranscriptLabel.textContent = active ? 'Transcribing' : 'Transcript off';
+    this.el.chipTranscript?.classList.toggle('off', !active);
+  }
+
+  /** Applies setup conditions that Chrome would normally expose through permission services. */
+  private renderPreviewSetup(setup?: {
+    micPermissionRequired?: boolean;
+    cameraWarningText?: string;
+    statusText?: string;
+  }): void {
+    if (!setup) return;
+    if (this.el.micBtn) this.el.micBtn.hidden = setup.micPermissionRequired !== true;
+    if (setup.cameraWarningText != null) {
+      if (this.el.cameraWarning) this.el.cameraWarning.hidden = false;
+      if (this.el.cameraWarningText) this.el.cameraWarningText.textContent = setup.cameraWarningText;
+    }
+    if (setup.statusText != null) setStatusText(this.el, setup.statusText);
   }
 
   private toast(msg: string) {
@@ -521,33 +593,12 @@ export class PopupController {
       }
 
       const currentLabel = this.lastSession.capturedDevices?.[device];
-      const options = available.map((item, index) => {
-        const label = inputDeviceLabel(item, `${device === 'microphone' ? 'Microphone' : 'Camera'} ${index + 1}`);
-        const selected = Boolean(currentLabel && normalizedInputLabel(item.label) === normalizedInputLabel(currentLabel));
-        const option = document.createElement('button');
-        option.type = 'button';
-        option.className = 'device-picker-option';
-        option.dataset.deviceId = item.deviceId;
-        option.setAttribute('role', 'option');
-        option.setAttribute('aria-selected', String(selected));
-
-        const copy = document.createElement('span');
-        copy.className = 'device-picker-option-label';
-        copy.textContent = label;
-        option.append(copy);
-        if (selected) {
-          const check = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-          check.setAttribute('class', 'device-picker-check');
-          check.setAttribute('viewBox', '0 0 16 16');
-          check.setAttribute('aria-hidden', 'true');
-          check.innerHTML = '<path d="M3 8.2l3.1 3.1L13 4.7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>';
-          option.append(check);
-        }
-        option.addEventListener('click', () => void this.selectInputDevice(item.deviceId));
-        return option;
-      });
-      this.el.devicePickerList.replaceChildren(...options);
-      options.find((option) => option.getAttribute('aria-selected') === 'true')?.focus();
+      const options = available.map((item, index) => ({
+        id: item.deviceId,
+        label: inputDeviceLabel(item, `${device === 'microphone' ? 'Microphone' : 'Camera'} ${index + 1}`),
+        selected: Boolean(currentLabel && normalizedInputLabel(item.label) === normalizedInputLabel(currentLabel)),
+      }));
+      this.renderDevicePickerOptions(options, true);
     } catch (error: unknown) {
       console.error('[popup] enumerateDevices error', error);
       if (this.activeDevicePicker === device && this.devicePickerRequestId === requestId) {
@@ -561,6 +612,54 @@ export class PopupController {
     message.className = 'device-picker-empty';
     message.textContent = text;
     return message;
+  }
+
+  /** Shared option renderer for the browser-backed picker and deterministic preview. */
+  private renderDevicePickerOptions(options: PopupPreviewDeviceOption[], focusSelected = false): void {
+    if (!this.el.devicePickerList) return;
+    const rendered = options.map((item) => {
+      const option = document.createElement('button');
+      option.type = 'button';
+      option.className = 'device-picker-option';
+      option.dataset.deviceId = item.id;
+      option.setAttribute('role', 'option');
+      option.setAttribute('aria-selected', String(item.selected === true));
+
+      const copy = document.createElement('span');
+      copy.className = 'device-picker-option-label';
+      copy.textContent = item.label;
+      option.append(copy);
+      if (item.selected) {
+        const check = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        check.setAttribute('class', 'device-picker-check');
+        check.setAttribute('viewBox', '0 0 16 16');
+        check.setAttribute('aria-hidden', 'true');
+        check.innerHTML = '<path d="M3 8.2l3.1 3.1L13 4.7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>';
+        option.append(check);
+      }
+      option.addEventListener('click', () => void this.selectInputDevice(item.id));
+      return option;
+    });
+    this.el.devicePickerList.replaceChildren(...rendered);
+    if (focusSelected) rendered.find((option) => option.getAttribute('aria-selected') === 'true')?.focus();
+  }
+
+  private renderPreviewDevicePicker(device: RecordingInputDevice, options: PopupPreviewDeviceOption[]): void {
+    if (!this.el.devicePicker || !this.el.devicePickerList) return;
+    this.activeDevicePicker = device;
+    this.el.devicePicker.hidden = false;
+    if (this.el.devicePickerTitle) this.el.devicePickerTitle.textContent = device.toUpperCase();
+    if (this.el.devicePickerTrack) this.el.devicePickerTrack.textContent = device === 'microphone' ? 'Audio track' : 'Video track';
+    if (this.el.devicePickerMode) {
+      this.el.devicePickerMode.textContent = device === 'microphone'
+        ? (this.lastSession?.runConfig?.micMode ?? 'separate').toUpperCase()
+        : '720P';
+    }
+    if (this.el.devicePickerError) {
+      this.el.devicePickerError.hidden = true;
+      this.el.devicePickerError.textContent = '';
+    }
+    this.renderDevicePickerOptions(options);
   }
 
   private async selectInputDevice(deviceId: string): Promise<void> {
@@ -800,6 +899,17 @@ export class PopupController {
   }
 
   private async showRecordingsView(): Promise<void> {
+    this.showRecordingsViewWithEntries();
+    try {
+      const response = await sendToBackground({ type: 'LIST_RECORDING_HISTORY' });
+      this.renderRecordingsEntries(response.ok ? response.entries : []);
+    } catch {
+      this.renderRecordingsEntries([]);
+    }
+  }
+
+  /** Presents the production recordings layout before its data source is resolved. */
+  private showRecordingsViewWithEntries(entries?: RecordingHistoryEntry[]): void {
     const recordings = document.getElementById('view-recordings');
     if (!recordings) return;
     this.showingRecordings = true;
@@ -821,16 +931,20 @@ export class PopupController {
     const empty = document.getElementById('popup-recordings-empty');
     if (!list || !empty) return;
     list.replaceChildren();
-    try {
-      const response = await sendToBackground({ type: 'LIST_RECORDING_HISTORY' });
-      const uploads = (this.lastSession?.uploadJobs ?? []).filter((job) => job.status === 'uploading');
-      for (const job of uploads) list.appendChild(this.renderPopupUpload(job));
-      const entries = response.ok ? response.entries.slice(0, Math.max(0, 3 - uploads.length)) : [];
-      empty.hidden = uploads.length > 0 || entries.length > 0;
-      for (const entry of entries) list.appendChild(this.renderPopupRecording(entry));
-    } catch {
-      empty.hidden = false;
-    }
+    if (entries) this.renderRecordingsEntries(entries);
+  }
+
+  /** Shared row renderer for production history responses and preview fixtures. */
+  private renderRecordingsEntries(entries: RecordingHistoryEntry[]): void {
+    const list = document.getElementById('popup-recordings-list');
+    const empty = document.getElementById('popup-recordings-empty');
+    if (!list || !empty) return;
+    list.replaceChildren();
+    const uploads = (this.lastSession?.uploadJobs ?? []).filter((job) => job.status === 'uploading');
+    for (const job of uploads) list.appendChild(this.renderPopupUpload(job));
+    const visibleEntries = entries.slice(0, Math.max(0, 3 - uploads.length));
+    empty.hidden = uploads.length > 0 || visibleEntries.length > 0;
+    for (const entry of visibleEntries) list.appendChild(this.renderPopupRecording(entry));
   }
 
   private async refreshRecordingsCount(): Promise<void> {
@@ -1438,6 +1552,15 @@ export class PopupController {
     cameraState?: PermissionQueryState
   ): Promise<void> {
     this.pendingPermissionStart = pending;
+    const [micState, resolvedCameraState] = await Promise.all([
+      this.mic.queryMicPermissionState().catch(() => 'unknown' as const),
+      cameraState ? Promise.resolve(cameraState) : this.camera.queryCameraPermissionState().catch(() => 'unknown' as const),
+    ]);
+    this.renderPermissionView(micState, resolvedCameraState);
+  }
+
+  /** Shared permission renderer for real permission queries and preview fixtures. */
+  private renderPermissionView(micState: PermissionQueryState, cameraState: PermissionQueryState): void {
     if (this.el.viewConfig) this.el.viewConfig.hidden = true;
     if (this.el.viewPermission) this.el.viewPermission.hidden = false;
     if (this.el.viewRecording) this.el.viewRecording.hidden = true;
@@ -1449,13 +1572,9 @@ export class PopupController {
       this.el.permissionCopy.textContent = '';
     }
 
-    const [micState, resolvedCameraState] = await Promise.all([
-      this.mic.queryMicPermissionState().catch(() => 'unknown' as const),
-      cameraState ? Promise.resolve(cameraState) : this.camera.queryCameraPermissionState().catch(() => 'unknown' as const),
-    ]);
     this.renderPermissionState('mic', micState);
-    this.renderPermissionState('camera', resolvedCameraState);
-    const blocked = micState === 'denied' || resolvedCameraState === 'denied';
+    this.renderPermissionState('camera', cameraState);
+    const blocked = micState === 'denied' || cameraState === 'denied';
     this.el.viewPermission?.classList.toggle('permission-blocked', blocked);
     this.el.ppHeader?.classList.toggle('permission-blocked', blocked);
     const title = document.getElementById('permission-title');

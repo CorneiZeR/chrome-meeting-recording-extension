@@ -1,12 +1,13 @@
-/** Development-only browser page that renders every popup layout scenario. */
+/** Development-only browser page that renders real popup-controller fixtures. */
 
-import { applyPopupStory, POPUP_STORIES, type PopupStory, type PopupStoryGroup } from './popupStories';
+import { POPUP_STORIES, type PopupStory, type PopupStoryGroup } from './popupStories';
 
 type Preview = {
   story: PopupStory;
   card: HTMLElement;
   frame: HTMLIFrameElement;
   observer?: ResizeObserver;
+  mutationObserver?: MutationObserver;
 };
 
 function shellElement<T extends HTMLElement>(id: string): T {
@@ -25,26 +26,11 @@ const motionToggle = shellElement<HTMLInputElement>('gallery-motion');
 const groupNav = shellElement('gallery-groups');
 const count = shellElement('gallery-count');
 
-let popupSource = '';
 let selectedGroup: PopupStoryGroup | 'All' = 'All';
 let previews: Preview[] = [];
 
 function selectedStoryId(): string | null {
   return new URLSearchParams(location.search).get('story');
-}
-
-function buildPopupSource(markup: string): string {
-  const parsed = new DOMParser().parseFromString(markup, 'text/html');
-  parsed.querySelectorAll('script').forEach((script) => script.remove());
-  const base = parsed.createElement('base');
-  base.href = new URL('./', location.href).href;
-  parsed.head.prepend(base);
-  const previewStyles = parsed.createElement('link');
-  previewStyles.rel = 'stylesheet';
-  previewStyles.href = 'styles/popup/gallery-preview.css';
-  parsed.head.appendChild(previewStyles);
-  parsed.title = 'Popup preview';
-  return `<!doctype html>${parsed.documentElement.outerHTML}`;
 }
 
 function setStatus(message: string, tone: 'normal' | 'error' = 'normal'): void {
@@ -80,47 +66,6 @@ function resizePreview(preview: Preview): void {
   preview.frame.style.height = `${Math.max(preview.story.minHeight ?? 0, contentHeight)}px`;
 }
 
-function wirePreviewControls(doc: Document, preview: Preview): void {
-  const toggle = (buttonId: string, panelId: string): void => {
-    const button = doc.getElementById(buttonId);
-    const panel = doc.getElementById(panelId);
-    button?.addEventListener('click', () => {
-      if (!panel) return;
-      const opening = panel.hidden;
-      panel.hidden = !opening;
-      button.setAttribute('aria-expanded', String(opening));
-      resizePreview(preview);
-    });
-  };
-  toggle('open-menu', 'popup-menu');
-  toggle('recording-detail-menu-button', 'recording-detail-menu');
-  toggle('storage-mode-trigger', 'storage-mode-options');
-  toggle('mic-mode-trigger', 'mic-mode-options');
-
-  const captureToggle = doc.getElementById('toggle-capture-setup');
-  const captureDetails = doc.getElementById('capture-details');
-  captureToggle?.addEventListener('click', () => {
-    if (!captureDetails) return;
-    const opening = captureDetails.hidden;
-    captureDetails.hidden = !opening;
-    captureToggle.setAttribute('aria-expanded', String(opening));
-    resizePreview(preview);
-  });
-  doc.querySelectorAll<HTMLElement>('.switch').forEach((control) => {
-    control.addEventListener('click', () => {
-      const next = !control.classList.contains('on');
-      control.classList.toggle('on', next);
-      control.setAttribute('aria-pressed', String(!next));
-    });
-  });
-  doc.querySelectorAll<HTMLElement>('[data-device-picker-dismiss], #device-picker-close').forEach((control) => {
-    control.addEventListener('click', () => {
-      const picker = doc.getElementById('device-picker');
-      if (picker) picker.hidden = true;
-    });
-  });
-}
-
 function makeCard(story: PopupStory): Preview {
   const card = document.createElement('article');
   card.className = 'story-card';
@@ -154,7 +99,9 @@ function makeCard(story: PopupStory): Preview {
   frame.className = 'story-frame';
   frame.title = `${story.group}: ${story.title}`;
   frame.loading = 'eager';
-  frame.srcdoc = popupSource;
+  // This is the actual popup document and bundle, not copied markup. Its query
+  // selects the deterministic preview adapter before any live Chrome calls run.
+  frame.src = `popup.html?popupPreview=${encodeURIComponent(story.id)}`;
   canvas.appendChild(frame);
   card.append(header, canvas);
   gallery.appendChild(card);
@@ -163,21 +110,15 @@ function makeCard(story: PopupStory): Preview {
   frame.addEventListener('load', () => {
     const doc = frame.contentDocument;
     if (!doc) return;
-    try {
-      applyPopupStory(doc, story.id);
-      wirePreviewControls(doc, preview);
-      applyPreviewPreferences(preview);
-      preview.observer = new ResizeObserver(() => resizePreview(preview));
-      preview.observer.observe(doc.body);
-      doc.fonts?.ready.then(() => resizePreview(preview));
-    } catch (error) {
-      card.dataset.error = 'true';
-      const message = doc.createElement('pre');
-      message.className = 'gallery-preview-error';
-      message.textContent = error instanceof Error ? error.message : String(error);
-      doc.body.replaceChildren(message);
-      resizePreview(preview);
-    }
+    applyPreviewPreferences(preview);
+    preview.observer = new ResizeObserver(() => resizePreview(preview));
+    preview.observer.observe(doc.body);
+    // `popup.ts` loads the preview adapter dynamically. Observe its render so a
+    // tall state (detail, picker, or expanded setup) resizes even if it appears
+    // just after the iframe's initial load event.
+    preview.mutationObserver = new MutationObserver(() => resizePreview(preview));
+    preview.mutationObserver.observe(doc.body, { childList: true, subtree: true, characterData: true, attributes: true });
+    doc.fonts?.ready.then(() => resizePreview(preview));
   }, { once: true });
   return preview;
 }
@@ -247,19 +188,5 @@ matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
   if (themeSelect.value === 'system') themeSelect.dispatchEvent(new Event('change'));
 });
 
-setStatus('Loading the real popup markup…');
-fetch('popup.html', { cache: 'no-store' })
-  .then((response) => {
-    if (!response.ok) throw new Error(`Could not load popup.html (${response.status})`);
-    return response.text();
-  })
-  .then((markup) => {
-    popupSource = buildPopupSource(markup);
-    render();
-  })
-  .catch((error) => {
-    setStatus(
-      `${error instanceof Error ? error.message : String(error)} Run “npm run popup:gallery” and open the printed local URL.`,
-      'error',
-    );
-  });
+setStatus('Loading real popup previews…');
+render();

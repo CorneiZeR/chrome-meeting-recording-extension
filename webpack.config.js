@@ -177,6 +177,7 @@ module.exports = (_env, argv) => {
         'globalThis.__E2E_MOCK_CAPTURE__': JSON.stringify(e2eMockCapture),
         'globalThis.__E2E_MOCK_DRIVE__': JSON.stringify(e2eMockDrive),
         'globalThis.__E2E_REAL_CAPTURE_TAB__': JSON.stringify(e2eRealCaptureTab),
+        '__POPUP_GALLERY_BUILD__': JSON.stringify(isDevBuild),
         '__BROWSER_TARGET__': JSON.stringify(browserTarget),
         '__WEB_OAUTH_CLIENT_ID__': JSON.stringify(webOauthClientId),
         '__WEB_OAUTH_CLIENT_SECRET__': JSON.stringify(webOauthClientSecret),

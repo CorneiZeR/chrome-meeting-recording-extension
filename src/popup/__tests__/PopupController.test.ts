@@ -217,6 +217,41 @@ describe('PopupController', () => {
     expect(elements.viewRecording.hidden).toBe(true);
   });
 
+  it('renders a deterministic preview through the same recording renderer', () => {
+    controller.renderPreview({
+      screen: 'session',
+      session: {
+        phase: 'recording',
+        runConfig: {
+          storageMode: 'drive',
+          micMode: 'separate',
+          recordSelfVideo: true,
+          tabContentType: 'screen',
+        },
+        recordedMs: 754_000,
+        paused: true,
+        micMuted: true,
+        cameraMuted: true,
+        tabResolution: { height: 1080 },
+        capturedDevices: {
+          microphone: 'MacBook Pro Microphone',
+          camera: 'FaceTime HD Camera',
+        },
+        updatedAt: 0,
+      },
+      transcriptActive: true,
+    });
+
+    expect(elements.viewRecording.hidden).toBe(false);
+    expect(elements.viewConfig.hidden).toBe(true);
+    expect(elements.recLabel.textContent).toBe('Paused');
+    expect(elements.recTimer.textContent).toBe('12:34');
+    expect(elements.chipStorageLabel.textContent).toBe('Google Drive');
+    expect(elements.micDeviceLabel.textContent).toBe('MacBook Pro Microphone');
+    expect(elements.cameraDeviceLabel.textContent).toBe('FaceTime HD Camera');
+    expect(elements.chipTranscriptLabel.textContent).toBe('Transcribing');
+  });
+
   it('shows the camera resolution warning when separate camera capture uses a sub-1080p preset', async () => {
     (chrome.storage.local.get as jest.Mock).mockResolvedValueOnce({
       extensionSettings: {
