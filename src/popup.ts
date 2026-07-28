@@ -17,6 +17,8 @@
  * @see src/shared/protocol.ts         — all message type definitions
  */
 import { PopupController } from './popup/PopupController';
+import { createRuntimeTab } from './platform/chrome/tabs';
+import { isDevBuild } from './shared/build';
 import { initializeExtensionTheme } from './shared/theme';
 
 initializeExtensionTheme();
@@ -37,6 +39,12 @@ if (menuButton && menu) {
   });
   menu.addEventListener('click', closeMenu);
   document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeMenu(); });
+}
+
+const popupGalleryButton = byId<HTMLButtonElement>('open-popup-gallery');
+if (popupGalleryButton && isDevBuild()) {
+  popupGalleryButton.hidden = false;
+  popupGalleryButton.addEventListener('click', () => void createRuntimeTab('popup-gallery.html'));
 }
 
 /** Accessible custom select surfaces keep the native controls as the data source. */

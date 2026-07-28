@@ -143,6 +143,7 @@ module.exports = (_env, argv) => {
     entry: {
       scrapingScript: './src/scrapingScript.ts',
       popup: './src/popup.ts',
+      ...(isDevBuild ? { popupGallery: './src/popup/gallery/popupGallery.ts' } : {}),
       debug: './src/debug.ts',
       background: './src/background.ts',
       offscreen: './src/offscreen.ts',
@@ -198,6 +199,7 @@ module.exports = (_env, argv) => {
             transform: (content) => transformManifest(content, googleOauthClientId, isDevBuild, browserTarget),
           },
           { from: path.join(STATIC_DIR, 'popup.html'),     to: 'popup.html' },
+          ...(isDevBuild ? [{ from: path.join(STATIC_DIR, 'popup-gallery.html'), to: 'popup-gallery.html' }] : []),
           { from: path.join(STATIC_DIR, 'styles'),         to: 'styles' },
           { from: path.join(STATIC_DIR, 'fonts'),          to: 'fonts' },
           { from: path.join(STATIC_DIR, 'debug.html'),     to: 'debug.html' },

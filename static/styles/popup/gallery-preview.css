@@ -1,0 +1,16 @@
+/* Loaded only inside popup-gallery iframes; never linked by the production popup. */
+html { min-width: var(--gallery-preview-width, 300px); overflow: hidden; background: transparent; }
+body { width: var(--gallery-preview-width, 300px); min-height: 100%; }
+
+body.gallery-show-bounds *:not(svg):not(path):not(circle):not(rect) {
+  outline: 1px solid rgb(210 63 47 / 24%);
+  outline-offset: -1px;
+}
+
+body.gallery-show-bounds .view { background-image: linear-gradient(90deg, transparent calc(50% - .5px), rgb(210 63 47 / 28%) 50%, transparent calc(50% + .5px)); }
+
+body.gallery-pause-motion *,
+body.gallery-pause-motion *::before,
+body.gallery-pause-motion *::after { transition: none !important; animation-play-state: paused !important; }
+
+.gallery-preview-error { margin: 0; padding: 18px; color: #c0503c; font: 12px/1.5 ui-monospace, monospace; white-space: pre-wrap; }

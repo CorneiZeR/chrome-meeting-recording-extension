@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Popup state gallery · Meet Recorder</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="styles/popup/gallery.css" />
+  </head>
+  <body>
+    <header class="gallery-header">
+      <div class="gallery-title-row">
+        <div>
+          <p class="gallery-kicker">MEET RECORDER · DEVELOPMENT</p>
+          <h1>Popup state gallery</h1>
+          <p class="gallery-intro">Every layout uses the real popup markup and styles, with Chrome state replaced by deterministic fixtures.</p>
+        </div>
+        <a id="gallery-all-link" class="gallery-all-link" href="popup-gallery.html" hidden>← All states</a>
+      </div>
+
+      <div class="gallery-toolbar" aria-label="Gallery controls">
+        <label class="gallery-field gallery-search-field">
+          <span>Search</span>
+          <input id="gallery-search" type="search" placeholder="Filter states…" autocomplete="off" />
+        </label>
+        <label class="gallery-field">
+          <span>Theme</span>
+          <select id="gallery-theme">
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+            <option value="system">System</option>
+          </select>
+        </label>
+        <label class="gallery-field">
+          <span>Viewport</span>
+          <select id="gallery-width">
+            <option value="300">300 px · actual</option>
+            <option value="320">320 px</option>
+            <option value="360">360 px</option>
+          </select>
+        </label>
+        <label class="gallery-check"><input id="gallery-bounds" type="checkbox" /><span>Layout bounds</span></label>
+        <label class="gallery-check"><input id="gallery-motion" type="checkbox" checked /><span>Motion</span></label>
+      </div>
+
+      <div class="gallery-filter-row">
+        <nav id="gallery-groups" class="gallery-groups" aria-label="State groups"></nav>
+        <span id="gallery-count" class="gallery-count">0 states</span>
+      </div>
+    </header>
+
+    <main>
+      <p id="gallery-status" class="gallery-status" role="status">Loading…</p>
+      <section id="popup-gallery" class="popup-gallery" aria-label="Popup state previews"></section>
+    </main>
+
+    <script src="popupGallery.js"></script>
+  </body>
+</html>

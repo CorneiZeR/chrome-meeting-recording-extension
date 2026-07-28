@@ -8,6 +8,14 @@
 
 A **dumb-but-careful renderer of the background's session.** Open the popup mid-recording and it must immediately show the right view, the right elapsed time, and the right control states — reconstructed entirely from a `RecordingStatusView` pushed/pulled from the background. The popup sends *commands* and reflects *results*; it never decides recording policy and never assumes its own last action succeeded.
 
+## Popup state gallery
+
+Run `npm run popup:gallery`, then open the local URL printed by the command. The development gallery loads the real `static/popup.html` and popup styles into isolated frames, removes the extension runtime script, and applies deterministic scenarios for setup, permissions, recording, saving/uploads, history, details, and overlays. This makes every important layout visible together without starting a recording or granting browser permissions.
+
+The gallery toolbar switches light/dark/system theme, tests 300/320/360 px viewports, filters states, pauses animation, and overlays element bounds. Each card also has a focused URL suitable for screenshots and bug reports. In a development extension build the same gallery is available from **Menu → Popup gallery**; production builds omit both the gallery page bundle and the visible menu action.
+
+Scenario mutations live in `gallery/popupStories.ts`. Its test loads `static/popup.html` and applies every story, so removed or renamed popup targets fail loudly instead of leaving a silently stale gallery.
+
 ## State-driven views
 
 The popup has three **phase-driven** views; the **derived `phase` picks which one is active** (`setActiveView`), and only the matching one is populated:
