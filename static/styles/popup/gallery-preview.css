@@ -2,8 +2,8 @@
 html { min-width: var(--gallery-preview-width, 300px); overflow: hidden; background: transparent; }
 body { width: var(--gallery-preview-width, 300px); min-height: 100%; }
 
-/* Gallery previews are diagnostic snapshots, never a route to live extension actions. */
-html[data-popup-preview='true'] body { pointer-events: none; }
+/* Keep hover/focus and harmless local controls alive; guarded actions stay visibly inert. */
+html[data-popup-preview='true'] [data-preview-action-blocked='true'] { cursor: not-allowed; }
 
 body.gallery-show-bounds *:not(svg):not(path):not(circle):not(rect) {
   outline: 1px solid rgb(210 63 47 / 24%);

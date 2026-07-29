@@ -44,4 +44,26 @@ describe('popup gallery stories', () => {
       expect(visibleViews).toHaveLength(1);
     },
   );
+
+  test('keeps safe preview controls interactive while marking runtime actions inert', () => {
+    document.body.innerHTML = popupBody;
+    renderPopupPreview('device-picker', document);
+    const picker = document.getElementById('device-picker')!;
+    expect(picker.hidden).toBe(false);
+    document.getElementById('device-picker-close')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(picker.hidden).toBe(true);
+
+    document.body.innerHTML = popupBody;
+    renderPopupPreview('setup-default', document);
+    const captureToggle = document.getElementById('toggle-capture-setup')!;
+    captureToggle.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(document.getElementById('capture-details')!.hidden).toBe(false);
+
+    const start = document.getElementById('start-rec')!;
+    expect(start.dataset.previewActionBlocked).toBe('true');
+    const event = new MouseEvent('click', { bubbles: true, cancelable: true });
+    start.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+
+  });
 });

@@ -251,6 +251,12 @@ export class PopupController {
     if (preview.devicePicker) this.renderPreviewDevicePicker(preview.devicePicker.device, preview.devicePicker.options);
   }
 
+  /** Wires the controller-owned interactions that are safe inside a static preview. */
+  wirePreviewInteractions(): void {
+    this.wireRecordingDetailMenu();
+    this.wireDevicePickerDismissal();
+  }
+
   /** Clears transient timers when the popup is torn down. */
   destroy() {
     if (this.statusTimer) {
@@ -555,12 +561,17 @@ export class PopupController {
   private wireDevicePicker(): void {
     this.el.micDeviceTrigger?.addEventListener('click', () => void this.openDevicePicker('microphone'));
     this.el.cameraDeviceTrigger?.addEventListener('click', () => void this.openDevicePicker('camera'));
-    this.el.devicePickerClose?.addEventListener('click', () => this.closeDevicePicker());
-    this.el.devicePicker?.querySelector<HTMLElement>('[data-device-picker-dismiss]')
-      ?.addEventListener('click', () => this.closeDevicePicker());
+    this.wireDevicePickerDismissal();
     document.addEventListener('keydown', (event) => {
       if (event.key === 'Escape' && this.activeDevicePicker) this.closeDevicePicker();
     });
+  }
+
+  /** Shared close interactions for the live picker and the deterministic preview. */
+  private wireDevicePickerDismissal(): void {
+    this.el.devicePickerClose?.addEventListener('click', () => this.closeDevicePicker());
+    this.el.devicePicker?.querySelector<HTMLElement>('[data-device-picker-dismiss]')
+      ?.addEventListener('click', () => this.closeDevicePicker());
   }
 
   private async openDevicePicker(device: RecordingInputDevice): Promise<void> {
@@ -864,6 +875,17 @@ export class PopupController {
 
   private wireRecordingDetail(): void {
     const back = document.getElementById('recording-detail-back');
+    this.wireRecordingDetailMenu();
+    back?.addEventListener('click', () => void this.showRecordingsView());
+    document.getElementById('recording-detail-copy')?.addEventListener('click', () => void this.copyDetailDriveLink());
+    document.getElementById('recording-detail-rename')?.addEventListener('click', () => this.startDetailRename());
+    document.getElementById('recording-detail-delete')?.addEventListener('click', () => void this.deleteDetailRecording());
+    document.getElementById('recording-detail-diagnostics')?.addEventListener('click', () => void createRuntimeTab('debug.html'));
+    document.getElementById('recording-detail-settings')?.addEventListener('click', () => void createRuntimeTab('settings.html'));
+  }
+
+  /** Shared detail-menu disclosure for the live popup and development preview. */
+  private wireRecordingDetailMenu(): void {
     const menuButton = document.getElementById('recording-detail-menu-button');
     const menu = document.getElementById('recording-detail-menu');
     const closeMenu = () => {
@@ -871,7 +893,6 @@ export class PopupController {
       menuButton?.setAttribute('aria-expanded', 'false');
     };
 
-    back?.addEventListener('click', () => void this.showRecordingsView());
     menuButton?.addEventListener('click', () => {
       if (!menu) return;
       const opening = menu.hidden;
@@ -884,11 +905,6 @@ export class PopupController {
     document.addEventListener('keydown', (event) => {
       if (event.key === 'Escape') closeMenu();
     });
-    document.getElementById('recording-detail-copy')?.addEventListener('click', () => void this.copyDetailDriveLink());
-    document.getElementById('recording-detail-rename')?.addEventListener('click', () => this.startDetailRename());
-    document.getElementById('recording-detail-delete')?.addEventListener('click', () => void this.deleteDetailRecording());
-    document.getElementById('recording-detail-diagnostics')?.addEventListener('click', () => void createRuntimeTab('debug.html'));
-    document.getElementById('recording-detail-settings')?.addEventListener('click', () => void createRuntimeTab('settings.html'));
   }
 
   private closeRecordingDetailMenu(): void {
