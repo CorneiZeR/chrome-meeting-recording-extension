@@ -200,6 +200,7 @@ export class PopupController {
     this.wirePause();
     this.wireSettingsLink();
     this.wireRecordingsLink();
+    this.wireUploadNavigation();
     this.wireRecordingDetail();
     this.wireDiagnosticsLink();
     document.getElementById('upload-job-transcript')?.addEventListener('click', () => this.el.saveBtn?.click());
@@ -279,6 +280,7 @@ export class PopupController {
     this.lastPhase = phase;
     this.lastSession = session;
     writeCachedPhase(phase);
+    this.updateUploadNavigation(session);
     // `showRecordingsView` awaits the history query. The initial status refresh can
     // resolve in that gap; retaining the explicit local view prevents setup and
     // history from rendering together (and makes the popup scroll under its footer).
@@ -767,9 +769,10 @@ export class PopupController {
     const label = document.getElementById('header-phase');
     if (!label) return;
     const active = phase === 'starting' || phase === 'recording' || phase === 'stopping';
+    const uploadNavigationVisible = !document.getElementById('open-upload-navigation')?.hidden;
     // Sealing is deliberately quiet: the finalizing screen owns the status, while
-    // detached Drive jobs retain the explicit SAVING header via updateHeaderUpload.
-    label.hidden = !active || phase === 'stopping';
+    // An in-flight upload is represented by the compact progress control instead.
+    label.hidden = uploadNavigationVisible || !active || phase === 'stopping';
     label.textContent = paused ? 'PAUSED' : phase === 'stopping' ? 'SAVING' : 'REC';
     label.dataset.tone = paused ? 'paused' : 'recording';
     this.el.ppHeader?.classList.toggle('recording-active', active && !paused);
@@ -778,16 +781,35 @@ export class PopupController {
     this.el.ppHeader?.classList.remove('permission-blocked');
   }
 
-  /** Gives detached Drive jobs their own visual lifecycle labels. */
+  /** Updates the header tone while a detached upload detail is visible. */
   private updateHeaderUpload(completed: boolean): void {
     const label = document.getElementById('header-phase');
     if (!label) return;
-    label.hidden = false;
-    label.textContent = completed ? 'SAVED' : 'SAVING';
-    label.dataset.tone = completed ? 'saved' : 'uploading';
+    label.hidden = true;
     this.el.ppHeader?.classList.toggle('recording-active', !completed);
     this.el.ppHeader?.classList.remove('recording-paused');
     this.el.ppHeader?.classList.toggle('recording-saved', completed);
+  }
+
+  /** Header-level one-tap return to the latest in-flight upload. */
+  private updateUploadNavigation(session?: RecordingStatusView): void {
+    const button = document.getElementById('open-upload-navigation') as HTMLButtonElement | null;
+    const ring = document.getElementById('upload-navigation-ring');
+    const percentLabel = document.getElementById('upload-navigation-percent');
+    if (!button || !ring || !percentLabel) return;
+    const uploadingJobs = (session?.uploadJobs ?? []).filter((candidate) => candidate.status === 'uploading');
+    const job = uploadingJobs[uploadingJobs.length - 1];
+    button.hidden = !job;
+    if (!job) {
+      button.dataset.jobId = '';
+      return;
+    }
+    const percent = detailPercent(job.progress);
+    button.dataset.jobId = job.id;
+    button.title = `Open upload progress (${percent}%)`;
+    button.setAttribute('aria-label', `Open upload progress, ${percent}% complete`);
+    ring.style.setProperty('--upload-progress', String(percent));
+    percentLabel.textContent = `${percent}%`;
   }
 
   /** Sets the recording banner label + paused styling for the current phase. */
@@ -871,6 +893,16 @@ export class PopupController {
     this.el.openRecordingsBtn.addEventListener('click', () => void this.showRecordingsView());
     document.getElementById('new-recording')?.addEventListener('click', () => this.hideRecordingsView());
     document.getElementById('see-all-recordings')?.addEventListener('click', () => void createRuntimeTab('recordings.html'));
+  }
+
+  private wireUploadNavigation(): void {
+    const button = document.getElementById('open-upload-navigation') as HTMLButtonElement | null;
+    if (!button) return;
+    button.addEventListener('click', () => {
+      const jobId = button.dataset.jobId;
+      if (!jobId || !this.lastSession?.uploadJobs?.some((job) => job.id === jobId && job.status === 'uploading')) return;
+      this.sessionTabs.openUpload(jobId);
+    });
   }
 
   private wireRecordingDetail(): void {

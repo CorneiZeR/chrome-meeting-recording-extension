@@ -1,12 +1,12 @@
 /**
  * @file popup/SessionTabsView.ts
  *
- * The popup's session tab bar and per-job upload view (ADR-0004). A persistent
- * "live" tab (config when idle / recording while capturing) plus one tab per
- * background Drive-upload job; selecting a tab swaps the popup body. Owns its own
- * UI state (selected tab, seen-job tracking, auto-dismiss timers) and talks back to
- * PopupController through a small callback bag — extracted so the controller stays a
- * thin orchestrator (mirrors PopupStateController's `(el, callbacks)` shape).
+ * The popup's upload-view selection and per-job upload view (ADR-0004). A live
+ * selection (config when idle / recording while capturing) and background Drive
+ * uploads share one controller; the header progress control swaps the popup body
+ * without mutating an upload. It owns that selection and its terminal fade timers,
+ * keeping PopupController thin (mirrors PopupStateController's `(el, callbacks)`
+ * shape).
  */
 
 import { sendToBackground } from '../shared/messages';
@@ -119,13 +119,8 @@ export interface SessionTabsCallbacks {
 }
 
 export class SessionTabsView {
-  /** Selected session tab: 'live' (config/recording) or an upload job id. */
+  /** Selected view: 'live' (config/recording) or an upload job id. */
   private selectedTab = 'live';
-  /** Upload-job ids already seen, so a *newly*-appeared job (a recording that just
-   *  finished) can auto-focus its tab — but a reopen, where jobs are seen on the
-   *  first render, still lands on Setup. */
-  private seenUploadJobIds = new Set<string>();
-  private hasRenderedSession = false;
   /** Pending auto-dismiss timers for completed upload tabs, keyed by job id. */
   private readonly fadeTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
@@ -139,15 +134,13 @@ export class SessionTabsView {
     this.el.uploadJobRetry?.addEventListener('click', () => void this.retryUploadJob());
     this.el.uploadJobCancel?.addEventListener('click', () => void this.cancelUploadJob());
     this.el.uploadJobOpenDrive?.addEventListener('click', () => void this.openUploadJobFolder());
-    document.getElementById('upload-job-new-recording')?.addEventListener('click', () => this.selectTab('live'));
-    // "Upload in background" just returns to the live/Setup tab; the upload keeps
-    // running (ADR-0004), so backgrounding it is exactly selecting the live tab.
+    document.getElementById('upload-job-new-recording')?.addEventListener('click', () => this.openLive());
     this.wireKeyboard();
   }
 
-  /** Auto-focuses a freshly-finished job, then rebuilds the tab bar for the phase/session. */
+  /** Reconciles a selected job, then updates any legacy test-only navigation fixture. */
   sync(phase: RecordingPhase, session?: RecordingStatusView): void {
-    this.autoFocusFinishedUpload(session);
+    this.reconcileSelectedUpload(session);
     this.renderSessionTabs(phase, session);
   }
 
@@ -161,6 +154,16 @@ export class SessionTabsView {
   select(tab: 'live' | string): void {
     this.selectTab(tab);
   }
+  
+  /** Opens an upload from the header progress control without changing upload state. */
+  openUpload(jobId: string): void {
+    this.selectTab(jobId);
+  }
+
+  /** Returns from Saving to the live recording/setup view. */
+  openLive(): void {
+    this.selectTab('live');
+  }
 
   /** Clears pending auto-dismiss timers (call from the controller's destroy). */
   dispose(): void {
@@ -168,20 +171,12 @@ export class SessionTabsView {
     this.fadeTimers.clear();
   }
 
-  /**
-   * When a recording just finished it produces a *new* upload job; focus its tab so
-   * the user lands on the upload screen (with a "New recording" button) rather than
-   * an empty Setup form. The first render only records the existing job ids — so
-   * reopening the popup mid-upload still defaults to Setup.
-   */
-  private autoFocusFinishedUpload(session?: RecordingStatusView): void {
+  /** Keeps a vanished/pruned upload from leaving the popup on an empty detail view. */
+  private reconcileSelectedUpload(session?: RecordingStatusView): void {
     const jobs = session?.uploadJobs ?? [];
-    if (this.hasRenderedSession) {
-      const freshlyFinished = jobs.filter((j) => !this.seenUploadJobIds.has(j.id));
-      if (freshlyFinished.length) this.selectedTab = freshlyFinished[freshlyFinished.length - 1].id;
+    if (this.selectedTab !== 'live' && !jobs.some((job) => job.id === this.selectedTab)) {
+      this.selectedTab = 'live';
     }
-    this.seenUploadJobIds = new Set(jobs.map((j) => j.id));
-    this.hasRenderedSession = true;
   }
 
   /**
@@ -193,9 +188,6 @@ export class SessionTabsView {
     const tabsEl = this.el.sessionTabs;
     if (!tabsEl) return;
     const jobs = session?.uploadJobs ?? [];
-    if (this.selectedTab !== 'live' && !jobs.some((j) => j.id === this.selectedTab)) {
-      this.selectedTab = 'live';
-    }
     if (jobs.length === 0) {
       tabsEl.hidden = true;
       tabsEl.replaceChildren();
@@ -426,7 +418,9 @@ export class SessionTabsView {
       this.el.uploadJobOpenDrive.dataset.folderUrl = completed ? job.folderWebViewLink ?? '' : '';
     }
     const newRecording = document.getElementById('upload-job-new-recording') as HTMLButtonElement | null;
-    if (newRecording) newRecording.hidden = !completed;
+    // An upload is intentionally backgroundable: the user can immediately return
+    // to Setup and start another recording without cancelling the current job.
+    if (newRecording) newRecording.hidden = false;
     const transcript = document.getElementById('upload-job-transcript') as HTMLButtonElement | null;
     if (transcript) transcript.hidden = !completed;
   }

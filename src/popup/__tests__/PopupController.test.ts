@@ -403,7 +403,7 @@ describe('PopupController', () => {
       expect(elements.sessionTabs.hidden).toBe(true); // bar gone with the last job
     });
 
-    it('auto-focuses a newly-finished upload but stays on Setup on the first render', async () => {
+    it('keeps Setup selected when another upload begins', async () => {
       // First render already has an upload (simulates a reopen mid-upload) → Setup.
       mockSendMessage.mockResolvedValueOnce(sessionWith([job()]));
       controller.init();
@@ -411,13 +411,14 @@ describe('PopupController', () => {
       expect(elements.viewUpload.hidden).toBe(true);
       expect(elements.viewConfig.hidden).toBe(false);
 
-      // A later push introduces a NEW job (a recording just finished) → focus its tab.
+      // A later push introduces another job. The header upload control is now the
+      // explicit navigation affordance, so Setup stays usable for another recording.
       (controller as unknown as { state: { applySession: (s: unknown) => void } }).state.applySession({
         phase: 'idle', runConfig: null, updatedAt: Date.now(), uploadJobs: [job(), job({ id: 'j2', label: 'new-mtg', progress: 0.1 })],
       });
 
-      expect(elements.viewUpload.hidden).toBe(false);
-      expect(elements.uploadJobPct.textContent).toBe('10%'); // the new job j2
+      expect(elements.viewUpload.hidden).toBe(true);
+      expect(elements.viewConfig.hidden).toBe(false);
     });
 
     it('the ＋ New tab leaves the upload screen for Setup', async () => {
