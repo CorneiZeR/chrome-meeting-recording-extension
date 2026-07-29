@@ -14,8 +14,6 @@ export type PopupStory = {
   title: string;
   group: PopupStoryGroup;
   description: string;
-  /** Minimum iframe height for intentionally tall views and fixed overlays. */
-  minHeight?: number;
   preview: PopupPreviewState;
   shell?: PopupPreviewShellState;
 };
@@ -100,7 +98,6 @@ export const POPUP_STORIES: PopupStory[] = [
   {
     id: 'setup-expanded', title: 'Camera + mic options', group: 'Setup',
     description: 'Expanded capture controls, separate mic, camera enabled, and a resolution nudge.',
-    minHeight: 510,
     preview: {
       screen: 'session', session: session(),
       setup: { cameraWarningText: 'Camera delivering 720p · raise in settings' },
@@ -123,7 +120,6 @@ export const POPUP_STORIES: PopupStory[] = [
   {
     id: 'permission-blocked', title: 'Permission blocked', group: 'Permissions',
     description: 'Browser-denied mic and camera with recovery instructions.',
-    minHeight: 480,
     preview: { screen: 'permission', microphone: 'denied', camera: 'denied' },
   },
   {
@@ -174,7 +170,6 @@ export const POPUP_STORIES: PopupStory[] = [
       title,
       group: 'Saving',
       description,
-      minHeight: status === 'completed' ? 520 : 500,
       preview: {
         screen: 'session',
         session: session({ uploadJobs: [job] }),
@@ -185,7 +180,6 @@ export const POPUP_STORIES: PopupStory[] = [
   {
     id: 'recordings-recent', title: 'Recent recordings', group: 'Library',
     description: 'In-flight upload plus recent saved recordings.',
-    minHeight: 480,
     preview: { screen: 'recordings', session: session({ uploadJobs: [uploadJob()] }), entries: [savedRecording, designSync] },
   },
   {
@@ -196,19 +190,16 @@ export const POPUP_STORIES: PopupStory[] = [
   {
     id: 'recording-detail', title: 'Saved recording detail', group: 'Library',
     description: 'Drive files, transcript metadata, rename, and open/copy actions.',
-    minHeight: 540,
     preview: { screen: 'recording-detail', target: { kind: 'recording', entry: savedRecording } },
   },
   {
     id: 'upload-detail', title: 'Upload detail', group: 'Library',
     description: 'Pushed detail view for an upload that is still running.',
-    minHeight: 520,
     preview: { screen: 'recording-detail', target: { kind: 'upload', job: uploadJob() } },
   },
   {
     id: 'device-picker', title: 'Device picker', group: 'Overlays',
     description: 'Recording state with the live microphone picker sheet open.',
-    minHeight: 520,
     preview: {
       screen: 'session',
       session: activeRecording,
@@ -225,7 +216,6 @@ export const POPUP_STORIES: PopupStory[] = [
   {
     id: 'recording-menu', title: 'Recording menu', group: 'Overlays',
     description: 'Active recording with destructive and development menu actions visible.',
-    minHeight: 480,
     preview: { screen: 'session', session: activeRecording, transcriptActive: true },
     shell: { menuOpen: true },
   },

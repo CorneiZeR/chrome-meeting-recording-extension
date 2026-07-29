@@ -27,6 +27,9 @@ describe('popup gallery stories', () => {
     for (const story of POPUP_STORIES) {
       expect(story.preview).toBeDefined();
       expect((story as unknown as Record<string, unknown>).apply).toBeUndefined();
+      // Layout comes from the real popup markup. A gallery-only height floor
+      // would move fixed overlays away from their production position.
+      expect((story as unknown as Record<string, unknown>).minHeight).toBeUndefined();
       expect(story.title).not.toHaveLength(0);
       expect(story.description).not.toHaveLength(0);
     }

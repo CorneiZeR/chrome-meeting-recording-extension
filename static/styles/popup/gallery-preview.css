@@ -1,6 +1,6 @@
 /* Loaded only inside popup-gallery iframes; never linked by the production popup. */
 html { min-width: var(--gallery-preview-width, 300px); overflow: hidden; background: transparent; }
-body { width: var(--gallery-preview-width, 300px); min-height: 100%; }
+body { width: var(--gallery-preview-width, 300px); }
 
 /* Keep hover/focus and harmless local controls alive; guarded actions stay visibly inert. */
 html[data-popup-preview='true'] [data-preview-action-blocked='true'] { cursor: not-allowed; }

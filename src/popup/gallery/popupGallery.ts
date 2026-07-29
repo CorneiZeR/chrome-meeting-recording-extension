@@ -63,7 +63,11 @@ function resizePreview(preview: Preview): void {
   const doc = preview.frame.contentDocument;
   if (!doc) return;
   const contentHeight = Math.ceil(Math.max(doc.body.scrollHeight, doc.documentElement.scrollHeight));
-  preview.frame.style.height = `${Math.max(preview.story.minHeight ?? 0, contentHeight)}px`;
+  // A popup sizes itself to its content. Do not give individual stories a
+  // gallery-only floor: fixed overlays (such as the device picker) anchor to
+  // the iframe viewport and would otherwise be visually detached from the
+  // popup they cover.
+  preview.frame.style.height = `${contentHeight}px`;
 }
 
 function makeCard(story: PopupStory): Preview {
