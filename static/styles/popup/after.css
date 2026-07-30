@@ -65,5 +65,3 @@
 #view-upload:has(#upload-done:not([hidden])) .file-status-uploaded .file-sub { color: var(--ink-3); }
 
 #view-finalizing .meta-list { display: none; }
-#recording-status { min-height: 16px; padding: 8px 0 0; color: var(--warn-label); font-size: 10.5px; text-align: center; }
-#recording-status:empty { display: none; }

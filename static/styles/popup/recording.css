@@ -84,5 +84,3 @@
 .paused-meta svg { width: 12px; height: 12px; }
 #view-recording:has(.controls.paused) .chips { display: none; }
 #view-recording:has(.controls.paused) .rec-timer { margin-bottom: 10px; color: var(--warn); font-size: 44px; }
-#view-recording:not([hidden]) ~ #recording-status,
-#view-finalizing:not([hidden]) ~ #recording-status { display: none; }

@@ -55,8 +55,6 @@ popup → content    : GET_TRANSCRIPT · RESET_TRANSCRIPT · GET_CAPTION_STATE
 background → popup  : RECORDING_STATE · RECORDING_SAVED · RECORDING_SAVE_ERROR
 ```
 
-The status line distinguishes a **persistent** status (rebuilt from phase on every change) from a transient **toast** (`POPUP_TOAST_DURATION_MS`, then it reverts to persistent) — so a "saved locally" toast never overwrites the standing phase text permanently.
-
 ## Permission readiness (mic / camera)
 
 Recording with a mic or self-video needs Chrome permission first. The popup can't always prompt inline, so the services degrade to a dedicated setup page:

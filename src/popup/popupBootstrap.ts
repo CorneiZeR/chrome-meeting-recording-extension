@@ -95,8 +95,5 @@ export function createPopupController(doc: Document = document): PopupController
     cameraWarning: byId(doc, 'camera-warning'),
     cameraWarningText: byId(doc, 'camera-warning-text'),
     tabSourceSub: byId(doc, 'tab-source-sub'),
-
-    // Shared status / toast line
-    recordingStatusEl: byId(doc, 'recording-status'),
   });
 }

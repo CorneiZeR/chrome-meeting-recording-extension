@@ -40,7 +40,6 @@ export type PopupPreviewState =
         micPermissionRequired?: boolean;
         /** Setup nudge text supplied by the self-video capability/profile path. */
         cameraWarningText?: string;
-        statusText?: string;
       };
       devicePicker?: PopupPreviewDevicePicker;
     }

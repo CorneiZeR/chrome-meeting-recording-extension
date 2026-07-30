@@ -1,32 +1,10 @@
 /**
  * @file popup/popupStatus.ts
  *
- * Pure text-formatting helpers for popup status and upload summaries.
+ * Pure text-formatting helpers for recording duration and upload summaries.
  */
 
-import type { RecordingPhase, RecordingRunConfig, UploadSummary } from '../shared/recording';
-
-export const STATUS_BY_PHASE: Record<Exclude<RecordingPhase, 'idle'>, string> = {
-  starting: 'Starting recording...',
-  recording: 'Recording in progress.',
-  stopping: 'Stopping recording and sealing files...',
-  failed: 'The last recording attempt failed.',
-};
-
-/** Formats the active run configuration into popup-friendly status prose. */
-export function describeRunConfig(config: RecordingRunConfig | null): string {
-  if (!config) return '';
-
-  const mode = config.storageMode === 'drive' ? 'Mode: Drive.' : 'Mode: Local.';
-  const mic =
-    config.micMode === 'mixed'
-      ? 'Microphone: Mixed into tab recording.'
-      : config.micMode === 'separate'
-        ? 'Microphone: Saved as a separate audio file.'
-        : 'Microphone: Off.';
-  const camera = config.recordSelfVideo ? 'Camera: On.' : 'Camera: Off.';
-  return `${mode} ${mic} ${camera}`.trim();
-}
+import type { UploadSummary } from '../shared/recording';
 
 /** Formats a recorded-duration in ms as `M:SS` (or `H:MM:SS` past an hour). */
 export function formatDuration(ms: number): string {
@@ -37,12 +15,6 @@ export function formatDuration(ms: number): string {
   const ss = String(seconds).padStart(2, '0');
   if (hours > 0) return `${hours}:${String(minutes).padStart(2, '0')}:${ss}`;
   return `${minutes}:${ss}`;
-}
-
-/** Formats the first active warning for compact popup display. */
-export function describeRecordingWarnings(warnings?: string[]): string {
-  const first = warnings?.find((warning) => warning.trim());
-  return first ? `Warning: ${first}` : '';
 }
 
 /** Builds the post-upload alert when some files fell back to local downloads. */

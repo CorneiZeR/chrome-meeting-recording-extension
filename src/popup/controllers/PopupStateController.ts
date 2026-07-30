@@ -7,11 +7,6 @@
 
 import { applyRunConfigToForm, buildRunConfigFromForm } from '../popupRunConfig';
 import {
-  describeRecordingWarnings,
-  describeRunConfig,
-  STATUS_BY_PHASE,
-} from '../popupStatus';
-import {
   buildDefaultRunConfigFromSettings,
   getSelfVideoProfileSettings,
   loadExtensionSettingsFromStorage,
@@ -42,7 +37,6 @@ function createIdleStatusView(): RecordingStatusView {
 
 export class PopupStateController {
   private activeRunConfig: RecordingRunConfig | null = createDefaultRunConfig();
-  private activeWarnings: string[] = [];
   private idleDefaultRunConfig: RecordingRunConfig = createDefaultRunConfig();
   private selfVideoProfile: SelfVideoProfileSettings = getSelfVideoProfileSettings();
   private shownUploadSummary = '';
@@ -78,7 +72,6 @@ export class PopupStateController {
       ? { ...this.idleDefaultRunConfig }
       : getRunConfigOrDefault(snapshot.runConfig);
     this.setActiveRunConfig(runConfig);
-    this.setActiveWarnings(snapshot.warnings);
     this.callbacks.onPhaseChange(snapshot.phase, snapshot);
 
     if (snapshot.phase === 'failed' && snapshot.error) {
@@ -95,21 +88,7 @@ export class PopupStateController {
    */
   applyPreviewSession(snapshot: RecordingStatusView): void {
     this.setActiveRunConfig(snapshot.runConfig ? { ...snapshot.runConfig } : createDefaultRunConfig());
-    this.setActiveWarnings(snapshot.warnings);
     this.callbacks.onPhaseChange(snapshot.phase, snapshot);
-  }
-
-  /** Builds the persistent status line text based on current phase, pause state, and warnings. */
-  buildPersistentStatus(phase: RecordingPhase, paused = false): string {
-    const warning = describeRecordingWarnings(this.activeWarnings);
-    if (phase === 'idle') {
-      return warning;
-    }
-    const run = describeRunConfig(this.activeRunConfig);
-    const runSuffix = run ? ` ${run}` : '';
-    const warningSuffix = warning ? ` ${warning}` : '';
-    const label = paused && phase === 'recording' ? 'Recording paused.' : STATUS_BY_PHASE[phase];
-    return `${label}${runSuffix}${warningSuffix}`;
   }
 
   /** Reads the run configuration from the popup form. */
@@ -139,10 +118,6 @@ export class PopupStateController {
     const show = recordSelfVideo && height < 1080;
     warning.hidden = !show;
     text.textContent = show ? `Camera delivering ${height}p · raise in settings` : '';
-  }
-
-  private setActiveWarnings(warnings?: string[]) {
-    this.activeWarnings = warnings ? [...warnings] : [];
   }
 
   private handleUploadSummary(phase: RecordingPhase, summary?: UploadSummary) {

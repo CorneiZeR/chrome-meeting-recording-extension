@@ -11,8 +11,6 @@ const DEFAULT_UNKNOWN_SAVE_ERROR = 'Unknown save error';
 const DEFAULT_TRANSCRIPT_SUFFIX = 'google-meet';
 const TRANSCRIPT_FILENAME_PREFIX = 'google-meet-transcript';
 
-export const POPUP_TOAST_DURATION_MS = 12_000;
-
 export const POPUP_TOAST_TEXT = {
   recordingStarted: 'Recording started',
   noTranscriptOnPage: 'No transcript on this page',

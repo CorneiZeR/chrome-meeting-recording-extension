@@ -108,8 +108,6 @@ export type PopupElements = {
   cameraWarningText: HTMLElement | null;
   tabSourceSub: HTMLElement | null;
 
-  // Shared status / toast line
-  recordingStatusEl: HTMLElement | null;
 };
 
 /** Maps a recording phase to the top-level view it should display. */
@@ -127,11 +125,4 @@ export function setActiveView(elements: PopupElements, phase: RecordingPhase): P
   if (elements.viewRecording) elements.viewRecording.hidden = view !== 'recording';
   if (elements.viewFinalizing) elements.viewFinalizing.hidden = view !== 'finalizing';
   return view;
-}
-
-/** Replaces the popup status line with the latest human-readable status text. */
-export function setStatusText(elements: PopupElements, text: string): void {
-  if (elements.recordingStatusEl) {
-    elements.recordingStatusEl.textContent = text;
-  }
 }

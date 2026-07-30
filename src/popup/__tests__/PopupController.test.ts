@@ -1,7 +1,6 @@
 import { CameraPermissionService } from '../CameraPermissionService';
 import { MicPermissionService } from '../MicPermissionService';
 import { PopupController } from '../PopupController';
-import { POPUP_TOAST_DURATION_MS } from '../popupMessages';
 import { DEFAULT_EXTENSION_SETTINGS } from '../../shared/settings';
 import type { RecordingRunConfig } from '../../shared/recording';
 
@@ -138,8 +137,6 @@ describe('PopupController', () => {
       uploadJobOpenDrive: document.createElement('button'),
       uploadJobRetry: document.createElement('button'),
 
-      // Shared
-      recordingStatusEl: document.createElement('div'),
     };
     elements.recordSelfVideoCheckbox.type = 'checkbox';
     elements.devicePicker.hidden = true;
@@ -306,8 +303,6 @@ describe('PopupController', () => {
     expect(elements.finalizingLabel.textContent).toBe('Finalizing recording');
     expect(elements.finalizingSub.textContent).toBe('Muxing tab & camera'); // mixed mic → no separate mic file
     expect(elements.finalizingFiles.querySelectorAll('li')).toHaveLength(2);
-    expect(elements.recordingStatusEl.textContent).toContain('Stopping recording');
-    expect(elements.recordingStatusEl.textContent).toContain('Mode: Drive');
   });
 
   it('keeps the upload ring indeterminate while finalizing without progress', async () => {
@@ -501,7 +496,7 @@ describe('PopupController', () => {
       expect(elements.uploadJobRetry.hidden).toBe(true);
     });
 
-    it('toasts when a retry is no longer possible', async () => {
+    it('logs when a retry is no longer possible', async () => {
       mockSendMessage.mockResolvedValueOnce(
         sessionWith([job({ status: 'failed', progress: 1, files: [{ stream: 'tab', filename: 'tab.webm', status: 'fallback' }], finishedAt: 2 })])
       );
@@ -513,7 +508,7 @@ describe('PopupController', () => {
       elements.uploadJobRetry.click();
       await new Promise(process.nextTick);
 
-      expect(elements.recordingStatusEl.textContent).toContain('no longer be retried');
+      expect(console.log).toHaveBeenCalledWith('[popup]', expect.stringContaining('no longer be retried'));
     });
 
     it('auto-dismisses a completed tab after it lingers', async () => {
@@ -659,7 +654,7 @@ describe('PopupController', () => {
 
     expect(elements.viewPermission.hidden).toBe(false);
     expect(chrome.runtime.sendMessage).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'START_RECORDING' }));
-    expect(elements.recordingStatusEl.textContent).toContain('Camera permission');
+    expect(elements.permCameraState.textContent).toBe('Needed');
     expect(elements.grantPermissionBtn.disabled).toBe(false);
     expect(elements.permissionContinueBtn.disabled).toBe(false);
   });
@@ -738,21 +733,6 @@ describe('PopupController', () => {
         tabContentType: 'screen',
       },
     });
-  });
-
-  it('shows the first recording warning in popup status', async () => {
-    controller.init();
-    await new Promise(process.nextTick);
-    (controller as any).state.applySession({
-      phase: 'recording',
-      runConfig: (global as any).__TEST_RUN_CONFIG__({ recordSelfVideo: true }),
-      warnings: ['Tab recording requested 640x360@24fps, but recorder input is 1920x1080@24fps.'],
-      updatedAt: Date.now(),
-    });
-
-    expect(elements.recordingStatusEl.textContent).toContain(
-      'Warning: Tab recording requested 640x360@24fps'
-    );
   });
 
   it('renders the real tab capture resolution when the session provides it', async () => {
@@ -1016,7 +996,7 @@ describe('PopupController', () => {
     expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:tx');
   });
 
-  it('shows a toast when the transcript is empty and skips the download', async () => {
+  it('skips the download when the transcript is empty', async () => {
     controller.init();
     await new Promise(process.nextTick);
     (chrome.tabs.sendMessage as jest.Mock).mockImplementation(async (_id: number, message: { type: string }) => {
@@ -1029,7 +1009,7 @@ describe('PopupController', () => {
     await new Promise(process.nextTick);
     await new Promise(process.nextTick);
 
-    expect(elements.recordingStatusEl.textContent).toContain('Transcript is empty');
+    expect(console.log).toHaveBeenCalledWith('[popup]', expect.stringContaining('Transcript is empty'));
     expect(chrome.downloads.download).not.toHaveBeenCalled();
   });
 
@@ -1056,33 +1036,13 @@ describe('PopupController', () => {
     return calls[calls.length - 1][0];
   };
 
-  it('toasts the saved-locally confirmation on RECORDING_SAVED', async () => {
+  it('logs the saved-locally confirmation on RECORDING_SAVED', async () => {
     controller.init();
     await new Promise(process.nextTick);
 
     currentRuntimeListener()({ type: 'RECORDING_SAVED', filename: 'tab.webm' });
 
-    expect(elements.recordingStatusEl.textContent).toContain('Saved locally: tab.webm');
-  });
-
-  it('restores the persistent status after a toast expires', async () => {
-    controller.init();
-    await new Promise(process.nextTick);
-    const persistent = elements.recordingStatusEl.textContent;
-    const runtimeListener = currentRuntimeListener();
-
-    jest.useFakeTimers();
-    try {
-      runtimeListener({ type: 'RECORDING_SAVED', filename: 'tab.webm' });
-      expect(elements.recordingStatusEl.textContent).toContain('Saved locally');
-      // A second toast clears the first pending restore timer before scheduling its own.
-      runtimeListener({ type: 'RECORDING_SAVED', filename: 'mic.webm' });
-
-      jest.advanceTimersByTime(POPUP_TOAST_DURATION_MS);
-      expect(elements.recordingStatusEl.textContent).toBe(persistent);
-    } finally {
-      jest.useRealTimers();
-    }
+    expect(console.log).toHaveBeenCalledWith('[popup]', expect.stringContaining('Saved locally: tab.webm'));
   });
 
   it('alerts and resets to idle when the start command throws', async () => {

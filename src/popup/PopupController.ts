@@ -30,14 +30,9 @@ import {
   buildTranscriptFilename,
   CAMERA_PERMISSION_ERROR,
   DISCARD_CONFIRM_TEXT,
-  POPUP_TOAST_DURATION_MS,
   POPUP_TOAST_TEXT,
 } from './popupMessages';
-import {
-  setActiveView,
-  setStatusText,
-  type PopupElements,
-} from './popupView';
+import { setActiveView, type PopupElements } from './popupView';
 import { downloadFile } from '../platform/chrome/downloads';
 import { createExternalTab, createRuntimeTab, queryActiveTab } from '../platform/chrome/tabs';
 import { sendToBackground, sendToContent } from '../shared/messages';
@@ -147,8 +142,6 @@ export class PopupController {
   private readonly sessionTabs: SessionTabsView;
   private readonly confirmDialog = new ConfirmDialog();
   private inFlight = false;
-  private statusTimer: ReturnType<typeof setTimeout> | null = null;
-  private persistentStatus = '';
   private micMuted = false;
   private cameraMuted = false;
   private paused = false;
@@ -260,10 +253,6 @@ export class PopupController {
 
   /** Clears transient timers when the popup is torn down. */
   destroy() {
-    if (this.statusTimer) {
-      clearTimeout(this.statusTimer);
-      this.statusTimer = null;
-    }
     this.timer.stop();
     this.captionPoller.stop();
     this.sessionTabs.dispose();
@@ -318,8 +307,6 @@ export class PopupController {
       this.setHeaderCompact(true);
       this.updateHeaderUpload(job.status === 'completed');
       this.sessionTabs.renderJobView(job);
-      this.persistentStatus = this.state.buildPersistentStatus(phase, session?.paused === true);
-      if (!this.statusTimer) setStatusText(this.el, this.persistentStatus);
       return;
     }
 
@@ -351,10 +338,6 @@ export class PopupController {
       if (view === 'config' && this.el.startBtn) this.el.startBtn.disabled = false;
     }
 
-    this.persistentStatus = this.state.buildPersistentStatus(phase, session?.paused === true);
-    if (!this.statusTimer) {
-      setStatusText(this.el, this.persistentStatus);
-    }
   }
 
   /** Renders the one poll-owned recording indicator from a deterministic fixture. */
@@ -367,7 +350,6 @@ export class PopupController {
   private renderPreviewSetup(setup?: {
     micPermissionRequired?: boolean;
     cameraWarningText?: string;
-    statusText?: string;
   }): void {
     if (!setup) return;
     if (this.el.micBtn) this.el.micBtn.hidden = setup.micPermissionRequired !== true;
@@ -375,19 +357,11 @@ export class PopupController {
       if (this.el.cameraWarning) this.el.cameraWarning.hidden = false;
       if (this.el.cameraWarningText) this.el.cameraWarningText.textContent = setup.cameraWarningText;
     }
-    if (setup.statusText != null) setStatusText(this.el, setup.statusText);
   }
 
   private toast(msg: string) {
-    if (this.statusTimer) {
-      clearTimeout(this.statusTimer);
-      this.statusTimer = null;
-    }
-    setStatusText(this.el, msg);
-    this.statusTimer = setTimeout(() => {
-      this.statusTimer = null;
-      setStatusText(this.el, this.persistentStatus);
-    }, POPUP_TOAST_DURATION_MS);
+    // The shared footer message has been removed; keep notices available in the
+    // test console until each action receives its own designed feedback surface.
     if (isTestRuntime()) console.log('[popup]', msg);
   }
 
@@ -1636,7 +1610,6 @@ export class PopupController {
       : '';
     if (this.el.grantPermissionBtn) this.el.grantPermissionBtn.textContent = blocked ? 'Open site settings' : 'Allow access';
     if (this.el.permissionContinueBtn) this.el.permissionContinueBtn.textContent = blocked ? 'Try again' : 'Not now';
-    setStatusText(this.el, '');
   }
 
   private renderPermissionState(kind: 'mic' | 'camera', state: PermissionQueryState): void {

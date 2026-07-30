@@ -109,7 +109,7 @@ export const POPUP_STORIES: PopupStory[] = [
     description: 'Inline permission CTA and persistent setup warning.',
     preview: {
       screen: 'session', session: session(),
-      setup: { micPermissionRequired: true, statusText: 'Microphone access is needed before recording.' },
+      setup: { micPermissionRequired: true },
     },
   },
   {

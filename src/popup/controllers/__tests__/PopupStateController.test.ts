@@ -32,7 +32,6 @@ function makeElements() {
     recordSelfVideoCheckbox,
     startBtn: document.createElement('button'),
     stopBtn: document.createElement('button'),
-    recordingStatusEl: document.createElement('div'),
   } as any;
 }
 
@@ -129,17 +128,4 @@ describe('PopupStateController', () => {
     });
   });
 
-  describe('buildPersistentStatus', () => {
-    it('returns warning text (possibly empty) for the idle phase', () => {
-      const { controller } = makeController();
-      expect(typeof controller.buildPersistentStatus('idle')).toBe('string');
-    });
-
-    it('includes the phase label and run config for an active phase', () => {
-      const { controller } = makeController();
-      controller.applySession(idleView({ phase: 'recording', runConfig: { storageMode: 'drive', micMode: 'mixed', recordSelfVideo: true } }));
-      const status = controller.buildPersistentStatus('recording');
-      expect(status.length).toBeGreaterThan(0);
-    });
-  });
 });
