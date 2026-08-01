@@ -13,6 +13,7 @@ import { DRIVE_ROOT_FOLDER_NAME } from './constants';
 import { DriveFolderResolver } from './DriveFolderResolver';
 import { createCachedTokenProvider, type TokenProvider } from './request';
 import type { PendingUpload, PendingUploadStore } from './PendingUploadStore';
+import { isWebmRecordingFilename } from '../../shared/recordingFormats';
 
 type RecoveredDriveFile = Pick<DriveUploadResult, 'id' | 'webViewLink'> | void;
 
@@ -53,7 +54,7 @@ export async function resumePendingDriveUploads(deps: ResumePendingUploadsDeps):
         await deps.store.remove(entry.opfsFilename);
         continue;
       }
-      const fixed = await deps.fixDuration(raw);
+      const fixed = isWebmRecordingFilename(entry.filename) ? await deps.fixDuration(raw) : raw;
       const uploaded = await deps.uploadFile(fixed, entry);
       outcomes.set(entry.opfsFilename, {
         status: 'uploaded',

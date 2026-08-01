@@ -25,6 +25,7 @@ import {
 import { uploadChunk } from './drive/DriveChunkUploader';
 import type { DriveUploadFile, UploadChunkResult } from './drive/DriveChunkUploader';
 import { PERF_FLAGS, clamp, logPerf, nowMs, roundMs } from '../shared/perf';
+import { contentTypeForRecordingFilename } from '../shared/recordingFormats';
 
 export type DriveTargetOptions = DriveFolderHierarchy;
 export type DriveUploadSharedContext = {
@@ -86,8 +87,10 @@ export class DriveTarget {
     if (file.size === 0) return undefined;
     this.throwIfCanceled();
 
+    const contentType = (typeof file.type === 'string' ? file.type.split(';', 1)[0] : '')
+      || contentTypeForRecordingFilename(this.filename);
     const uploadStartedAt = nowMs();
-    await this.initSession();
+    await this.initSession(contentType);
 
     const total = file.size;
     let start = 0;
@@ -97,9 +100,9 @@ export class DriveTarget {
 
     while (start < total) {
       const endExclusive = Math.min(start + chunkSize, total);
-      const body = file.slice(start, endExclusive, 'video/webm');
+      const body = file.slice(start, endExclusive, contentType);
       const isFinal = endExclusive >= total;
-      const chunkResult = await uploadChunk(this.sessionUri!, this.getUploadToken, start, body, total, isFinal, this.signal);
+      const chunkResult = await uploadChunk(this.sessionUri!, this.getUploadToken, start, body, total, isFinal, this.signal, contentType);
       start = chunkResult.nextStart;
       uploadedFile = chunkResult.file ?? uploadedFile;
       this.onProgress?.(Math.min(start, total), total);
@@ -131,10 +134,10 @@ export class DriveTarget {
   }
 
   /** Starts a resumable upload session and stores the returned session URI. */
-  private async initSession(): Promise<void> {
+  private async initSession(contentType: string): Promise<void> {
     this.throwIfCanceled();
     const parentFolderId = await this.folderResolver.resolveUploadParentId(this.hierarchy, this.signal);
-    const metadata: Record<string, any> = { name: this.filename, mimeType: 'video/webm' };
+    const metadata: Record<string, any> = { name: this.filename, mimeType: contentType };
     if (parentFolderId) metadata.parents = [parentFolderId];
 
     const res = await fetchWithAuthRetry(this.getUploadToken, (token) =>
@@ -143,7 +146,7 @@ export class DriveTarget {
         headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
-          'X-Upload-Content-Type': 'video/webm',
+          'X-Upload-Content-Type': contentType,
         },
         body: JSON.stringify(metadata),
       }, this.signal)

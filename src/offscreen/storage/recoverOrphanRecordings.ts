@@ -24,6 +24,7 @@ import { isRecordingFilename } from '../drive/folderNaming';
 import type { PendingUploadStore } from '../drive/PendingUploadStore';
 import type { LocalSaveRequest } from '../RecordingFinalizer';
 import type { RecordingStream } from '../../shared/recording';
+import { isWebmRecordingFilename } from '../../shared/recordingFormats';
 
 export type OrphanCandidate = { name: string; lastModifiedMs: number };
 
@@ -91,8 +92,9 @@ export async function recoverOrphanRecordings(deps: OrphanRecoveryDeps): Promise
       // Skip the in-memory duration fix for oversized files — buffering a multi-GB
       // blob can OOM the offscreen. The raw, disk-backed bytes are still a complete,
       // playable WebM (the same best-effort fallback sealFile itself uses on error).
-      const sealed =
-        deps.maxSealBytes != null && raw.size > deps.maxSealBytes ? raw : await deps.sealFile(raw);
+      const sealed = !isWebmRecordingFilename(name)
+        ? raw
+        : deps.maxSealBytes != null && raw.size > deps.maxSealBytes ? raw : await deps.sealFile(raw);
       // Save flow downloads then (on success only) cleans up OPFS; a failed
       // download leaves the orphan in place for the next launch to retry.
       deps.saveRecovered(name, sealed, name);
@@ -180,7 +182,7 @@ export function recoverOrphanRecordingsWithChrome(opts: {
 }
 
 function streamFromRecordingFilename(filename: string): RecordingStream {
-  if (filename.endsWith('-mic.webm')) return 'mic';
-  if (filename.endsWith('-self-video.webm')) return 'self-video';
+  if (/-mic\.(?:webm|m4a)$/.test(filename)) return 'mic';
+  if (/-self-video\.(?:webm|mp4)$/.test(filename)) return 'self-video';
   return 'tab';
 }

@@ -48,7 +48,7 @@ export function createRecordingHistoryId(): string {
 }
 
 export function recordingLabelFromFilename(filename: string): string {
-  return filename.replace(/-(recording|mic|self-video)\.webm$/, '') || filename;
+  return filename.replace(/-(recording|mic|self-video)\.(?:webm|mp4|m4a)$/, '') || filename;
 }
 
 /** Decodes durable history data before it reaches callers. Invalid rows are skipped. */

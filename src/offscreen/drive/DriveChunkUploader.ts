@@ -105,7 +105,8 @@ export async function uploadChunk(
   body: Blob,
   total: number,
   isFinal: boolean,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  contentType = 'video/webm',
 ): Promise<UploadChunkResult> {
   let chunkStart = start;
   let chunkBody = body;
@@ -127,7 +128,7 @@ export async function uploadChunk(
         headers: {
           Authorization: `Bearer ${token}`,
           'Content-Range': `bytes ${chunkStart}-${end}/${total}`,
-          'Content-Type': 'video/webm',
+          'Content-Type': contentType,
         },
         body: chunkBody,
       }, signal);

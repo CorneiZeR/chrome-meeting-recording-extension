@@ -66,9 +66,9 @@ export function registerSaveHandler(
         debugPerf(L.log, 'finalizer', 'download_complete', {
           filename: resolvedFilename,
           durationMs: roundMs(nowMs() - downloadStartedAt),
-          stream: resolvedFilename.endsWith('-mic.webm')
+          stream: /-mic\.(?:webm|m4a)$/.test(resolvedFilename)
             ? 'mic'
-            : resolvedFilename.endsWith('-self-video.webm')
+            : /-self-video\.(?:webm|mp4)$/.test(resolvedFilename)
               ? 'self-video'
               : 'tab',
         });

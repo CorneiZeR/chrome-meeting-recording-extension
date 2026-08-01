@@ -5,8 +5,8 @@
  * names produced by RecorderEngine.
  */
 
-// Matches: google-meet-{slug}-{datetime}-{type}.webm
-const RECORDING_FILENAME_RE = /^google-meet-(.+)-(\d{8}T\d{4})-(recording|mic|self-video)\.webm$/;
+// Matches: google-meet-{slug}-{datetime}-{type}.{webm|mp4|m4a}
+const RECORDING_FILENAME_RE = /^google-meet-(.+)-(\d{8}T\d{4})-(recording|mic|self-video)\.(?:webm|mp4|m4a)$/;
 
 /** True when a name looks like a recording artifact this extension produced. */
 export function isRecordingFilename(name: string): boolean {
