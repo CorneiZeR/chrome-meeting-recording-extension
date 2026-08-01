@@ -7,6 +7,7 @@
  */
 
 import type { ChunkingSettings, MicrophoneCaptureSettings, SelfVideoProfileSettings, TabCaptureSettings, TabContentType } from './model';
+import type { MicrophoneRecordingFormat, VideoRecordingFormat } from '../recordingFormats';
 
 export type BoundedPositiveIntResult = number | null;
 
@@ -27,7 +28,8 @@ export function validateTabOutput(candidate: Record<string, unknown>): TabCaptur
   if (!maxWidth || !maxHeight || !maxFrameRate) return null;
   // Lenient ('screen' default) so a snapshot from an older build still validates.
   const contentType: TabContentType = candidate.contentType === 'video' ? 'video' : 'screen';
-  return { maxWidth, maxHeight, maxFrameRate, contentType };
+  const format: VideoRecordingFormat = candidate.format === 'mp4' ? 'mp4' : 'webm';
+  return { maxWidth, maxHeight, maxFrameRate, format, contentType };
 }
 
 /** Validates the self-video profile from a recorder settings snapshot. */
@@ -54,7 +56,8 @@ export function validateSelfVideoProfile(candidate: Record<string, unknown>): Se
 
   // Lenient (default false) so a snapshot from an older build still validates.
   const autoResolution = typeof candidate.autoResolution === 'boolean' ? candidate.autoResolution : false;
-  return { width, height, frameRate, aspectRatio, defaultBitsPerSecond, minAdaptiveBitsPerSecond, autoResolution };
+  const format: VideoRecordingFormat = candidate.format === 'mp4' ? 'mp4' : 'webm';
+  return { width, height, frameRate, format, aspectRatio, defaultBitsPerSecond, minAdaptiveBitsPerSecond, autoResolution };
 }
 
 /** Validates the microphone capture settings section from a snapshot. */
@@ -63,7 +66,8 @@ export function validateMicrophoneSettings(candidate: Record<string, unknown>): 
   const noiseSuppression = typeof candidate.noiseSuppression === 'boolean' ? candidate.noiseSuppression : null;
   const autoGainControl = typeof candidate.autoGainControl === 'boolean' ? candidate.autoGainControl : null;
   if (echoCancellation == null || noiseSuppression == null || autoGainControl == null) return null;
-  return { echoCancellation, noiseSuppression, autoGainControl };
+  const format: MicrophoneRecordingFormat = candidate.format === 'm4a' ? 'm4a' : 'webm';
+  return { echoCancellation, noiseSuppression, autoGainControl, format };
 }
 
 /** Validates the chunking timeslice settings section from a snapshot. */

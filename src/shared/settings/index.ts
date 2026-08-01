@@ -34,6 +34,8 @@ export {
   TAB_SCREEN_QUALITY_FACTOR,
   TAB_VIDEO_QUALITY_FACTOR,
   TAB_CONTENT_TYPE_OPTIONS,
+  VIDEO_RECORDING_FORMAT_OPTIONS,
+  MICROPHONE_RECORDING_FORMAT_OPTIONS,
   SELF_VIDEO_QUALITY_FACTOR,
   SELF_VIDEO_DEFAULT_BITS_PER_SECOND,
   SELF_VIDEO_MIN_ADAPTIVE_BITS_PER_SECOND,
@@ -58,6 +60,8 @@ export type {
   ResolutionPreset,
   ThemePreference,
 } from './model';
+
+export type { VideoRecordingFormat, MicrophoneRecordingFormat, RecordingEncodingProfile, RecordingFormatCapabilities } from '../recordingFormats';
 
 /**
  * Loads settings from storage and freezes them into the recorder snapshot in a

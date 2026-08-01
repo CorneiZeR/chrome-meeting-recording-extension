@@ -68,6 +68,10 @@ export type RecordingSettings = {
   chunkExtendedTimesliceMs?: number;
 };
 
+async function setSegmentedCheckbox(page: Page, control: string, checked: boolean): Promise<void> {
+  await page.locator(`[data-checkbox="${control}"] [data-value="${checked}"]`).click();
+}
+
 export type BrowserMetricSnapshot = {
   performance: Record<string, number> | null;
   processCpuTimeSecondsByType: Record<string, number> | null;
@@ -285,7 +289,7 @@ export async function saveRecordingSettings(
 ): Promise<void> {
   await controlPage.selectOption('#recording-mode', settings.recordingMode ?? 'opfs');
   await controlPage.selectOption('#mic-mode', settings.micMode ?? 'off');
-  await controlPage.setChecked('#separate-camera', settings.recordSelfVideo ?? false);
+  await setSegmentedCheckbox(controlPage, 'separate-camera', settings.recordSelfVideo ?? false);
   await controlPage.selectOption(
     '#tab-resolution-preset',
     settings.tabResolution ?? '640x360'

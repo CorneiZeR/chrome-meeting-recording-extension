@@ -1,11 +1,19 @@
 import type { Page } from '@playwright/test';
 import type { MicMode } from '../../../src/shared/recording';
-import type { ResolutionPreset, TabContentType } from '../../../src/shared/settings';
+import type {
+  MicrophoneRecordingFormat,
+  ResolutionPreset,
+  TabContentType,
+  VideoRecordingFormat,
+} from '../../../src/shared/settings';
 
 export type FullRecordingSettings = {
   recordingMode: 'opfs' | 'drive';
   micMode: MicMode;
   separateCamera: boolean;
+  tabRecordingFormat: VideoRecordingFormat;
+  cameraRecordingFormat: VideoRecordingFormat;
+  microphoneRecordingFormat: MicrophoneRecordingFormat;
   selfVideoResolutionPreset: ResolutionPreset;
   selfVideoFrameRate: number;
   tabResolutionPreset: ResolutionPreset;
@@ -18,13 +26,20 @@ export type FullRecordingSettings = {
   chunkExtendedTimesliceMs: number;
 };
 
+async function setSegmentedCheckbox(page: Page, control: string, checked: boolean): Promise<void> {
+  await page.locator(`[data-checkbox="${control}"] [data-value="${checked}"]`).click();
+}
+
 export async function applyFullRecordingSettings(
   page: Page,
   settings: FullRecordingSettings
 ): Promise<void> {
   await page.selectOption('#recording-mode', settings.recordingMode);
   await page.selectOption('#mic-mode', settings.micMode);
-  await page.setChecked('#separate-camera', settings.separateCamera);
+  await page.selectOption('#tab-recording-format', settings.tabRecordingFormat);
+  await page.selectOption('#camera-recording-format', settings.cameraRecordingFormat);
+  await page.selectOption('#microphone-recording-format', settings.microphoneRecordingFormat);
+  await setSegmentedCheckbox(page, 'separate-camera', settings.separateCamera);
   await page.selectOption(
     '#self-video-resolution-preset',
     settings.selfVideoResolutionPreset
@@ -37,9 +52,9 @@ export async function applyFullRecordingSettings(
   // (delivered W×H×fps within an internal floor/ceiling), so no bitrate knobs remain.
   await page.selectOption('#tab-content-type', settings.tabContentType);
   await page.fill('#tab-max-frame-rate', String(settings.tabMaxFrameRate));
-  await page.setChecked('#mic-echo-cancellation', settings.micEchoCancellation);
-  await page.setChecked('#mic-noise-suppression', settings.micNoiseSuppression);
-  await page.setChecked('#mic-auto-gain', settings.micAutoGain);
+  await setSegmentedCheckbox(page, 'mic-echo-cancellation', settings.micEchoCancellation);
+  await setSegmentedCheckbox(page, 'mic-noise-suppression', settings.micNoiseSuppression);
+  await setSegmentedCheckbox(page, 'mic-auto-gain', settings.micAutoGain);
   await page.fill(
     '#chunk-default-timeslice',
     String(settings.chunkDefaultTimesliceMs)
@@ -61,6 +76,9 @@ export function baseRecordingSettings(
     recordingMode: 'opfs',
     micMode: 'separate',
     separateCamera: true,
+    tabRecordingFormat: 'webm',
+    cameraRecordingFormat: 'webm',
+    microphoneRecordingFormat: 'webm',
     selfVideoResolutionPreset: '1920x1080',
     selfVideoFrameRate: 30,
     tabResolutionPreset: '1920x1080',

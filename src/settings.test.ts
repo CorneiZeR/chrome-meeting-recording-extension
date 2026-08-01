@@ -17,6 +17,9 @@ describe('settings page', () => {
       recordingMode: 'drive',
       microphoneRecordingMode: 'separate',
       separateCameraCapture: true,
+      tabRecordingFormat: 'webm',
+      cameraRecordingFormat: 'webm',
+      microphoneRecordingFormat: 'webm',
       selfVideoResolutionPreset: '1280x720',
       selfVideoUseAutoResolution: true,
     },
@@ -35,6 +38,7 @@ describe('settings page', () => {
 
   beforeEach(() => {
     jest.resetModules();
+    (MediaRecorder.isTypeSupported as jest.Mock).mockReset().mockReturnValue(true);
     document.open();
     document.write(settingsHtml);
     document.close();
@@ -66,6 +70,9 @@ describe('settings page', () => {
     (document.getElementById('recording-mode') as HTMLSelectElement).value = 'opfs';
     (document.getElementById('mic-mode') as HTMLSelectElement).value = 'mixed';
     (document.getElementById('separate-camera') as HTMLInputElement).checked = false;
+    (document.getElementById('tab-recording-format') as HTMLSelectElement).value = 'webm';
+    (document.getElementById('camera-recording-format') as HTMLSelectElement).value = 'webm';
+    (document.getElementById('microphone-recording-format') as HTMLSelectElement).value = 'webm';
     (document.getElementById('self-video-resolution-preset') as HTMLSelectElement).value = '640x360';
     (document.getElementById('tab-resolution-preset') as HTMLSelectElement).value = '1920x1080';
     (document.getElementById('save-settings') as HTMLButtonElement).click();
@@ -79,6 +86,9 @@ describe('settings page', () => {
         recordingMode: 'opfs',
         microphoneRecordingMode: 'mixed',
         separateCameraCapture: false,
+        tabRecordingFormat: 'webm',
+        cameraRecordingFormat: 'webm',
+        microphoneRecordingFormat: 'webm',
         selfVideoResolutionPreset: '640x360',
         selfVideoUseAutoResolution: true,
       },
@@ -142,5 +152,41 @@ describe('settings page', () => {
     professionalToggle.click();
     expect(professionalToggle.getAttribute('aria-expanded')).toBe('false');
     expect(professionalFields.hidden).toBe(true);
+  });
+
+  it('disables unavailable formats in both selectors and rejects a stale saved choice', async () => {
+    (MediaRecorder.isTypeSupported as jest.Mock).mockReturnValue(false);
+    const staleSettings: ExtensionSettings = {
+      ...savedSettings,
+      basic: { ...savedSettings.basic, microphoneRecordingFormat: 'm4a' },
+    };
+    const saveExtensionSettingsToStorage = jest.fn().mockResolvedValue(staleSettings);
+    jest.doMock('./shared/settings', () => ({
+      DEFAULT_EXTENSION_SETTINGS: savedSettings,
+      loadExtensionSettingsFromStorage: jest.fn().mockResolvedValue(staleSettings),
+      saveExtensionSettingsToStorage,
+      resetExtensionSettingsToDefaults: jest.fn().mockResolvedValue(savedSettings),
+    }));
+
+    jest.isolateModules(() => {
+      require('./settings');
+    });
+    await Promise.resolve();
+
+    const m4aNative = document.querySelector<HTMLSelectElement>('#microphone-recording-format option[value="m4a"]')!;
+    const m4aCustom = document.querySelector<HTMLButtonElement>('#microphone-recording-format-options [data-value="m4a"]')!;
+    expect(m4aNative.disabled).toBe(true);
+    expect(m4aCustom.disabled).toBe(true);
+    expect(m4aCustom.getAttribute('aria-disabled')).toBe('true');
+    expect(document.getElementById('microphone-recording-format-note')?.hidden).toBe(false);
+
+    const trigger = document.getElementById('microphone-recording-format-trigger') as HTMLButtonElement;
+    trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    expect(document.activeElement).toBe(document.querySelector('#microphone-recording-format-options [data-value="webm"]'));
+
+    (document.getElementById('save-settings') as HTMLButtonElement).click();
+    await Promise.resolve();
+    expect(saveExtensionSettingsToStorage).not.toHaveBeenCalled();
+    expect(document.getElementById('status')?.textContent).toMatch(/M4A microphone format is unavailable/);
   });
 });

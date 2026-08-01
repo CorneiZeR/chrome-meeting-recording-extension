@@ -12,12 +12,14 @@ import {
   DEFAULT_EXTENSION_SETTINGS,
   LEGACY_CAMERA_FORMAT_TO_PRESET,
   LEGACY_VIDEO_FORMAT_OPTIONS,
+  MICROPHONE_RECORDING_FORMAT_OPTIONS,
   MICROPHONE_MODE_OPTIONS,
   RECORDING_MODE_OPTIONS,
   RESOLUTION_PRESET_DIMENSIONS,
   RESOLUTION_PRESET_OPTIONS,
   TAB_CONTENT_TYPE_OPTIONS,
   THEME_OPTIONS,
+  VIDEO_RECORDING_FORMAT_OPTIONS,
 } from './defaults';
 import {
   validateChunkingSettings,
@@ -168,6 +170,15 @@ export function normalizeExtensionSettings(value: unknown): ExtensionSettings {
     separateCameraCapture: typeof basicCandidate.separateCameraCapture === 'boolean'
       ? basicCandidate.separateCameraCapture
       : DEFAULT_EXTENSION_SETTINGS.basic.separateCameraCapture,
+    tabRecordingFormat: hasAllowedString(basicCandidate.tabRecordingFormat, VIDEO_RECORDING_FORMAT_OPTIONS)
+      ? basicCandidate.tabRecordingFormat
+      : DEFAULT_EXTENSION_SETTINGS.basic.tabRecordingFormat,
+    cameraRecordingFormat: hasAllowedString(basicCandidate.cameraRecordingFormat, VIDEO_RECORDING_FORMAT_OPTIONS)
+      ? basicCandidate.cameraRecordingFormat
+      : DEFAULT_EXTENSION_SETTINGS.basic.cameraRecordingFormat,
+    microphoneRecordingFormat: hasAllowedString(basicCandidate.microphoneRecordingFormat, MICROPHONE_RECORDING_FORMAT_OPTIONS)
+      ? basicCandidate.microphoneRecordingFormat
+      : DEFAULT_EXTENSION_SETTINGS.basic.microphoneRecordingFormat,
     selfVideoResolutionPreset: normalizeSelfVideoResolutionPreset(basicCandidate),
     selfVideoUseAutoResolution: typeof basicCandidate.selfVideoUseAutoResolution === 'boolean'
       ? basicCandidate.selfVideoUseAutoResolution

@@ -7,6 +7,7 @@
  */
 
 import type { MicMode } from '../recordingTypes';
+import type { MicrophoneRecordingFormat, VideoRecordingFormat } from '../recordingFormats';
 
 export type RecordingModeDefault = 'opfs' | 'drive';
 export type ResolutionPreset = '640x360' | '854x480' | '1280x720' | '1920x1080';
@@ -26,6 +27,9 @@ export type ExtensionSettings = {
     recordingMode: RecordingModeDefault;
     microphoneRecordingMode: MicMode;
     separateCameraCapture: boolean;
+    tabRecordingFormat: VideoRecordingFormat;
+    cameraRecordingFormat: VideoRecordingFormat;
+    microphoneRecordingFormat: MicrophoneRecordingFormat;
     selfVideoResolutionPreset: ResolutionPreset;
     /** Record the camera at the browser/Meet-selected resolution instead of forcing the preset (skips the resize re-rasterization). */
     selfVideoUseAutoResolution: boolean;
@@ -47,6 +51,7 @@ export type SelfVideoProfileSettings = {
   width: number;
   height: number;
   frameRate: number;
+  format: VideoRecordingFormat;
   aspectRatio: number;
   defaultBitsPerSecond: number;
   minAdaptiveBitsPerSecond: number;
@@ -60,6 +65,7 @@ export type TabCaptureSettings = {
   maxWidth: number;
   maxHeight: number;
   maxFrameRate: number;
+  format: VideoRecordingFormat;
   /** Content type hint that selects the quality factor: 'screen' for UI/code/slides, 'video' for playback or animations. The offscreen multiplies it by the delivered W×H×fps and clamps to the internal MAX_TAB_VIDEO_BITRATE ceiling. */
   contentType: TabContentType;
 };
@@ -68,6 +74,7 @@ export type MicrophoneCaptureSettings = {
   echoCancellation: boolean;
   noiseSuppression: boolean;
   autoGainControl: boolean;
+  format: MicrophoneRecordingFormat;
 };
 
 export type ChunkingSettings = {

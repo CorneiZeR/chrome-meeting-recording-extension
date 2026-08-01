@@ -14,6 +14,7 @@ import {
   saveExtensionSettingsToStorage,
   type ExtensionSettings,
 } from '../shared/settings';
+import { getRecordingFormatCapabilities, type RecordingFormatCapabilities } from '../shared/recordingFormats';
 import { applyThemePreference } from '../shared/theme';
 
 export type SettingsElements = {
@@ -21,6 +22,9 @@ export type SettingsElements = {
   recordingMode: HTMLSelectElement | null;
   micMode: HTMLSelectElement | null;
   separateCamera: HTMLInputElement | null;
+  tabRecordingFormat?: HTMLSelectElement | null;
+  cameraRecordingFormat?: HTMLSelectElement | null;
+  microphoneRecordingFormat?: HTMLSelectElement | null;
   selfVideoResolutionPreset: HTMLSelectElement | null;
   selfVideoAutoResolution: HTMLInputElement | null;
   selfVideoFrameRate: HTMLInputElement | null;
@@ -46,6 +50,8 @@ type SettingsDocument = Document & {
 };
 
 export class SettingsController {
+  private readonly formatCapabilities: RecordingFormatCapabilities = getRecordingFormatCapabilities();
+
   constructor(private readonly el: SettingsElements) {}
 
   /** Loads saved settings into the form and wires save/reset + the tooltip controller. */
@@ -60,8 +66,14 @@ export class SettingsController {
       this.applySettings(DEFAULT_EXTENSION_SETTINGS);
       this.setStatus('Failed to load saved settings. Using defaults.', true);
     }
+    this.applyFormatCapabilities();
 
     this.el.saveBtn?.addEventListener('click', async () => {
+      const unavailable = this.selectedUnsupportedFormat();
+      if (unavailable) {
+        this.setStatus(`${unavailable} is unavailable in this browser. Select WebM instead.`, true);
+        return;
+      }
       try {
         const saved = await saveExtensionSettingsToStorage(this.readSettingsFromForm());
         this.applySettings(saved);
@@ -99,6 +111,9 @@ export class SettingsController {
     if (el.recordingMode) el.recordingMode.value = settings.basic.recordingMode;
     if (el.micMode) el.micMode.value = settings.basic.microphoneRecordingMode;
     if (el.separateCamera) el.separateCamera.checked = settings.basic.separateCameraCapture;
+    if (el.tabRecordingFormat) el.tabRecordingFormat.value = settings.basic.tabRecordingFormat;
+    if (el.cameraRecordingFormat) el.cameraRecordingFormat.value = settings.basic.cameraRecordingFormat;
+    if (el.microphoneRecordingFormat) el.microphoneRecordingFormat.value = settings.basic.microphoneRecordingFormat;
     if (el.selfVideoResolutionPreset) {
       el.selfVideoResolutionPreset.value = settings.basic.selfVideoResolutionPreset;
     }
@@ -130,6 +145,9 @@ export class SettingsController {
         recordingMode: el.recordingMode?.value,
         microphoneRecordingMode: el.micMode?.value,
         separateCameraCapture: el.separateCamera?.checked,
+        tabRecordingFormat: el.tabRecordingFormat?.value,
+        cameraRecordingFormat: el.cameraRecordingFormat?.value,
+        microphoneRecordingFormat: el.microphoneRecordingFormat?.value,
         selfVideoResolutionPreset: el.selfVideoResolutionPreset?.value,
         selfVideoUseAutoResolution: !!el.selfVideoAutoResolution?.checked,
       },
@@ -145,6 +163,56 @@ export class SettingsController {
         chunkExtendedTimesliceMs: Number(el.chunkExtendedTimeslice?.value),
       },
     };
+  }
+
+  /** Disables native and custom-selector options unavailable in this Chromium build. */
+  private applyFormatCapabilities(): void {
+    this.setFormatAvailability(
+      'tab-recording-format',
+      'mp4',
+      this.formatCapabilities.tabMp4,
+      'MP4 tab recording is unavailable in this browser.'
+    );
+    this.setFormatAvailability(
+      'camera-recording-format',
+      'mp4',
+      this.formatCapabilities.cameraMp4,
+      'MP4 camera recording is unavailable in this browser.'
+    );
+    this.setFormatAvailability(
+      'microphone-recording-format',
+      'm4a',
+      this.formatCapabilities.microphoneM4a,
+      'M4A/AAC microphone recording is unavailable in this browser.'
+    );
+    this.syncConsoleControls();
+  }
+
+  private setFormatAvailability(selectId: string, value: string, available: boolean, message: string): void {
+    const select = document.getElementById(selectId) as HTMLSelectElement | null;
+    const nativeOption = Array.from(select?.options ?? []).find((option) => option.value === value);
+    if (nativeOption) nativeOption.disabled = !available;
+
+    const selectorOptions = document.getElementById(`${selectId}-options`);
+    const customOption = selectorOptions?.querySelector<HTMLButtonElement>(`[role="option"][data-value="${value}"]`);
+    if (customOption) {
+      customOption.disabled = !available;
+      customOption.setAttribute('aria-disabled', String(!available));
+      customOption.title = available ? '' : message;
+    }
+
+    const note = document.getElementById(`${selectId}-note`);
+    if (note) {
+      note.textContent = available ? '' : message;
+      note.hidden = available;
+    }
+  }
+
+  private selectedUnsupportedFormat(): string | null {
+    if (this.el.tabRecordingFormat?.value === 'mp4' && !this.formatCapabilities.tabMp4) return 'MP4 tab format';
+    if (this.el.cameraRecordingFormat?.value === 'mp4' && !this.formatCapabilities.cameraMp4) return 'MP4 camera format';
+    if (this.el.microphoneRecordingFormat?.value === 'm4a' && !this.formatCapabilities.microphoneM4a) return 'M4A microphone format';
+    return null;
   }
 
   /** Wires the reference console controls to the existing form fields. */
@@ -219,8 +287,10 @@ export class SettingsController {
       close(trigger);
       trigger.focus();
     };
+    const selectableOptions = (options: HTMLElement) =>
+      Array.from(options.querySelectorAll<HTMLButtonElement>('[role="option"]')).filter((item) => !item.disabled);
     const focusOption = (options: HTMLElement, index: number) => {
-      const items = Array.from(options.querySelectorAll<HTMLButtonElement>('[role="option"]'));
+      const items = selectableOptions(options);
       items[Math.max(0, Math.min(index, items.length - 1))]?.focus();
     };
     const open = (trigger: HTMLButtonElement, initialOffset = 0) => {
@@ -229,7 +299,7 @@ export class SettingsController {
       closeAll(trigger);
       options.hidden = false;
       trigger.setAttribute('aria-expanded', 'true');
-      const selected = Array.from(options.querySelectorAll<HTMLButtonElement>('[role="option"]'))
+      const selected = selectableOptions(options)
         .findIndex((option) => option.getAttribute('aria-selected') === 'true');
       focusOption(options, selected + initialOffset);
     };
@@ -253,10 +323,10 @@ export class SettingsController {
       });
       options.addEventListener('click', (event) => {
         const option = (event.target as Element | null)?.closest<HTMLButtonElement>('[role="option"]');
-        if (option?.dataset.value) choose(trigger, option.dataset.value);
+        if (option?.dataset.value && !option.disabled) choose(trigger, option.dataset.value);
       });
       options.addEventListener('keydown', (event) => {
-        const items = Array.from(options.querySelectorAll<HTMLButtonElement>('[role="option"]'));
+        const items = selectableOptions(options);
         const index = items.indexOf(document.activeElement as HTMLButtonElement);
         if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
           event.preventDefault();

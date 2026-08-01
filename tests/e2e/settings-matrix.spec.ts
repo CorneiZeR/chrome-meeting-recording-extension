@@ -115,6 +115,45 @@ test.describe('Settings tab — every control changes recorder behaviour', () =>
     }
   });
 
+  test('format settings persist independently while retaining WebM defaults', async ({}, testInfo) => {
+    const harness = await launchExtensionHarness(testInfo.outputPath.bind(testInfo), {
+      deviceMode: 'fake',
+    });
+    try {
+      // The mock browser's native codecs determine which non-WebM choices can
+      // be saved. Container/codec output itself is exercised by unit tests and
+      // capability-gated real-media coverage, because a fake stream can report
+      // support for a native encoder that it cannot actually drive.
+      const capabilities = await harness.controlPage.evaluate(() => ({
+        tabMp4: !(document.querySelector('#tab-recording-format option[value="mp4"]') as HTMLOptionElement).disabled,
+        cameraMp4: !(document.querySelector('#camera-recording-format option[value="mp4"]') as HTMLOptionElement).disabled,
+        microphoneM4a: !(document.querySelector('#microphone-recording-format option[value="m4a"]') as HTMLOptionElement).disabled,
+      }));
+      const tabFormat = capabilities.tabMp4 ? 'mp4' : 'webm';
+      const cameraFormat = capabilities.cameraMp4 ? 'mp4' : 'webm';
+      const microphoneFormat = capabilities.microphoneM4a ? 'm4a' : 'webm';
+
+      await applyFullRecordingSettings(harness.controlPage, baseRecordingSettings({
+        recordingMode: 'opfs',
+        micMode: 'separate',
+        separateCamera: true,
+        tabRecordingFormat: tabFormat,
+        cameraRecordingFormat: cameraFormat,
+        microphoneRecordingFormat: microphoneFormat,
+      }));
+      await expect(harness.controlPage.locator('#tab-recording-format')).toHaveValue(tabFormat);
+      await expect(harness.controlPage.locator('#camera-recording-format')).toHaveValue(cameraFormat);
+      await expect(harness.controlPage.locator('#microphone-recording-format')).toHaveValue(microphoneFormat);
+
+      await applyFullRecordingSettings(harness.controlPage, baseRecordingSettings());
+      await expect(harness.controlPage.locator('#tab-recording-format')).toHaveValue('webm');
+      await expect(harness.controlPage.locator('#camera-recording-format')).toHaveValue('webm');
+      await expect(harness.controlPage.locator('#microphone-recording-format')).toHaveValue('webm');
+    } finally {
+      await closeHarness(harness);
+    }
+  });
+
   test('professional capture + chunking settings reach the recorder', async ({}, testInfo) => {
     test.setTimeout(180_000);
     const harness = await launchExtensionHarness(testInfo.outputPath.bind(testInfo), {

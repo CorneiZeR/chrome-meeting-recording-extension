@@ -42,11 +42,15 @@ h1 { margin: 0 0 7px; color: var(--ink); font-size: 22px; font-weight: 700; lett
 .settings-select-options--compact { width: 176px; }
 .settings-select-options button { display: flex; align-items: center; width: 100%; min-height: 38px; gap: 8px; padding: 8px 10px; border: 0; border-radius: 6px; background: transparent; color: var(--body); font: 500 12px 'IBM Plex Mono', monospace; line-height: 1.25; text-align: left; cursor: pointer; transition: background 140ms ease-out, color 140ms ease-out; }
 .settings-select-options button:hover, .settings-select-options button:focus-visible { background: var(--tile); color: var(--ink); outline: 0; }
+.settings-select-options button:disabled { color: var(--muted); cursor: not-allowed; opacity: .55; }
+.settings-select-options button:disabled:hover, .settings-select-options button:disabled:focus-visible { background: transparent; color: var(--muted); }
 .settings-select-options button[aria-selected='true'] { background: var(--tile); color: var(--ink); font-weight: 600; }
 .settings-select-options .select-option-icon { width: 14px; height: 14px; flex: 0 0 auto; color: var(--muted); }
 .settings-select-options button[aria-selected='true'] .select-option-icon, .settings-select-options button[aria-selected='true'] .select-check { color: #6ba885; }
 .settings-select-options .select-check { width: 12px; height: 10px; flex: 0 0 auto; margin-left: auto; }
 .settings-select-options button[aria-selected='false'] .select-check { display: none; }
+.setting-row:has(.format-capability-note:not([hidden])) { flex-wrap: wrap; padding-bottom: 8px; }
+.format-capability-note { flex: 0 0 100%; color: var(--muted); font-size: 11px; text-align: right; }
 .segment-control { display: flex; flex: 0 0 auto; padding: 2px; border-radius: 6px; background: var(--tile); font-family: 'IBM Plex Mono', monospace; }
 .segment-control button { min-width: 38px; padding: 4px 8px; border-radius: 4px; background: transparent; color: var(--muted); font: 500 11px 'IBM Plex Mono', monospace; transition: background 120ms ease-out, color 120ms ease-out; }
 .segment-control button:hover { color: var(--ink); }

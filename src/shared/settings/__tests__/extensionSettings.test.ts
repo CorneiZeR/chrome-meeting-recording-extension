@@ -62,6 +62,33 @@ describe('settings', () => {
     );
   });
 
+  it('defaults recording containers to WebM and normalizes each independent format', () => {
+    const defaults = normalizeExtensionSettings({});
+    expect(defaults.basic).toEqual(expect.objectContaining({
+      tabRecordingFormat: 'webm',
+      cameraRecordingFormat: 'webm',
+      microphoneRecordingFormat: 'webm',
+    }));
+
+    const selected = normalizeExtensionSettings({
+      basic: { tabRecordingFormat: 'mp4', cameraRecordingFormat: 'mp4', microphoneRecordingFormat: 'm4a' },
+    });
+    expect(selected.basic).toEqual(expect.objectContaining({
+      tabRecordingFormat: 'mp4',
+      cameraRecordingFormat: 'mp4',
+      microphoneRecordingFormat: 'm4a',
+    }));
+
+    const invalid = normalizeExtensionSettings({
+      basic: { tabRecordingFormat: 'avi', cameraRecordingFormat: 'mov', microphoneRecordingFormat: 'mp3' },
+    });
+    expect(invalid.basic).toEqual(expect.objectContaining({
+      tabRecordingFormat: 'webm',
+      cameraRecordingFormat: 'webm',
+      microphoneRecordingFormat: 'webm',
+    }));
+  });
+
   it('migrates legacy camera width and height formats to the matching preset', () => {
     const settings = normalizeExtensionSettings({
       basic: {
@@ -181,13 +208,14 @@ describe('settings', () => {
 
     expect(buildRecorderRuntimeSettingsSnapshot(settings)).toEqual({
       tab: {
-        output: { maxWidth: 640, maxHeight: 360, maxFrameRate: 20, contentType: 'screen' },
+        output: { maxWidth: 640, maxHeight: 360, maxFrameRate: 20, format: 'webm', contentType: 'screen' },
       },
       selfVideo: {
         profile: {
           width: 1280,
           height: 720,
           frameRate: 24,
+          format: 'webm',
           aspectRatio: 1280 / 720,
           // Camera bitrate envelope is now internal (constants), not user-set.
           defaultBitsPerSecond: 3_000_000,
@@ -199,6 +227,7 @@ describe('settings', () => {
         echoCancellation: false,
         noiseSuppression: true,
         autoGainControl: false,
+        format: 'webm',
       },
       chunking: {
         defaultTimesliceMs: 1500,

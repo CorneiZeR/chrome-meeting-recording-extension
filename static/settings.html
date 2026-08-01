@@ -61,11 +61,50 @@
         </div>
 
         <div class="setting-row">
+          <label for="tab-recording-format" title="Selects the container used for the meeting tab's audio and video file.">Tab format</label>
+          <div class="settings-select">
+            <button id="tab-recording-format-trigger" class="value-cycle" type="button" data-select="tab-recording-format" aria-label="Tab format" aria-haspopup="listbox" aria-expanded="false" aria-controls="tab-recording-format-options"><span class="value-cycle-label"></span><svg class="value-chevron" viewBox="0 0 10 6" aria-hidden="true"><path d="M0 0l5 6 5-6z"></path></svg></button>
+            <div id="tab-recording-format-options" class="settings-select-options" role="listbox" aria-label="Tab format" hidden>
+              <button type="button" role="option" data-value="webm" aria-selected="false">WebM <svg class="select-check" width="12" height="10" viewBox="0 0 14 11" fill="none" aria-hidden="true"><path d="M1.5 6l3.5 3.5L12.5 1.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+              <button type="button" role="option" data-value="mp4" aria-selected="false">MP4 <svg class="select-check" width="12" height="10" viewBox="0 0 14 11" fill="none" aria-hidden="true"><path d="M1.5 6l3.5 3.5L12.5 1.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+            </div>
+          </div>
+          <select id="tab-recording-format" class="sr-only" tabindex="-1" aria-hidden="true"><option value="webm">WebM</option><option value="mp4">MP4</option></select>
+          <small id="tab-recording-format-note" class="format-capability-note" hidden></small>
+        </div>
+
+        <div class="setting-row">
+          <label for="microphone-recording-format" title="Applies only when the microphone is saved separately. Mixed microphone audio follows the tab format.">Separate microphone format</label>
+          <div class="settings-select">
+            <button id="microphone-recording-format-trigger" class="value-cycle" type="button" data-select="microphone-recording-format" aria-label="Separate microphone format" aria-haspopup="listbox" aria-expanded="false" aria-controls="microphone-recording-format-options"><span class="value-cycle-label"></span><svg class="value-chevron" viewBox="0 0 10 6" aria-hidden="true"><path d="M0 0l5 6 5-6z"></path></svg></button>
+            <div id="microphone-recording-format-options" class="settings-select-options" role="listbox" aria-label="Separate microphone format" hidden>
+              <button type="button" role="option" data-value="webm" aria-selected="false">WebM / Opus <svg class="select-check" width="12" height="10" viewBox="0 0 14 11" fill="none" aria-hidden="true"><path d="M1.5 6l3.5 3.5L12.5 1.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+              <button type="button" role="option" data-value="m4a" aria-selected="false">M4A / AAC <svg class="select-check" width="12" height="10" viewBox="0 0 14 11" fill="none" aria-hidden="true"><path d="M1.5 6l3.5 3.5L12.5 1.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+            </div>
+          </div>
+          <select id="microphone-recording-format" class="sr-only" tabindex="-1" aria-hidden="true"><option value="webm">WebM / Opus</option><option value="m4a">M4A / AAC</option></select>
+          <small id="microphone-recording-format-note" class="format-capability-note" hidden></small>
+        </div>
+
+        <div class="setting-row">
           <label for="separate-camera" title="When enabled, the extension asks for your camera and writes it as its own recording file by default.">Record camera separately</label>
           <div class="segment-control" data-checkbox="separate-camera" role="group" aria-label="Record camera separately">
             <button type="button" data-value="false">OFF</button><button type="button" data-value="true">ON</button>
           </div>
           <input id="separate-camera" class="sr-only" type="checkbox" tabindex="-1" aria-hidden="true" />
+        </div>
+
+        <div class="setting-row">
+          <label for="camera-recording-format" title="Selects the container used for the separately recorded camera file.">Camera format</label>
+          <div class="settings-select">
+            <button id="camera-recording-format-trigger" class="value-cycle" type="button" data-select="camera-recording-format" aria-label="Camera format" aria-haspopup="listbox" aria-expanded="false" aria-controls="camera-recording-format-options"><span class="value-cycle-label"></span><svg class="value-chevron" viewBox="0 0 10 6" aria-hidden="true"><path d="M0 0l5 6 5-6z"></path></svg></button>
+            <div id="camera-recording-format-options" class="settings-select-options" role="listbox" aria-label="Camera format" hidden>
+              <button type="button" role="option" data-value="webm" aria-selected="false">WebM <svg class="select-check" width="12" height="10" viewBox="0 0 14 11" fill="none" aria-hidden="true"><path d="M1.5 6l3.5 3.5L12.5 1.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+              <button type="button" role="option" data-value="mp4" aria-selected="false">MP4 <svg class="select-check" width="12" height="10" viewBox="0 0 14 11" fill="none" aria-hidden="true"><path d="M1.5 6l3.5 3.5L12.5 1.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+            </div>
+          </div>
+          <select id="camera-recording-format" class="sr-only" tabindex="-1" aria-hidden="true"><option value="webm">WebM</option><option value="mp4">MP4</option></select>
+          <small id="camera-recording-format-note" class="format-capability-note" hidden></small>
         </div>
 
         <div class="setting-row">

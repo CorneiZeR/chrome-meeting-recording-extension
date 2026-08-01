@@ -8,6 +8,7 @@
 
 import { EXTENSION_DEFAULTS } from '../recordingConstants';
 import type { MicMode } from '../recordingTypes';
+import type { MicrophoneRecordingFormat, VideoRecordingFormat } from '../recordingFormats';
 import type {
   ExtensionSettings,
   LegacyVideoFormat,
@@ -22,6 +23,8 @@ export const EXTENSION_SETTINGS_STORAGE_KEY = 'extensionSettings';
 export const THEME_OPTIONS = ['system', 'light', 'dark'] as const satisfies readonly ThemePreference[];
 export const RECORDING_MODE_OPTIONS = ['opfs', 'drive'] as const;
 export const MICROPHONE_MODE_OPTIONS = ['off', 'mixed', 'separate'] as const;
+export const VIDEO_RECORDING_FORMAT_OPTIONS = ['webm', 'mp4'] as const satisfies readonly VideoRecordingFormat[];
+export const MICROPHONE_RECORDING_FORMAT_OPTIONS = ['webm', 'm4a'] as const satisfies readonly MicrophoneRecordingFormat[];
 export const RESOLUTION_PRESET_OPTIONS = [
   '640x360',
   '854x480',
@@ -91,6 +94,9 @@ export const DEFAULT_EXTENSION_SETTINGS: Readonly<ExtensionSettings> = Object.fr
     recordingMode: defaultRecordingMode,
     microphoneRecordingMode: defaultMicMode,
     separateCameraCapture: EXTENSION_DEFAULTS.configurable.separateCameraCapture,
+    tabRecordingFormat: 'webm' as VideoRecordingFormat,
+    cameraRecordingFormat: 'webm' as VideoRecordingFormat,
+    microphoneRecordingFormat: 'webm' as MicrophoneRecordingFormat,
     selfVideoResolutionPreset: DEFAULT_RESOLUTION_PRESET,
     selfVideoUseAutoResolution: true,
   }),

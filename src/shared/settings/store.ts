@@ -66,6 +66,7 @@ export function getSelfVideoProfileSettings(
     width,
     height,
     frameRate: settings.professional.selfVideoFrameRate,
+    format: settings.basic.cameraRecordingFormat,
     aspectRatio: width / height,
     // Camera bitrate is fully automatic — these are the internal envelope the
     // offscreen adapts within (resolveSelfVideoBitrate), not user settings.
@@ -100,6 +101,7 @@ export function getTabOutputSettings(
     maxWidth: dimensions.width,
     maxHeight: dimensions.height,
     maxFrameRate: settings.professional.tabMaxFrameRate,
+    format: settings.basic.tabRecordingFormat,
     contentType: settings.professional.tabContentType,
   };
 }
@@ -112,6 +114,7 @@ export function getMicrophoneCaptureSettings(
     echoCancellation: settings.professional.microphoneEchoCancellation,
     noiseSuppression: settings.professional.microphoneNoiseSuppression,
     autoGainControl: settings.professional.microphoneAutoGainControl,
+    format: settings.basic.microphoneRecordingFormat,
   };
 }
 
