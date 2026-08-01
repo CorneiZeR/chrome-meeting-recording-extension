@@ -12,6 +12,8 @@ export type EngineState = Exclude<RecordingPhase, 'failed'>;
 export interface SealedStorageFile {
   filename: string;
   file: Blob;
+  /** The base media type used for the download and Drive upload. */
+  mimeType?: string;
   opfsFilename?: string;
   /** True when the WebM duration fix already ran (e.g. inside the OPFS worker). */
   durationFixed?: boolean;
@@ -48,7 +50,7 @@ export type RecorderEngineDeps = {
   /** Reports labels from the exact microphone/camera tracks Chrome opened for this run. */
   reportCaptureDevices?: (devices: RecordingCaptureDevices) => void;
   reportWarning?: (warning: string) => void;
-  openTarget?: (filename: string, stream?: RecordingStream) => Promise<StorageTarget>;
+  openTarget?: (filename: string, mimeType: string, stream?: RecordingStream) => Promise<StorageTarget>;
   /**
    * Escalates a persistent storage failure to a protective stop: seals and
    * delivers the already-persisted prefix instead of letting the recorder run
@@ -134,6 +136,7 @@ export class InMemoryStorageTarget implements StorageTarget {
     return {
       filename: this.filename,
       file,
+      mimeType: this.mimeType,
       cleanup: async () => {},
     };
   }

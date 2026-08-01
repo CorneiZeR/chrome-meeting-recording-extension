@@ -182,6 +182,7 @@ describe('RecorderEngine', () => {
       getVideoTracks() { return this.tracks.filter((track) => track?.kind === 'video'); }
     } as any;
     FakeMediaRecorder.instances = [];
+    FakeMediaRecorder.isTypeSupported.mockReset().mockReturnValue(true);
     FakeMediaRecorder.stopPayloadByKind = {
       tab: 'tab',
       mic: 'mic',
@@ -626,7 +627,7 @@ describe('RecorderEngine', () => {
     });
 
     // OPFS opens for tab but fails for self-video, forcing self-video onto a RAM buffer.
-    deps.openTarget = jest.fn(async (filename: string, stream?: string) => {
+    deps.openTarget = jest.fn(async (filename: string, _mimeType: string, stream?: string) => {
       if (stream === 'self-video') throw new Error('OPFS unavailable');
       return new BufferedTarget(filename, 'video/webm');
     });
@@ -1250,6 +1251,65 @@ describe('RecorderEngine', () => {
     expect(resume).toHaveBeenCalledTimes(2);
 
     await engine.stop();
+  });
+
+  it('uses independently selected MP4 and M4A containers for tab, camera, and separate microphone', async () => {
+    const baseStream = makeStream({
+      audioTracks: [makeTrack('audio', { suppressLocalAudioPlayback: false })],
+      videoTracks: [makeTrack('video', { width: 1280, height: 720, frameRate: 30 })],
+    });
+    const micStream = makeStream({ audioTracks: [makeTrack('audio')] });
+    const cameraStream = makeStream({ videoTracks: [makeTrack('video', { width: 1280, height: 720, frameRate: 30 })] });
+    (navigator.mediaDevices.getUserMedia as jest.Mock).mockImplementation(async (constraints: MediaStreamConstraints) => {
+      if ((constraints.video as any)?.mandatory?.chromeMediaSource) return baseStream;
+      if (constraints.audio && !constraints.video) return micStream;
+      if (constraints.video && constraints.audio === false) return cameraStream;
+      throw new Error('Unexpected getUserMedia call');
+    });
+    deps.openTarget = jest.fn(async (filename: string, mimeType: string) => new BufferedTarget(filename, mimeType));
+    const recorderSettings = buildRecorderRuntimeSettingsSnapshot(normalizeExtensionSettings({
+      basic: {
+        tabRecordingFormat: 'mp4',
+        cameraRecordingFormat: 'mp4',
+        microphoneRecordingFormat: 'm4a',
+      },
+    }));
+
+    await engine.startFromStreamId(
+      'stream-id',
+      makeRunConfig({ micMode: 'separate', recordSelfVideo: true }),
+      recorderSettings,
+    );
+
+    const tab = FakeMediaRecorder.instances.find((instance) => instance.kind === 'tab');
+    const mic = FakeMediaRecorder.instances.find((instance) => instance.kind === 'mic');
+    const camera = FakeMediaRecorder.instances.find((instance) => instance.kind === 'self-video');
+    expect(tab?.options.mimeType).toBe('video/mp4;codecs=avc1,mp4a.40.2');
+    expect(mic?.options.mimeType).toBe('audio/mp4;codecs=mp4a.40.2');
+    expect(camera?.options.mimeType).toBe('video/mp4;codecs=avc1');
+    expect(deps.openTarget).toHaveBeenCalledWith(expect.stringMatching(/-recording\.mp4$/), 'video/mp4', 'tab');
+    expect(deps.openTarget).toHaveBeenCalledWith(expect.stringMatching(/-mic\.m4a$/), 'audio/mp4', 'mic');
+    expect(deps.openTarget).toHaveBeenCalledWith(expect.stringMatching(/-self-video\.mp4$/), 'video/mp4', 'self-video');
+
+    const artifacts = await engine.stop();
+    expect(artifacts.map(({ artifact }) => artifact.filename).sort()).toEqual([
+      expect.stringMatching(/-mic\.m4a$/),
+      expect.stringMatching(/-recording\.mp4$/),
+      expect.stringMatching(/-self-video\.mp4$/),
+    ]);
+    expect(artifacts.map(({ artifact }) => artifact.file.type).sort()).toEqual(['audio/mp4', 'video/mp4', 'video/mp4']);
+  });
+
+  it('rejects a stale selected format before opening capture devices', async () => {
+    (navigator.mediaDevices.getUserMedia as jest.Mock).mockClear();
+    FakeMediaRecorder.isTypeSupported.mockImplementation((mimeType: string) => mimeType.includes('webm'));
+    const recorderSettings = buildRecorderRuntimeSettingsSnapshot(normalizeExtensionSettings({
+      basic: { tabRecordingFormat: 'mp4' },
+    }));
+
+    await expect(engine.startFromStreamId('stream-id', makeRunConfig(), recorderSettings))
+      .rejects.toThrow(/MP4 tab format is unavailable/);
+    expect(navigator.mediaDevices.getUserMedia).not.toHaveBeenCalled();
   });
 });
 

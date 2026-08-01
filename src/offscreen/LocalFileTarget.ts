@@ -22,12 +22,21 @@ export class LocalFileTarget implements StorageTarget {
     private readonly fileHandle: FileSystemFileHandle,
     writable: FileSystemWritableFileStream,
     private readonly filename: string,
+    private readonly mimeType: string,
     private readonly stream?: RecordingStream,
   ) {
     this.writable = writable;
   }
 
-  static async create(filename: string, stream?: RecordingStream): Promise<LocalFileTarget> {
+  static async create(
+    filename: string,
+    mimeTypeOrStream: string | RecordingStream = 'video/webm',
+    suppliedStream?: RecordingStream,
+  ): Promise<LocalFileTarget> {
+    const mimeType = mimeTypeOrStream.includes('/') ? mimeTypeOrStream : 'video/webm';
+    const stream: RecordingStream | undefined = mimeTypeOrStream.includes('/')
+      ? suppliedStream
+      : mimeTypeOrStream as RecordingStream;
     const startedAt = nowMs();
     try {
       const root = await navigator.storage.getDirectory();
@@ -38,7 +47,7 @@ export class LocalFileTarget implements StorageTarget {
         durationMs: roundMs(nowMs() - startedAt),
         pendingWrites: 0,
       });
-      return new LocalFileTarget(fileHandle, writable, filename, stream);
+      return new LocalFileTarget(fileHandle, writable, filename, mimeType, stream);
     } catch (error) {
       debugPerf(console.log, 'storage', 'opfs_open_failed', {
         stream,
@@ -97,10 +106,12 @@ export class LocalFileTarget implements StorageTarget {
       return null;
     }
 
-    const file = await this.fileHandle.getFile();
+    const raw = await this.fileHandle.getFile();
+    const file = new File([raw], this.filename, { type: this.mimeType });
     this.sealed = {
       filename: this.filename,
       file,
+      mimeType: this.mimeType,
       opfsFilename: this.filename,
       cleanup: async () => {
         try {

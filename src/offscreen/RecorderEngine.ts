@@ -16,6 +16,7 @@ import type { AudioPlaybackBridge } from './RecorderAudio';
 import { startTabRecorder } from './engine/TabRecorderTask';
 import { startMicRecorder } from './engine/MicRecorderTask';
 import { startSelfVideoRecorder } from './engine/SelfVideoRecorderTask';
+import { getCameraRecordingProfile, getMicrophoneRecordingProfile, getTabRecordingProfile } from './RecorderProfiles';
 import {
   acquireMicStream,
   attachTabEndedHandler,
@@ -297,6 +298,7 @@ export class RecorderEngine {
     });
 
     try {
+      this.assertActiveOutputFormatsSupported(options, recorderSettings);
       this.defaultInputDevices = await this.resolveDefaultInputDevices();
       const tabRecorderStream = await this.acquireRecordingStreams(streamId, options, recorderSettings, runId);
       // A stop/discard may arrive while capture permissions or a device are still
@@ -323,6 +325,20 @@ export class RecorderEngine {
       this.state = 'idle';
       this.resetRunState();
       throw e;
+    }
+  }
+
+  /** Rejects stale persisted format selections before opening any capture devices. */
+  private assertActiveOutputFormatsSupported(options: RecordingRunConfig, recorderSettings: RecorderRuntimeSettingsSnapshot): void {
+    const tabFormat = recorderSettings.tab.output.format;
+    if (!getTabRecordingProfile(tabFormat, true)) {
+      throw new Error(`The selected ${tabFormat.toUpperCase()} tab format is unavailable. Change it in Settings and try again.`);
+    }
+    if (options.recordSelfVideo && !getCameraRecordingProfile(recorderSettings.selfVideo.profile.format)) {
+      throw new Error(`The selected ${recorderSettings.selfVideo.profile.format.toUpperCase()} camera format is unavailable. Change it in Settings and try again.`);
+    }
+    if (options.micMode === 'separate' && !getMicrophoneRecordingProfile(recorderSettings.microphone.format)) {
+      throw new Error(`The selected ${recorderSettings.microphone.format.toUpperCase()} microphone format is unavailable. Change it in Settings and try again.`);
     }
   }
 

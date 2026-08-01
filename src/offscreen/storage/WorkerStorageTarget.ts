@@ -43,6 +43,7 @@ export class WorkerStorageTarget implements StorageTarget {
   private constructor(
     private readonly worker: Worker,
     private readonly filename: string,
+    private readonly mimeType: string,
     private readonly stream?: RecordingStream,
   ) {
     worker.onmessage = (event: MessageEvent<WorkerOutbound>) => this.onMessage(event.data);
@@ -55,7 +56,15 @@ export class WorkerStorageTarget implements StorageTarget {
   }
 
   /** Spawns a worker, opens the file, and resolves once it is ready to receive writes. */
-  static async create(filename: string, stream?: RecordingStream): Promise<WorkerStorageTarget> {
+  static async create(
+    filename: string,
+    mimeTypeOrStream: string | RecordingStream = 'video/webm',
+    suppliedStream?: RecordingStream,
+  ): Promise<WorkerStorageTarget> {
+    const mimeType = mimeTypeOrStream.includes('/') ? mimeTypeOrStream : 'video/webm';
+    const stream: RecordingStream | undefined = mimeTypeOrStream.includes('/')
+      ? suppliedStream
+      : mimeTypeOrStream as RecordingStream;
     if (workerStorageUnsupported) throw new Error('worker OPFS storage unavailable');
     if (typeof Worker === 'undefined' || typeof chrome === 'undefined' || !chrome.runtime?.getURL) {
       workerStorageUnsupported = true;
@@ -65,7 +74,7 @@ export class WorkerStorageTarget implements StorageTarget {
     const startedAt = nowMs();
     const worker = new Worker(chrome.runtime.getURL('opfsWorker.js'));
     try {
-      await openHandshake(worker, filename);
+      await openHandshake(worker, filename, mimeType);
     } catch (error) {
       worker.terminate();
       // createSyncAccessHandle is unsupported here — stop trying for the session.
@@ -79,7 +88,7 @@ export class WorkerStorageTarget implements StorageTarget {
       pendingWrites: 0,
       worker: true,
     });
-    return new WorkerStorageTarget(worker, filename, stream);
+    return new WorkerStorageTarget(worker, filename, mimeType, stream);
   }
 
   write(chunk: Blob): Promise<void> {
@@ -169,6 +178,7 @@ export class WorkerStorageTarget implements StorageTarget {
     this.sealed = {
       filename: this.filename,
       file,
+      mimeType: this.mimeType,
       opfsFilename: this.filename,
       durationFixed,
       cleanup: async () => {
@@ -263,7 +273,7 @@ export class WorkerStorageTarget implements StorageTarget {
 }
 
 /** Sends `open` and resolves on the worker's `opened`; rejects on error or load failure. */
-function openHandshake(worker: Worker, filename: string): Promise<void> {
+function openHandshake(worker: Worker, filename: string, mimeType: string): Promise<void> {
   return new Promise<void>((resolve, reject) => {
     const onMessage = (event: MessageEvent<WorkerOutbound>) => {
       const data = event.data;
@@ -285,6 +295,6 @@ function openHandshake(worker: Worker, filename: string): Promise<void> {
     };
     worker.addEventListener('message', onMessage as EventListener);
     worker.addEventListener('error', onError as EventListener);
-    worker.postMessage({ type: 'open', filename });
+    worker.postMessage({ type: 'open', filename, mimeType });
   });
 }

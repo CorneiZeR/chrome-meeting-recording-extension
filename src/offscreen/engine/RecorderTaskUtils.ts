@@ -13,6 +13,8 @@ import { BitrateObserver } from './BitrateObserver';
 import type { RecorderEngineDeps, SealedStorageFile, StorageTarget } from './RecorderEngineTypes';
 import { InMemoryStorageTarget } from './RecorderEngineTypes';
 import type { RecordingStream } from '../../shared/recording';
+import type { RecordingFileExtension } from '../../shared/recordingFormats';
+import { isWebmRecordingFilename } from '../../shared/recordingFormats';
 
 /**
  * Formats the current time as a filesystem-safe UTC datetime string:
@@ -33,9 +35,13 @@ function utcDatetimeStamp(date = new Date()): string {
  *   `my-page-title-github-20260618T143045-recording.webm` (non-Meet tab)
  *   `20260618T143045-recording.webm`                     (no slug)
  */
-export function buildRecordingFilename(slug: string, type: 'recording' | 'mic' | 'self-video'): string {
+export function buildRecordingFilename(
+  slug: string,
+  type: 'recording' | 'mic' | 'self-video',
+  extension: RecordingFileExtension = 'webm',
+): string {
   const slugPart = slug ? `${slug}-` : '';
-  return `${slugPart}${utcDatetimeStamp()}-${type}.webm`;
+  return `${slugPart}${utcDatetimeStamp()}-${type}.${extension}`;
 }
 
 /**
@@ -116,7 +122,7 @@ export async function openStorageTarget(
   if (!deps.openTarget) return onStorageUnavailable(filename, mimeType, deps, stream, undefined);
 
   try {
-    return await deps.openTarget(filename, stream);
+    return await deps.openTarget(filename, mimeType, stream);
   } catch (e) {
     return onStorageUnavailable(filename, mimeType, deps, stream, e);
   }
@@ -298,7 +304,7 @@ export async function sealAndFixArtifact(
   // The OPFS worker fixes duration in-thread on close (artifact.durationFixed).
   // Only the rare non-worker fallback (LocalFileTarget / RAM) reaches here, where
   // we dynamic-import the fixer so webm-duration-fix stays out of offscreen.js.
-  if (!artifact.durationFixed && started && actualStartTimeMs > 0) {
+  if (isWebmRecordingFilename(artifact.filename) && !artifact.durationFixed && started && actualStartTimeMs > 0) {
     try {
       const { default: fixWebmDuration } = await import('webm-duration-fix');
       artifact.file = await fixWebmDuration(artifact.file);

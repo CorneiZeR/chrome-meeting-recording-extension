@@ -95,7 +95,7 @@ describe('WorkerStorageTarget', () => {
     expect(target).toBeTruthy();
     expect(FakeWorker.instances).toHaveLength(1);
     expect(FakeWorker.instances[0].url).toBe('chrome-extension://test/opfsWorker.js');
-    expect(FakeWorker.instances[0].posted[0]).toEqual({ type: 'open', filename: 'rec.webm' });
+    expect(FakeWorker.instances[0].posted[0]).toEqual({ type: 'open', filename: 'rec.webm', mimeType: 'video/webm' });
   });
 
   it('transfers chunk buffers (zero-copy) to the worker and resolves each write', async () => {

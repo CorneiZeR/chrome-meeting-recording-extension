@@ -5,7 +5,7 @@
  * when the run uses `separate` mic mode.
  */
 
-import { getAudioMime, getChunkTimesliceMs } from '../RecorderProfiles';
+import { getChunkTimesliceMs, getMicrophoneRecordingProfile } from '../RecorderProfiles';
 import { describeMediaError } from '../RecorderSupport';
 import { maybeGetMicStream } from '../RecorderCapture';
 import type { RecorderRuntimeSettingsSnapshot } from '../../shared/settings';
@@ -55,15 +55,19 @@ export async function startMicRecorder(
     return null;
   }
 
-  const mime = getAudioMime();
+  const encodingProfile = getMicrophoneRecordingProfile(recorderSettings.microphone.format);
+  if (!encodingProfile) {
+    throw new Error(`The selected ${recorderSettings.microphone.format.toUpperCase()} microphone format is unavailable. Change it in Settings and try again.`);
+  }
+  const mime = encodingProfile.recorderMimeType;
   let started = false;
   let actualStartTimeMs = 0;
   const timesliceMs = getChunkTimesliceMs('mic', recorderSettings.chunking);
 
   const recorder = new MediaRecorder(mic, { mimeType: mime, audioBitsPerSecond: 96_000 });
 
-  const filename = buildRecordingFilename(suffix, 'mic');
-  const target = await openStorageTarget(filename, mime, deps, 'mic');
+  const filename = buildRecordingFilename(suffix, 'mic', encodingProfile.extension);
+  const target = await openStorageTarget(filename, encodingProfile.contentType, deps, 'mic');
 
   const finalize = async (label: string) => {
     try {
@@ -88,10 +92,11 @@ export async function startMicRecorder(
     recorder,
     'mic',
     runStartedAt,
-    mime,
+    recorder.mimeType || mime,
     timesliceMs,
     callbacks.onStarted,
-    deps.log
+    deps.log,
+    { format: encodingProfile.format, contentType: encodingProfile.contentType }
   );
   started = true;
   actualStartTimeMs = startMs;

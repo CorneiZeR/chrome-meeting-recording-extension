@@ -13,6 +13,14 @@ import {
   getChunkingSettings,
   getSelfVideoProfileSettings,
 } from '../shared/settings';
+import {
+  resolveCameraRecordingProfile,
+  resolveMicrophoneRecordingProfile,
+  resolveTabRecordingProfile,
+  type MicrophoneRecordingFormat,
+  type RecordingEncodingProfile,
+  type VideoRecordingFormat,
+} from '../shared/recordingFormats';
 
 export type RecorderChunkStream = 'tab' | 'mic' | 'self-video';
 
@@ -120,25 +128,34 @@ export function getSelfVideoConstraintRequests(
   ];
 }
 
-/** Picks the first browser-supported MediaRecorder MIME from the candidate list. */
-function getSupportedMime(...candidates: string[]): string {
-  return candidates.find((candidate) => MediaRecorder.isTypeSupported(candidate))
-    ?? candidates[candidates.length - 1];
-}
-
 /** Returns the preferred MIME for tab recordings with video and audio. */
 export function getVideoMime(): string {
-  return getSupportedMime('video/webm;codecs=vp8,opus', 'video/webm;codecs=vp9,opus', 'video/webm');
+  return resolveTabRecordingProfile('webm')!.recorderMimeType;
 }
 
 /** Returns the preferred MIME for video-only self-camera recordings. */
 export function getVideoOnlyMime(): string {
-  return getSupportedMime('video/webm;codecs=vp8', 'video/webm;codecs=vp9', 'video/webm');
+  return resolveCameraRecordingProfile('webm')!.recorderMimeType;
 }
 
 /** Returns the preferred MIME for audio-only microphone recordings. */
 export function getAudioMime(): string {
-  return getSupportedMime('audio/webm;codecs=opus', 'audio/webm');
+  return resolveMicrophoneRecordingProfile('webm')!.recorderMimeType;
+}
+
+/** Resolves the requested tab container against the active browser's encoder support. */
+export function getTabRecordingProfile(format: VideoRecordingFormat, hasAudio = true): RecordingEncodingProfile | null {
+  return resolveTabRecordingProfile(format, hasAudio);
+}
+
+/** Resolves the requested separate-camera container against the active browser's encoder support. */
+export function getCameraRecordingProfile(format: VideoRecordingFormat): RecordingEncodingProfile | null {
+  return resolveCameraRecordingProfile(format);
+}
+
+/** Resolves the requested separate-microphone container against the active browser's encoder support. */
+export function getMicrophoneRecordingProfile(format: MicrophoneRecordingFormat): RecordingEncodingProfile | null {
+  return resolveMicrophoneRecordingProfile(format);
 }
 
 /**

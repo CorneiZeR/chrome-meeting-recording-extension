@@ -10,9 +10,9 @@
 
 import {
   getDefaultSelfVideoBitrate,
+  getCameraRecordingProfile,
   getChunkTimesliceMs,
   getSelfVideoProfile,
-  getVideoOnlyMime,
   resolveSelfVideoBitrate,
 } from '../RecorderProfiles';
 import { describeMediaError } from '../RecorderSupport';
@@ -144,7 +144,11 @@ async function startWiredSelfVideoRecorder(
 ): Promise<MediaRecorder> {
   const track = selfVideo.getVideoTracks()[0];
   const settings = track?.getSettings?.();
-  const mime = getVideoOnlyMime();
+  const encodingProfile = getCameraRecordingProfile(recorderSettings.selfVideo.profile.format);
+  if (!encodingProfile) {
+    throw new Error(`The selected ${recorderSettings.selfVideo.profile.format.toUpperCase()} camera format is unavailable. Change it in Settings and try again.`);
+  }
+  const mime = encodingProfile.recorderMimeType;
   const timesliceMs = getChunkTimesliceMs('self-video', recorderSettings.chunking);
 
   // Force the encoded resolution to match the selected preset even when another
@@ -183,8 +187,8 @@ async function startWiredSelfVideoRecorder(
 
   const recorder = new MediaRecorder(recordingStream, { mimeType: mime, videoBitsPerSecond });
   const target = await openStorageTarget(
-    buildRecordingFilename(suffix, 'self-video'),
-    mime,
+    buildRecordingFilename(suffix, 'self-video', encodingProfile.extension),
+    encodingProfile.contentType,
     deps,
     'self-video'
   );
@@ -244,7 +248,14 @@ async function startWiredSelfVideoRecorder(
   recorder.onstop = () => { void finalize('Self video'); };
 
   const { actualStartTimeMs: startMs } = await awaitRecorderStart(
-    recorder, 'self-video', runStartedAt, mime, timesliceMs, callbacks.onStarted, deps.log, { videoBitsPerSecond }
+    recorder,
+    'self-video',
+    runStartedAt,
+    recorder.mimeType || mime,
+    timesliceMs,
+    callbacks.onStarted,
+    deps.log,
+    { format: encodingProfile.format, contentType: encodingProfile.contentType, videoBitsPerSecond }
   );
   started = true;
   actualStartTimeMs = startMs;

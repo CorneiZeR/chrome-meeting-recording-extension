@@ -31,7 +31,7 @@ interface SyncCapableFileHandle extends FileSystemFileHandle {
 }
 
 type InboundMessage =
-  | { type: 'open'; filename: string }
+  | { type: 'open'; filename: string; mimeType: string }
   | { type: 'write'; seq: number; buffer: ArrayBuffer }
   | { type: 'close' }
   | { type: 'discard' };
@@ -44,6 +44,7 @@ const ctx = self as unknown as {
 let fileHandle: FileSystemFileHandle | null = null;
 let accessHandle: FileSystemSyncAccessHandle | null = null;
 let filename = '';
+let mimeType = 'video/webm';
 let offset = 0;
 let flushPolicy: FlushPolicy | null = null;
 
@@ -53,6 +54,7 @@ ctx.onmessage = async (event) => {
     switch (msg.type) {
       case 'open': {
         filename = msg.filename;
+        mimeType = msg.mimeType;
         const root = await navigator.storage.getDirectory();
         fileHandle = await root.getFileHandle(filename, { create: true });
         accessHandle = await (fileHandle as SyncCapableFileHandle).createSyncAccessHandle();
@@ -90,7 +92,7 @@ ctx.onmessage = async (event) => {
         // The file is readable normally once the exclusive sync handle is closed.
         let file: Blob | null = offset > 0 && fileHandle ? await fileHandle.getFile() : null;
         let durationFixed = false;
-        if (file) {
+        if (file && mimeType === 'video/webm') {
           try {
             // Streams the file + lazy-slices the body, so the result crosses back
             // to the main thread as a cheap Blob reference, not a full copy.
@@ -100,6 +102,7 @@ ctx.onmessage = async (event) => {
             // Leave it unfixed; the main thread will attempt the fix as a fallback.
           }
         }
+        if (file) file = new File([file], filename, { type: mimeType });
         ctx.postMessage({ type: 'sealed', file, bytes: offset, durationFixed });
         break;
       }

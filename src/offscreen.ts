@@ -229,19 +229,19 @@ const engine = new RecorderEngine({
     debugPerf(L.log, 'lifecycle', 'protective_stop', { reason });
     void controller.finalize();
   },
-  openTarget: async (filename: string, stream) => {
+  openTarget: async (filename: string, mimeType: string, stream) => {
     // Prefer the worker (sync-access OPFS, off the main thread). Fall back to the
     // main-thread writable, then RAM (handled by openStorageTarget) if both fail.
     // The opfsWorkerStorage flag is a kill-switch / A/B knob (default on).
     if (PERF_FLAGS.opfsWorkerStorage && !WorkerStorageTarget.unsupported) {
       try {
-        return await WorkerStorageTarget.create(filename, stream);
+        return await WorkerStorageTarget.create(filename, mimeType, stream);
       } catch (e) {
         L.warn('OPFS worker target unavailable, using main-thread writable', describeRuntimeError(e));
       }
     }
     try {
-      return await LocalFileTarget.create(filename, stream);
+      return await LocalFileTarget.create(filename, mimeType, stream);
     } catch (e) {
       L.warn('OPFS local target create failed', describeRuntimeError(e));
       throw e;

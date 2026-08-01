@@ -17,7 +17,7 @@ describe('openStorageTarget (storage fallback ladder)', () => {
     const target = await openStorageTarget('rec.webm', 'video/webm', { warn: jest.fn(), openTarget }, 'tab');
 
     expect(target).toBe(opened);
-    expect(openTarget).toHaveBeenCalledWith('rec.webm', 'tab');
+    expect(openTarget).toHaveBeenCalledWith('rec.webm', 'video/webm', 'tab');
   });
 
   it('falls back to RAM and surfaces a warning for a non-tab stream when opening throws', async () => {

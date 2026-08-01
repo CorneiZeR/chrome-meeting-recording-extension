@@ -4,7 +4,7 @@
  * Starts, writes, and seals the tab audio+video MediaRecorder stream.
  */
 
-import { getChunkTimesliceMs, getVideoMime } from '../RecorderProfiles';
+import { getChunkTimesliceMs, getTabRecordingProfile } from '../RecorderProfiles';
 import { describeMediaError } from '../RecorderSupport';
 import type { RecorderRuntimeSettingsSnapshot } from '../../shared/settings';
 import { resolveTabVideoBitrate, TAB_MAX_FRAME_RATE, TAB_SCREEN_QUALITY_FACTOR, TAB_VIDEO_QUALITY_FACTOR } from '../../shared/settings';
@@ -40,7 +40,14 @@ export async function startTabRecorder(
   deps: RecorderEngineDeps,
   callbacks: TabRecorderCallbacks
 ): Promise<MediaRecorder> {
-  const mime = getVideoMime();
+  const encodingProfile = getTabRecordingProfile(
+    recorderSettings.tab.output.format,
+    recordingStream.getAudioTracks().length > 0,
+  );
+  if (!encodingProfile) {
+    throw new Error(`The selected ${recorderSettings.tab.output.format.toUpperCase()} tab format is unavailable. Change it in Settings and try again.`);
+  }
+  const mime = encodingProfile.recorderMimeType;
   const timesliceMs = getChunkTimesliceMs('tab', recorderSettings.chunking);
   let started = false;
   let actualStartTimeMs = 0;
@@ -84,8 +91,8 @@ export async function startTabRecorder(
     audioBitsPerSecond: 96_000,
   });
 
-  const filename = buildRecordingFilename(suffix, 'recording');
-  const target = await openStorageTarget(filename, mime, deps, 'tab');
+  const filename = buildRecordingFilename(suffix, 'recording', encodingProfile.extension);
+  const target = await openStorageTarget(filename, encodingProfile.contentType, deps, 'tab');
 
   const finalize = async (label: string) => {
     try {
@@ -120,11 +127,11 @@ export async function startTabRecorder(
     recorder,
     'tab',
     runStartedAt,
-    mime,
+    recorder.mimeType || mime,
     timesliceMs,
     callbacks.onStarted,
     deps.log,
-    { videoBitsPerSecond, deliveredWidth, deliveredHeight, deliveredFps }
+    { format: encodingProfile.format, contentType: encodingProfile.contentType, videoBitsPerSecond, deliveredWidth, deliveredHeight, deliveredFps }
   );
   started = true;
   actualStartTimeMs = startMs;
