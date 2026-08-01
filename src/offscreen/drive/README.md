@@ -33,7 +33,7 @@ sequenceDiagram
 ```
 
 - The session is created once (`DRIVE_UPLOAD_URL`, `uploadType=resumable`); Drive returns a **session URI** that every chunk `PUT`s to.
-- Each chunk carries `Content-Range: bytes <start>-<end>/<total>` and `Content-Type: video/webm`. A non-final chunk that lands returns **`308`** (Resume Incomplete) → advance `start`; the final chunk returns **`200/201`** → done.
+- Each chunk carries `Content-Range: bytes <start>-<end>/<total>` and the sealed artifact's actual `Content-Type` (`video/webm`, `video/mp4`, or `audio/mp4`). The same type is sent in the resumable-session metadata. A non-final chunk that lands returns **`308`** (Resume Incomplete) → advance `start`; the final chunk returns **`200/201`** → done.
 - **Partial-commit recovery** (`recoverFromCommittedState`): on a transient failure mid-chunk, re-query the session with `Content-Range: bytes */<total>`, read Drive's `Range` header to learn the committed offset, and **slice the body forward** to exactly what's missing — so a retry never re-sends committed bytes or leaves a gap.
 
 ## The OAuth token flow (use, not acquisition)
@@ -83,7 +83,7 @@ Every Drive HTTP operation — folder lookup/create, resumable-session creation,
 
 ## Crash recovery — re-upload fresh, never resume
 
-If the offscreen document dies mid-upload, recovery does **not** resume the abandoned session. Why: the marker (`PendingUploadStore`) intentionally does **not** store the session URI, because the on-disk OPFS bytes are the *raw, pre-duration-fix* recording — splicing them onto the duration-fixed prefix the old session already committed would silently corrupt the file. So `resumePendingDriveUploads` re-opens the raw OPFS file, **re-runs the duration fix**, and uploads through a **brand-new** resumable session. It re-sends already-committed bytes only in the rare crash case, in exchange for guaranteed correctness.
+If the offscreen document dies mid-upload, recovery does **not** resume the abandoned session. Why: the marker (`PendingUploadStore`) intentionally does **not** store the session URI, because a WebM OPFS file can contain raw, pre-duration-fix bytes — splicing it onto the duration-fixed prefix the old session already committed would silently corrupt the file. So `resumePendingDriveUploads` re-opens the raw OPFS file, **re-runs the duration fix only for WebM**, and uploads through a **brand-new** resumable session. MP4 and M4A retain their real MIME type and bypass the fix. Recovery re-sends already-committed bytes only in the rare crash case, in exchange for guaranteed correctness.
 
 - **`PendingUploadStore`** writes **one `chrome.storage.local` key per file** (prefix-namespaced), *not* a single map — so the concurrent (across-files) uploader's `put`/`remove` can never lose each other to a read-modify-write race.
 - The marker is cleared **the instant** Drive confirms the upload (before deleting the OPFS file), to keep the "crashed between Drive's 200 and our cleanup" duplicate window as small as possible.

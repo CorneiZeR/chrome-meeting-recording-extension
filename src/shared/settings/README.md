@@ -21,6 +21,9 @@ The single source of *configuration*. Two responsibilities: (1) hold the user's 
 | `separateCameraCapture` | `boolean` | `RunConfig.recordSelfVideo` |
 | `selfVideoResolutionPreset` | `640x360 \| 854x480 \| 1280x720 \| 1920x1080` | camera `getUserMedia` target dimensions |
 | `selfVideoUseAutoResolution` | `boolean` | record the browser-delivered resolution, **skip the resize re-rasterization** |
+| `tabRecordingFormat` | `'webm' \| 'mp4'` | container for the tab artifact; WebM is the default |
+| `cameraRecordingFormat` | `'webm' \| 'mp4'` | container for the separate self-video artifact; WebM is the default |
+| `microphoneRecordingFormat` | `'webm' \| 'm4a'` | container for a **separate** microphone artifact; WebM is the default |
 
 ### professional
 
@@ -46,8 +49,9 @@ flowchart LR
 The derive helpers turn *choices* into *numbers*:
 
 - **`resolveTabVideoBitrate`** computes `width × height × fps × qualityFactor`, clamped to `[TAB_MIN_VIDEO_BITRATE, MAX_TAB_VIDEO_BITRATE]`. The factor comes from `tabContentType` (`TAB_SCREEN_QUALITY_FACTOR` ≈ 1.5 Mbps@1080p30 vs. `TAB_VIDEO_QUALITY_FACTOR` ≈ 5 Mbps@1080p30); the ceiling is the internal `MAX_TAB_VIDEO_BITRATE` (there is no user-facing bitrate knob, so it can never be set stale). **Crucially, `getTabOutputSettings` doesn't pre-compute the bitrate** — it ships the dimensions and content type in the snapshot, and the offscreen (`TabRecorderTask`) runs the formula against the *delivered* track dimensions from `getSettings()`, not the requested preset. So the bitrate matches what Chrome actually captured (which may be smaller for a windowed/HiDPI tab), instead of over-provisioning for the requested size.
-- **`getSelfVideoProfileSettings`** maps the preset to dimensions + carries the adaptive bitrate floor/ceiling and the `autoResolution` flag.
-- **`getMicrophoneCaptureSettings`** / **`getChunkingSettings`** pass the DSP toggles and timeslice timings through.
+- **`getSelfVideoProfileSettings`** maps the preset to dimensions + carries the adaptive bitrate floor/ceiling, `autoResolution`, and the camera format.
+- **`getTabOutputSettings`** / **`getMicrophoneCaptureSettings`** carry the selected tab and separate-microphone formats alongside their capture settings; the mixed microphone path uses the tab format because it is encoded into the tab artifact.
+- **`getChunkingSettings`** passes the timeslice timings through.
 - **`buildRecorderRuntimeSettingsSnapshot`** assembles all of the above into the one frozen object the background sends down. `buildDefaultRunConfigFromSettings` derives the popup's default `RunConfig`.
 
 ## UI feedback for camera profile choices
@@ -58,7 +62,7 @@ The redesigned Settings page still edits this same schema; it does not introduce
 
 - **`store.ts`** keeps an in-memory `runtimeSettings` cache and `load`/`save`/`reset` against `chrome.storage.local` (key `EXTENSION_SETTINGS_STORAGE_KEY`). When the storage area is absent (e.g. the e2e tab-capture runtime), it **degrades to defaults** rather than throwing.
 - **`normalize.ts`** is the trust boundary: `normalizeExtensionSettings` coerces any persisted/incoming value into a valid, fully-populated `ExtensionSettings` (every field defaulted), so downstream derive code never sees a partial object.
-- **Legacy migration is built in.** `normalizeLegacyVideoFormat` upgrades the *old numeric* self-video size (`1080 | 720 | 480 | 360`, used before preset selectors existed) into a `ResolutionPreset`, so settings persisted by an older version load losslessly — no migration script. Validation is **bounded**: `normalizePositiveInt` clamps numeric fields to a `[min, max]`, and unknown enum values coerce to the default.
+- **Legacy migration is built in.** `normalizeLegacyVideoFormat` upgrades the *old numeric* self-video size (`1080 | 720 | 480 | 360`, used before preset selectors existed) into a `ResolutionPreset`, so settings persisted by an older version load losslessly — no migration script. Missing or invalid recording-format fields normalize to their WebM defaults, preserving existing installations. Validation is **bounded**: `normalizePositiveInt` clamps numeric fields to a `[min, max]`, and unknown enum values coerce to the default.
 - **The public surface is `index.ts`.** Nothing outside this folder should import `model`/`store`/`normalize`/`defaults` directly.
 
 ## Key invariants & gotchas
@@ -67,6 +71,8 @@ The redesigned Settings page still edits this same schema; it does not introduce
 - **Normalize on every read.** Persisted settings are untrusted (old versions, manual edits); `normalizeExtensionSettings` is the only safe entry.
 - **Tab bitrate is derived, not stored.** There is no stored tab bitrate at all — only `tabContentType`. The effective bitrate is `w × h × fps × factor` computed in the offscreen against the resolution Chrome actually delivered, capped at the internal `MAX_TAB_VIDEO_BITRATE`.
 - **A run's settings are frozen at `start()`.** Editing settings mid-recording affects only the *next* run; the active run uses its snapshot.
+- **Format capability is checked twice.** The Settings page uses `MediaRecorder.isTypeSupported()` to disable unavailable MP4/M4A choices, and startup revalidates the frozen profile before it opens streams. An unsupported persisted choice fails with an instruction to change Settings; it never silently falls back to WebM.
+- **Mixed microphone audio follows the tab format.** `microphoneRecordingFormat` is consulted only when `micMode === 'separate'`; disabled, mixed, and unrequested streams do not block startup on their own format capability.
 - **`selfVideoUseAutoResolution` short-circuits the resize.** It's the lever that trades enforced dimensions for skipping the per-frame re-rasterization.
 
 ## Files
@@ -79,12 +85,13 @@ The redesigned Settings page still edits this same schema; it does not introduce
 | `normalize.ts` | `normalizeExtensionSettings`, preset→dimensions, clone/normalize the recorder snapshot |
 | `store.ts` | in-memory cache, load/save/reset, all the derive helpers |
 | `validate.ts` | bounded validators (`normalizePositiveInt` min/max clamps, `readBoundedPositiveInt`) used by normalize |
+| `../recordingFormats.ts` | shared container/MIME capability policy used by the Settings page and offscreen recorder tasks |
 
 Consumers: the **Settings page** (`../../settings.ts`) edits the schema; the **popup** derives its default `RunConfig`; the **background** freezes `buildRecorderRuntimeSettingsSnapshot` into `OFFSCREEN_START`; the **offscreen** recorder (`RecorderProfiles`, capture) consumes the snapshot.
 
 ## Testing notes
 
-- `__tests__/extensionSettings.test.ts` and `settings.test.ts` cover normalization (partial/invalid → defaulted), the derive math (`resolveTabVideoBitrate` factor + clamp, `tabContentType` selection), and the run-config derivation. The delivered-dimension bitrate path itself is exercised in `offscreen/__tests__/RecorderEngine.test.ts`.
+- `__tests__/extensionSettings.test.ts` and `settings.test.ts` cover normalization (partial/invalid → defaulted), format migration/cloning/snapshot propagation, the derive math (`resolveTabVideoBitrate` factor + clamp, `tabContentType` selection), and the run-config derivation. The delivered-dimension bitrate path itself is exercised in `offscreen/__tests__/RecorderEngine.test.ts`.
 - Normalization and derivation are pure given a settings object — test with values, no storage mock needed (the storage seam is `hasLocalStorageArea`/`get`/`set`, mocked separately).
 
 ## Related

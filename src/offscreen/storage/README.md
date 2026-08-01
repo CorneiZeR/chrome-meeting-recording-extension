@@ -21,6 +21,7 @@ interface StorageTarget {
 interface SealedStorageFile {
   filename: string;
   file: Blob;                    // the sealed recording
+  mimeType?: string;             // base type for download/upload, e.g. video/mp4
   opfsFilename?: string;         // set iff OPFS-backed → the orphan-recovery key
   durationFixed?: boolean;       // true if the WebM duration fix already ran (in-worker)
   cleanup: () => Promise<void>;  // delete the temp/OPFS file once delivered
@@ -53,7 +54,7 @@ The whole point of the default path is *what runs where*: the offscreen document
 | :--- | :--- |
 | `makeChunkHandler` + `WriteBackpressure` accounting (O(1) bookkeeping) | `createSyncAccessHandle().write()` — the actual disk I/O |
 | `ArrayBuffer` *transfer* to the worker (zero-copy, ~free) | `FlushPolicy`-gated `flush()` |
-| `LocalFileTarget` writes (**fallback path only**) | WebM duration-fix on `close()` |
+| `LocalFileTarget` writes (**fallback path only**) | WebM duration-fix on `close()` for `.webm` artifacts only |
 | RAM-buffer accumulation (`InMemoryStorageTarget`) | — |
 
 On the default (`WorkerStorageTarget`) path, **no byte-writing or container-parsing touches the main thread** — only cheap accounting and a zero-copy handoff. The `LocalFileTarget` fallback deliberately gives this up (writes + duration-fix on the main thread) because it runs only when the worker is unavailable. That off-thread guarantee is exactly what the `@perf-contention` tier measures.
@@ -80,7 +81,9 @@ sequenceDiagram
     Note over T,D: on stop
     T->>W: close()
     W->>D: final flush + close syncHandle
-    W->>W: webm-duration-fix (in-worker)
+    opt WebM artifact
+        W->>W: webm-duration-fix (in-worker)
+    end
     W-->>T: SealedStorageFile
 ```
 
@@ -96,7 +99,7 @@ OPFS is not the obvious backend for a Chrome extension; it is the right one here
 
 - **Fallback ladder: `WorkerStorageTarget` ▸ `LocalFileTarget` ▸ `InMemoryStorageTarget`.** All three implement the same `StorageTarget` interface (`write(chunk)` / `close()`). The ladder spans three folders — the worker target is here, `LocalFileTarget` is at `../LocalFileTarget.ts`, and `InMemoryStorageTarget` is defined in `../engine/RecorderEngineTypes.ts`.
 - **The required tab stream never degrades to RAM.** `openStorageTarget` fails it *loudly* (`reportWarning` + throw → abort the recording) rather than spend a whole meeting on a path that predictably OOMs. Only the **optional** streams (separate mic, self-video) degrade to RAM, because they still leave a useful recording if they drop; that downgrade is surfaced via `reportWarning`, not just a console warn. (Mixed-mic mode folds the mic into the tab stream, so only `separate` mic mode reaches this fallback.)
-- **`close()` is hang-proof.** If the worker already failed it fails fast (no `close` posted to a dead worker), and the seal wait is bounded by a size-scaled budget (`TIMEOUTS.SEAL_BASE_MS` + per-MB) so a wedged worker can't leave the stop pipeline stuck in `stopping` forever. On timeout `close()` rejects and the worker is terminated; because the duration fix is read-only (bytes already flushed, sync handle closed), the raw recording is left on disk for orphan recovery — a false timeout only costs a re-run of the fix next launch.
+- **`close()` is hang-proof.** If the worker already failed it fails fast (no `close` posted to a dead worker), and the seal wait is bounded by a size-scaled budget (`TIMEOUTS.SEAL_BASE_MS` + per-MB) so a wedged worker can't leave the stop pipeline stuck in `stopping` forever. On timeout `close()` rejects and the worker is terminated; because the optional WebM duration fix is read-only (bytes already flushed, sync handle closed), the raw recording is left on disk for orphan recovery — a false timeout only costs a re-run of that fix next launch.
 - **RAM buffer is byte-capped (512 MB).** Past the ceiling `InMemoryStorageTarget` escalates `requestStopStream` to stop *just that* optional stream (sealing its partial artifact) while the tab keeps recording — a runaway RAM buffer can't OOM the shared offscreen document. This is distinct from the write-queue ceiling, which only catches a slow disk (pending bytes) and is blind to instant-completing RAM writes. Matters doubly because a RAM artifact has no `opfsFilename`, so it is *unrecoverable* by orphan recovery.
 - **Backpressure is two-stage.** `makeChunkHandler` wraps every write with `WriteBackpressure`: a **soft** breach (>64 MB or >16 chunks queued) raises a throttled `reportWarning` + `write_backpressure` diagnostic; a **hard ceiling** (>256 MB unwritten) escalates once (`write_backpressure_ceiling`) to a **protective stop** that seals the persisted prefix instead of growing the queue toward OOM.
 - **Storage-failure escalation (silent-REC guard).** `makeChunkHandler` counts *consecutive* write rejections (a success resets the streak). Past `MAX_CONSECUTIVE_WRITE_FAILURES` (3; ~12 s at tab cadence) it triggers the same protective stop — closing the case where the worker dies mid-session, every write rejects, yet the badge still reads REC with nothing reaching disk. Both escalations call `requestProtectiveStop` → `OffscreenController.finalize()`, the **same** seal→deliver pipeline a user stop uses, so the captured prefix is uploaded/saved, not dropped.
@@ -133,7 +136,7 @@ The constants are chosen so the worst case is bounded and explainable:
 A recording travels: **temp OPFS file → sealed `SealedStorageFile` → delivered → `cleanup()`** on the happy path, or **→ orphaned → recovered next launch** if the document dies.
 
 1. **Write** — `create()` opens a temp file in OPFS; each chunk appends (off-thread via the sync handle, or via a `FileSystemWritableFileStream` on the fallback path).
-2. **Seal** — `close()` finalizes the handle, runs the duration fix, and returns the `SealedStorageFile` (with `opfsFilename` set for OPFS-backed files).
+2. **Seal** — `close()` finalizes the handle, runs the duration fix only for `.webm`, and returns the `SealedStorageFile` with its real `mimeType` (and `opfsFilename` for OPFS-backed files).
 3. **Deliver** — the persistence pipeline downloads or uploads `file`, then calls `cleanup()` to delete the OPFS temp file. Both `LocalFileTarget` and `WorkerStorageTarget` drop their retained sealed-file reference in `finally`; the worker target also terminates its worker there. Cleanup therefore releases the OPFS entry and the target's last in-memory/runtime reference even when deletion reports an error.
 4. **Recover (failure branch)** — if the document dies between write and delivery, the bytes are still on disk under `opfsFilename`; `recoverOrphanRecordings` finds and delivers them on the next launch. A RAM artifact has no `opfsFilename` and is lost — the one unrecoverable path.
 
@@ -142,7 +145,7 @@ stateDiagram-v2
     [*] --> Writing: create() opens temp OPFS file
     Writing --> Writing: write(chunk) — append
     Writing --> Sealing: close()
-    Sealing --> Sealed: finalize handle + duration-fix
+    Sealing --> Sealed: finalize handle + WebM-only duration fix
     Sealed --> Delivered: download / Drive upload
     Delivered --> [*]: cleanup() deletes temp file
     Sealed --> [*]: zero bytes → discarded (artifact = null)
@@ -151,7 +154,7 @@ stateDiagram-v2
     Orphaned --> Sealed: recoverOrphanRecordings() next launch, OPFS-backed only
 ```
 
-**Why the WebM duration fix exists.** `MediaRecorder` streams a WebM/Matroska container with **no known duration** — the `Duration` element is only written when a recording stops normally, so `timeslice`/streamed output leaves it unset. Players then show no/garbled length and can't seek. `webm-duration-fix` rewrites that element after sealing. It runs **in the worker** for the default path (so the container parse never touches the main thread) and is dynamic-imported on the main thread only on the fallback path; `durationFixed` records that it already ran so the pipeline doesn't redo it.
+**Why the WebM duration fix exists.** `MediaRecorder` streams a WebM/Matroska container with **no known duration** — the `Duration` element is only written when a recording stops normally, so `timeslice`/streamed output leaves it unset. Players then show no/garbled length and can't seek. `webm-duration-fix` rewrites that element after sealing. It runs **only for `.webm` artifacts** — in the worker for the default path (so the container parse never touches the main thread) and dynamic-imported on the main thread only on the fallback path. MP4 and M4A artifacts bypass it; `durationFixed` records when the WebM repair already ran so the pipeline doesn't redo it.
 
 ## Diagram: OPFS streaming & storage-target fallback
 
@@ -180,8 +183,10 @@ flowchart TD
     SC -->|yes| J{"bytes written > 0?"}
     J -->|no| K["discard temp file → artifact = null"]
     J -->|yes| L["seal File handle"]
-    L --> M["webm-duration-fix (in worker for WorkerStorageTarget,<br/>else dynamic-imported on main thread)"]
-    M --> N["SealedStorageFile<br/>{ filename, file, opfsFilename, durationFixed, cleanup() }"]
+    L --> M{".webm artifact?"}
+    M -->|yes| FIX["webm-duration-fix (in worker for WorkerStorageTarget,<br/>else dynamic-imported on main thread)"]
+    M -->|no| N["SealedStorageFile<br/>{ filename, file, mimeType, opfsFilename, cleanup() }"]
+    FIX --> N
 
     WK -. create fails .-> E
     O{"OPFS create fails<br/>(openStorageTarget)"} -->|"tab (required)"| FAIL["fail loudly: reportWarning + throw<br/>→ abort recording (no RAM-buffer)"]
@@ -192,7 +197,7 @@ flowchart TD
 
 | File | Role |
 | :--- | :--- |
-| `opfsWorker.ts` | the worker: opens the file via `createSyncAccessHandle()`, appends each chunk synchronously off-thread, runs the WebM duration fix in-thread on `close()`, returns the sealed `File` |
+| `opfsWorker.ts` | the worker: opens the file via `createSyncAccessHandle()`, appends each chunk synchronously off-thread, runs the WebM duration fix in-thread on `close()` only for `.webm`, and returns the sealed `File` |
 | `WorkerStorageTarget.ts` | default target — spawns `opfsWorker`, transfers each chunk `ArrayBuffer` zero-copy, hang-proof bounded `close()`; `create()` is the capability probe |
 | `WriteBackpressure.ts` | two-stage write-queue guard (soft warning at 64 MB/16 chunks, hard ceiling at 256 MB) |
 | `FlushPolicy.ts` | time-based flush gate (~10 s, injectable clock) for power-cut durability |

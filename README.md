@@ -6,7 +6,7 @@ No permission is granted to use, copy, modify, merge, publish, distribute, subli
 
 ---
 
-Scrape live captions from a Google Meet into a timestamped `.txt` transcript, or record the current Meet tab (video + system audio) — plus an optional microphone and camera — to `.webm` files. Save locally or straight to Google Drive, and browse the resulting local/Drive artifacts from a durable recording history.
+Scrape live captions from a Google Meet into a timestamped `.txt` transcript, or record the current Meet tab (video + system audio) — plus an optional microphone and camera — to WebM or MP4 video and WebM or M4A audio files. Save locally or straight to Google Drive, and browse the resulting local/Drive artifacts from a durable recording history.
 
 Everything runs in your browser. Capture is **local-first**: recording data streams to the Origin Private File System (OPFS) during the call and is finalized to a download or Drive only after you stop. No audio or video leaves your device while you're recording.
 
@@ -25,7 +25,7 @@ Everything runs in your browser. Capture is **local-first**: recording data stre
 
 **Transcript saver** — parses Meet's live captions into a timestamped `.txt`. Turn captions on in Meet, then hit Download Transcript at any point during or after the call.
 
-**Tab recorder** — captures the Meet tab (video + system audio) to `.webm` via `MediaRecorder`. The resolution preset is the capture *ceiling*; the file reflects what Chrome actually delivers. A **per-recording tab content type** (`Screen` vs `Video`) sets the bitrate target — `Screen` for slides/UI/whiteboards (sharp text, small files), `Video` for motion-heavy content.
+**Tab recorder** — captures the Meet tab (video + system audio) to the selected `.webm` or `.mp4` container via `MediaRecorder`. The resolution preset is the capture *ceiling*; the file reflects what Chrome actually delivers. A **per-recording tab content type** (`Screen` vs `Video`) sets the bitrate target — `Screen` for slides/UI/whiteboards (sharp text, small files), `Video` for motion-heavy content.
 
 **Direct-to-disk streaming** — chunks stream continuously to OPFS during capture, keeping memory bounded to a small working buffer. If the disk falls behind, a soft warning fires first and a hard ceiling triggers a protective stop that seals what was captured — so memory stays bounded even on a slow or failing disk, and a 2-hour+ meeting never crashes the tab.
 
@@ -33,9 +33,9 @@ Everything runs in your browser. Capture is **local-first**: recording data stre
 
 - `Off` — no microphone capture
 - `Mix into tab recording` — mic audio is blended into the main tab file via a real Web Audio graph
-- `Save separately` — mic is recorded as a second `.webm` artifact
+- `Save separately` — mic is recorded as a second `.webm` or `.m4a` artifact
 
-**Optional self-video capture** — record your camera feed to its own `.webm`. A constraint ladder (exact size+FPS → exact size with bounded FPS → best-effort) keeps it working across cameras, and the encoded resolution is enforced to your preset even when Meet holds the camera open at a higher one (Chrome otherwise records the shared native buffer; a toggle opts out to keep Meet's auto-resolution). The camera bitrate is fully automatic — it adapts to the delivered frame so the camera never wastes bits.
+**Optional self-video capture** — record your camera feed to its own `.webm` or `.mp4` file. A constraint ladder (exact size+FPS → exact size with bounded FPS → best-effort) keeps it working across cameras, and the encoded resolution is enforced to your preset even when Meet holds the camera open at a higher one (Chrome otherwise records the shared native buffer; a toggle opts out to keep Meet's auto-resolution). The camera bitrate is fully automatic — it adapts to the delivered frame so the camera never wastes bits.
 
 **Live recording controls** — adjust a recording in place, without stopping it:
 
@@ -140,7 +140,7 @@ All three commands compile TypeScript via `ts-loader`, copy HTML shells, styles,
 
 - `Off` — no microphone capture.
 - `Mix into tab recording` — your mic is blended into the main tab recording via an audio graph. No separate mic file is created.
-- `Save separately` — a second `.webm` artifact is created for the mic stream only.
+- `Save separately` — a second `.webm` or `.m4a` artifact is created for the mic stream only, according to the separate microphone format setting.
 
 **Storage Mode** — `Local Disk` or `Google Drive`. Drive uploads happen after capture stops, not during capture. In Drive mode the recording returns to idle once its sealed artifacts are queued; upload progress, retry, and cancellation live in a separate session tab.
 
@@ -189,12 +189,15 @@ Open the settings page by clicking the gear icon in the popup. Settings persist 
 | :--- | :--- |
 | Tab capture preset | Output resolution for the tab recording: `640×360`, `854×480`, `1280×720`, or `1920×1080` |
 | Tab video bitrate | Encoder bitrate at the `1920×1080`@30 reference; the recorder scales it down automatically for smaller tab presets / frame rates |
+| Tab recording format | `WebM` (default) or `MP4`; controls the main tab artifact, including mixed microphone audio |
 | Camera capture preset | Output resolution for the self-video recording, same preset options |
+| Camera recording format | `WebM` (default) or `MP4`; controls the separate self-video artifact |
+| Separate microphone format | `WebM/Opus` (default) or `M4A/AAC`; applies only to a separately saved microphone, never to mixed microphone audio |
 | Prefer the automatically selected resolution | When on, the camera is recorded at whatever resolution Chrome/Meet already selected instead of re-encoding it to the camera preset above — skips the per-frame resize work. Off by default |
 
 The tab and camera capture presets control what size the final file targets, not what resolution Chrome delivers from the source. Actual resolution depends on Chrome, camera hardware, and sharing limits. During recording, the popup labels the tab source with the reported delivered height when Chrome exposes it; the diagnostics data records requested-versus-delivered profiles. Separately, selecting separate camera capture with a sub-1080p **configured** preset shows a non-blocking setup nudge to raise that setting. That nudge is profile guidance, not a guarantee of the camera's delivered resolution.
 
-Every settings field shows a tooltip (click the label) with a short operational explanation.
+Every settings field shows a tooltip (click the label) with a short operational explanation. MP4 and M4A are offered only when the current browser reports a compatible native `MediaRecorder` encoder; unavailable options are disabled. The extension never substitutes another container: if a persisted MP4/M4A choice becomes unsupported, starting a recording explains that you must change the format in Settings.
 
 Legacy stored width/height values from previous extension versions are normalized to the nearest supported preset on settings load.
 
@@ -206,9 +209,9 @@ All filenames include the Google Meet meeting ID suffix and a UTC timestamp.
 
 | Artifact | Filename pattern |
 | :--- | :--- |
-| Tab recording | `google-meet-recording-<meet-suffix>-<timestamp>.webm` |
-| Microphone (separate mode) | `google-meet-mic-<meet-suffix>-<timestamp>.webm` |
-| Self-video | `google-meet-self-video-<meet-suffix>-<timestamp>.webm` |
+| Tab recording | `google-meet-recording-<meet-suffix>-<timestamp>.webm` (default) or `.mp4` |
+| Microphone (separate mode) | `google-meet-mic-<meet-suffix>-<timestamp>.webm` (default) or `.m4a` |
+| Self-video | `google-meet-self-video-<meet-suffix>-<timestamp>.webm` (default) or `.mp4` |
 | Transcript | `google-meet-transcript-<meet-suffix>-<timestamp>.txt` |
 
 In Drive mode, all artifacts for one recording session are uploaded to a per-recording folder: `Google Meet Records/<meeting-id>-<timestamp>/`. The detached upload tab and recording history expose the folder and per-file Drive links once Drive returns them.
@@ -312,7 +315,7 @@ npm run test:e2e:real:profile                                  # one-time: sign 
 npm run test:e2e:real -- https://meet.google.com/abc-defg-hij  # run the live matrix
 ```
 
-It requires OS camera/microphone access for Google Chrome and **Accessibility** permission for the launching terminal/app, because the suite starts recording with a real `Control+Shift+9` keystroke so Chrome grants `activeTab` to `tabCapture`. Validated recordings are saved as named `.webm` files under `output/real-meet/recordings/`.
+It requires OS camera/microphone access for Google Chrome and **Accessibility** permission for the launching terminal/app, because the suite starts recording with a real `Control+Shift+9` keystroke so Chrome grants `activeTab` to `tabCapture`. Validated recordings are saved as named artifacts under `output/real-meet/recordings/`.
 
 Full setup, OS permissions, Google login, run options, scenarios, named recordings, reports, and troubleshooting are in the [Scenario B guide](docs/testing-scenario-b.md).
 
@@ -365,7 +368,7 @@ State persistence:  chrome.storage.session → RecordingSessionSnapshot + detach
 
 | Package | Purpose |
 | :--- | :--- |
-| `webm-duration-fix` | Patches missing `MediaRecorder` duration metadata by streaming the file (no whole-file load into memory) and adds seek cues; runs inside the OPFS storage worker. Replaced `fix-webm-duration`, which loaded the entire file into the JS heap at finalize |
+| `webm-duration-fix` | Patches missing duration metadata in sealed **WebM** `MediaRecorder` files by streaming the file (no whole-file load into memory) and adds seek cues; runs inside the OPFS storage worker. MP4 and M4A artifacts bypass it. Replaced `fix-webm-duration`, which loaded the entire file into the JS heap at finalize |
 
 **Development dependencies**
 

@@ -6,7 +6,7 @@
 
 ## Purpose & mental model
 
-Turn one tab-capture stream id (plus optional mic and camera) into one-to-three encoded WebM artifacts. The mental model is **N independent per-stream recorders started in parallel, with one load-bearing stream**: the **tab** recorder is required (its failure aborts the run); the **separate mic** and **self-video** recorders are optional (their failures are warned and degraded, never fatal). The engine owns stream lifetimes, live actuation (mute/hide/pause), and actual tab-resolution reporting; it does *not* decide policy (that's the [background](../../background/README.md)) or persist bytes (that's [storage](../storage/README.md)).
+Turn one tab-capture stream id (plus optional mic and camera) into one-to-three encoded artifacts: WebM or MP4 for video, and WebM or M4A for a separate microphone. The mental model is **N independent per-stream recorders started in parallel, with one load-bearing stream**: the **tab** recorder is required (its failure aborts the run); the **separate mic** and **self-video** recorders are optional (their failures are warned and degraded, never fatal). The engine owns stream lifetimes, live actuation (mute/hide/pause), and actual tab-resolution reporting; it does *not* decide policy (that's the [background](../../background/README.md)) or persist bytes (that's [storage](../storage/README.md)).
 
 ## The capture → encode pipeline
 
@@ -80,7 +80,9 @@ flowchart LR
 
 ## Codec & timeslice policy (`RecorderProfiles`)
 
-- **MIME**: VP8/Opus preferred for tab (falls back VP9 → generic webm), VP8 for self-video, Opus for mic — chosen via `MediaRecorder.isTypeSupported`.
+- **Format profiles are resolved before stream acquisition.** Each selected format resolves to `{ recorderMimeType, contentType, extension }`, and that exact profile travels through the `MediaRecorder`, filename builder, storage target, sealed artifact, downloads, and Drive upload. The default WebM profiles retain their VP8/Opus (tab), VP8 (camera), and Opus (mic) preferences.
+- **MP4/M4A candidates are native only.** Tab MP4 prefers H.264/AAC, then VP9/Opus, AV1/Opus, then browser-selected `video/mp4`; camera MP4 prefers H.264, then VP9, AV1, then browser-selected `video/mp4`; M4A requires `audio/mp4;codecs=mp4a.40.2`. `MediaRecorder.isTypeSupported()` chooses the first supported candidate — there is no transcoding.
+- **No silent container fallback.** A stale MP4/M4A setting that is no longer supported fails startup with an actionable Settings error. Format capability is ignored for a disabled camera/microphone and for a mixed microphone, which is part of the tab artifact and therefore uses the tab profile.
 - **Content hints**: each recorded video track is tagged with a `MediaStreamTrack.contentHint` — camera → `motion` (a talking head; bias toward temporal smoothness), tab → `text` for `screen` content / `motion` for `video` content — an advisory hint that steers the encoder's rate/quality tradeoff. Best-effort: `MediaRecorder` may ignore it.
 - **Timeslice** (`getChunkTimesliceMs`): tab + self-video use the **extended** (longer) cadence — fewer, larger OPFS writes cut churn; a crash loses at most one timeslice of unflushed buffer, and a power cut is bounded by storage's ~10 s flush window anyway. The mic stays on the **default** (shorter) cadence unless `extendedTimeslice` opts it in.
 
@@ -95,6 +97,7 @@ The popup toggles, the background commands, the engine **actuates** — never in
 ## Key invariants & gotchas
 
 - **The tab stream is load-bearing.** Its recorder task is the one not swallowed — a tab failure aborts the whole run; optional streams degrade.
+- **The resolved profile is part of the artifact contract.** Keep its recorder MIME, base content type, and filename extension together; deriving a content type from an assumed `.webm` file breaks downloads and Drive uploads for MP4/M4A.
 - **Stop the mic *source* track before nulling `micStream`.** Stopping a `MediaRecorder` does **not** stop its source track; in `separate` mode the engine owns that track, so the `onStopped` callback stops it first (`safeStopStream`, idempotent) — otherwise the OS mic indicator stays lit after recording ends. (This was a real regression; the fix lives in `buildRecorderStartTasks`.)
 - **`runId` is the staleness fence.** Every async task re-checks it; don't attach a recorder without the `isStale()` guard.
 - **Pause ordering matters** — producers and recorders start/stop in the opposite order on pause vs. resume (see above) to avoid black/blank filler and wasted mixing.
@@ -108,7 +111,7 @@ The popup toggles, the background commands, the engine **actuates** — never in
 | `TabRecorderTask.ts`, `MicRecorderTask.ts`, `SelfVideoRecorderTask.ts` | per-stream start/stop, each owning its `MediaRecorder` + storage target |
 | `RecorderEngineSetup.ts`, `RecorderTaskUtils.ts` | start-task helpers, `openStorageTarget` + `makeChunkHandler` (the storage seam) |
 | `RecorderEngineTypes.ts` | `StorageTarget`, `SealedStorageFile`, `CompletedRecordingArtifact`, `InMemoryStorageTarget`, `RecorderEngineDeps` |
-| `../RecorderProfiles.ts` | MIME / bitrate / timeslice / self-video-constraint policy |
+| `../RecorderProfiles.ts`, `../../shared/recordingFormats.ts` | MIME / container / bitrate / timeslice / self-video-constraint policy |
 | `../RecorderCapture.ts` | tab/mic/self-video media acquisition |
 | `../RecorderAudio.ts` | `MixedAudioMixer` (mixed mode) + `AudioPlaybackBridge` (audible playback) |
 | `../SelfVideoResize.ts` | the insertable-streams per-frame resize to the preset |
