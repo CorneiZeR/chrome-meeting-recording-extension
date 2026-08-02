@@ -1,0 +1,199 @@
+{
+  "node_count": 2694,
+  "unverified_node_count": 0,
+  "raw_edge_count": 6554,
+  "non_object_edges": 0,
+  "missing_endpoint_edges": 0,
+  "dangling_endpoint_edges": 164,
+  "self_loop_edges": 0,
+  "valid_candidate_edges": 6390,
+  "exact_duplicate_edges": 0,
+  "directed_unique_endpoint_pairs": 6357,
+  "directed_same_endpoint_collapsed_edges": 33,
+  "undirected_unique_endpoint_pairs": 6341,
+  "undirected_same_endpoint_collapsed_edges": 49,
+  "same_endpoint_group_count": 33,
+  "relation_variant_groups": 33,
+  "source_file_variant_groups": 0,
+  "source_location_variant_groups": 0,
+  "context_variant_groups": 0,
+  "post_build_graph_type": "Graph",
+  "post_build_node_count": 2694,
+  "post_build_edge_count": 6341,
+  "post_build_error": "",
+  "producer_suppression": {
+    "path": "/Users/kstroevsky/.local/share/uv/tools/graphifyy/lib/python3.13/site-packages/graphify/extract.py",
+    "total_sites": 11,
+    "sites": [
+      {
+        "line": 1099,
+        "name": "seen_ids",
+        "tuple_arity": 0,
+        "sample": "seen_ids = {n[\"id\"] for n in nodes}"
+      },
+      {
+        "line": 1253,
+        "name": "seen_ids",
+        "tuple_arity": 0,
+        "sample": "seen_ids = {n[\"id\"] for n in nodes}"
+      },
+      {
+        "line": 1255,
+        "name": "seen_doc_refs",
+        "tuple_arity": 0,
+        "sample": "seen_doc_refs: set[str] = set()"
+      },
+      {
+        "line": 1600,
+        "name": "seen_ids",
+        "tuple_arity": 0,
+        "sample": "seen_ids: set[str] = {n[\"id\"] for n in nodes}"
+      },
+      {
+        "line": 2069,
+        "name": "seen_keys",
+        "tuple_arity": 0,
+        "sample": "seen_keys: set[tuple] = set()"
+      },
+      {
+        "line": 2147,
+        "name": "seen_keys",
+        "tuple_arity": 0,
+        "sample": "seen_keys: set[tuple] = set()"
+      },
+      {
+        "line": 3191,
+        "name": "seen_ids",
+        "tuple_arity": 0,
+        "sample": "seen_ids: set[str] = set()"
+      },
+      {
+        "line": 3299,
+        "name": "seen_ids",
+        "tuple_arity": 0,
+        "sample": "seen_ids: set[str] = set()"
+      },
+      {
+        "line": 3378,
+        "name": "seen_ids",
+        "tuple_arity": 0,
+        "sample": "seen_ids: set[str] = set()"
+      },
+      {
+        "line": 3893,
+        "name": "seen_ids",
+        "tuple_arity": 0,
+        "sample": "seen_ids: set[str] = set()"
+      },
+      {
+        "line": 3894,
+        "name": "seen_edges",
+        "tuple_arity": 4,
+        "sample": "seen_edges: set[tuple[str, str, str, str | None]] = set()"
+      }
+    ],
+    "error": ""
+  },
+  "examples": [
+    {
+      "source": "scripts_lib_manifesttargets",
+      "target": "scripts_lib_manifesttargets_gettargetprofile",
+      "edge_count": 2,
+      "relations": [
+        "contains",
+        "indirect_call"
+      ],
+      "source_files": [
+        "scripts/lib/manifestTargets.cjs"
+      ],
+      "source_locations": [
+        "L34",
+        "L82"
+      ],
+      "contexts": [
+        "",
+        "collection"
+      ]
+    },
+    {
+      "source": "scripts_lib_manifesttargets",
+      "target": "scripts_lib_manifesttargets_useswebauthflow",
+      "edge_count": 2,
+      "relations": [
+        "contains",
+        "indirect_call"
+      ],
+      "source_files": [
+        "scripts/lib/manifestTargets.cjs"
+      ],
+      "source_locations": [
+        "L45",
+        "L83"
+      ],
+      "contexts": [
+        "",
+        "collection"
+      ]
+    },
+    {
+      "source": "scripts_lib_manifesttargets",
+      "target": "scripts_lib_manifesttargets_applytargettomanifest",
+      "edge_count": 2,
+      "relations": [
+        "contains",
+        "indirect_call"
+      ],
+      "source_files": [
+        "scripts/lib/manifestTargets.cjs"
+      ],
+      "source_locations": [
+        "L57",
+        "L84"
+      ],
+      "contexts": [
+        "",
+        "collection"
+      ]
+    },
+    {
+      "source": "scripts_lib_manifestversion",
+      "target": "scripts_lib_manifestversion_tochromemanifestversion",
+      "edge_count": 2,
+      "relations": [
+        "contains",
+        "indirect_call"
+      ],
+      "source_files": [
+        "scripts/lib/manifestVersion.cjs"
+      ],
+      "source_locations": [
+        "L24",
+        "L63"
+      ],
+      "contexts": [
+        "",
+        "collection"
+      ]
+    },
+    {
+      "source": "scripts_lib_manifestversion",
+      "target": "scripts_lib_manifestversion_comparechromeversions",
+      "edge_count": 2,
+      "relations": [
+        "contains",
+        "indirect_call"
+      ],
+      "source_files": [
+        "scripts/lib/manifestVersion.cjs"
+      ],
+      "source_locations": [
+        "L52",
+        "L63"
+      ],
+      "contexts": [
+        "",
+        "collection"
+      ]
+    }
+  ]
+}
