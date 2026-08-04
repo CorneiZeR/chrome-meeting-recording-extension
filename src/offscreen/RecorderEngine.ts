@@ -45,6 +45,10 @@ type DefaultInputDevice = {
   label: string;
 };
 
+// Chrome resolves this virtual audio-input id to the current browser/OS default.
+// Unlike a physical id, it remains valid when macOS changes its default input.
+const DEFAULT_MICROPHONE_DEVICE_ID = 'default';
+
 export class RecorderEngine {
   private readonly deps: RecorderEngineDeps;
 
@@ -136,9 +140,10 @@ export class RecorderEngine {
   /** Switches a live input in place so its MediaRecorder keeps the same continuous track. */
   async setInputDevice(device: RecordingInputDevice, deviceId: string): Promise<string> {
     const label = await this.switchInputDevice(device, deviceId);
-    // A deliberate picker choice pins this input for the rest of the run. A new
-    // recording starts in follow-default mode again.
-    this.followsDefaultInput[device] = false;
+    // A physical picker choice pins this input for the rest of the run. Choosing
+    // Chrome's virtual default alias explicitly keeps follow-default mode active.
+    this.followsDefaultInput[device] = device === 'microphone'
+      && deviceId === DEFAULT_MICROPHONE_DEVICE_ID;
     return label;
   }
 
@@ -192,24 +197,37 @@ export class RecorderEngine {
   private async refreshDefaultInputDevices(): Promise<void> {
     if (this.state !== 'recording') return;
     const nextDefaults = await this.resolveDefaultInputDevices();
-    for (const device of ['microphone', 'camera'] as const) {
-      if (!this.followsDefaultInput[device]) continue;
-      if (device === 'microphone' && this.micMode === 'off') continue;
-      if (device === 'camera' && !this.recordSelfVideo) continue;
-      const previous = this.defaultInputDevices[device];
-      const next = nextDefaults[device];
-      if (!next || (previous?.deviceId === next.deviceId && previous.label === next.label)) continue;
+
+    // `devicechange` is the reliable signal here; device enumeration in an
+    // offscreen document may still hide ids or labels. Reopening the virtual
+    // alias makes Chrome resolve whichever input is default now.
+    if (this.followsDefaultInput.microphone && this.micMode !== 'off') {
       try {
-        await this.switchInputDevice(device, next.deviceId);
-        this.defaultInputDevices[device] = next;
-        this.deps.log(`Followed new default ${device}:`, next.label || next.deviceId);
+        const label = await this.switchInputDevice('microphone', DEFAULT_MICROPHONE_DEVICE_ID);
+        this.defaultInputDevices.microphone = {
+          deviceId: DEFAULT_MICROPHONE_DEVICE_ID,
+          label,
+        };
+        this.deps.log('Followed new default microphone:', label);
       } catch (error) {
-        this.deps.warn(`Could not follow new default ${device}`, describeMediaError(error));
+        this.deps.warn('Could not follow new default microphone', describeMediaError(error));
       }
+    }
+
+    if (!this.followsDefaultInput.camera || !this.recordSelfVideo) return;
+    const previousCamera = this.defaultInputDevices.camera;
+    const nextCamera = nextDefaults.camera;
+    if (!nextCamera || (previousCamera?.deviceId === nextCamera.deviceId && previousCamera.label === nextCamera.label)) return;
+    try {
+      await this.switchInputDevice('camera', nextCamera.deviceId);
+      this.defaultInputDevices.camera = nextCamera;
+      this.deps.log('Followed new default camera:', nextCamera.label || nextCamera.deviceId);
+    } catch (error) {
+      this.deps.warn('Could not follow new default camera', describeMediaError(error));
     }
   }
 
-  /** enumerateDevices orders the current default first for each input kind. */
+  /** Uses Chrome's live microphone alias; enumeration remains camera-only metadata. */
   private async resolveDefaultInputDevices(): Promise<Partial<Record<RecordingInputDevice, DefaultInputDevice>>> {
     try {
       const devices = await navigator.mediaDevices.enumerateDevices();
@@ -218,12 +236,17 @@ export class RecorderEngine {
         return device ? { deviceId: device.deviceId, label: device.label } : undefined;
       };
       return {
-        microphone: first('audioinput'),
+        microphone: {
+          deviceId: DEFAULT_MICROPHONE_DEVICE_ID,
+          label: first('audioinput')?.label ?? '',
+        },
         camera: first('videoinput'),
       };
     } catch (error) {
       this.deps.warn('Could not resolve current default capture devices', describeMediaError(error));
-      return {};
+      return {
+        microphone: { deviceId: DEFAULT_MICROPHONE_DEVICE_ID, label: '' },
+      };
     }
   }
 
