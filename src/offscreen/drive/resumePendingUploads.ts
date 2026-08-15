@@ -15,7 +15,7 @@ import { createCachedTokenProvider, type TokenProvider } from './request';
 import type { PendingUpload, PendingUploadStore } from './PendingUploadStore';
 import { isWebmRecordingFilename } from '../../shared/recordingFormats';
 
-type RecoveredDriveFile = Pick<DriveUploadResult, 'id' | 'webViewLink'> | void;
+type RecoveredDriveFile = Pick<DriveUploadResult, 'id' | 'webViewLink' | 'driveFolderId' | 'driveFolderName' | 'folderWebViewLink'> | void;
 
 export type ResumePendingUploadsDeps = {
   store: PendingUploadStore;
@@ -31,7 +31,7 @@ export type ResumePendingUploadsDeps = {
 };
 
 type RecoveryOutcome =
-  | { status: 'uploaded'; bytes: number; driveFileId?: string; webViewLink?: string }
+  | { status: 'uploaded'; bytes: number; driveFileId?: string; webViewLink?: string; driveFolderId?: string; driveFolderName?: string; folderWebViewLink?: string }
   | { status: 'retry-pending'; bytes?: number; error: string }
   | { status: 'unavailable'; error: string };
 
@@ -61,6 +61,9 @@ export async function resumePendingDriveUploads(deps: ResumePendingUploadsDeps):
         bytes: fixed.size,
         ...(uploaded?.id ? { driveFileId: uploaded.id } : {}),
         ...(uploaded?.webViewLink ? { webViewLink: uploaded.webViewLink } : {}),
+        ...(uploaded?.driveFolderId ? { driveFolderId: uploaded.driveFolderId } : {}),
+        ...(uploaded?.driveFolderName ? { driveFolderName: uploaded.driveFolderName } : {}),
+        ...(uploaded?.folderWebViewLink ? { folderWebViewLink: uploaded.folderWebViewLink } : {}),
       });
       await deps.store.remove(entry.opfsFilename);
       await deps.removeOpfsFile(entry.opfsFilename);
@@ -81,11 +84,16 @@ export async function resumePendingDriveUploads(deps: ResumePendingUploadsDeps):
     const uploaded = files.filter((file) => file.status === 'uploaded').length;
     const recoveryPending = files.some((file) => file.status === 'retry-pending');
     const status: UploadJob['status'] = uploaded === files.length ? 'completed' : uploaded > 0 ? 'partial' : 'failed';
+    const folder = [...outcomes.values()].find((outcome): outcome is Extract<RecoveryOutcome, { status: 'uploaded' }> => outcome.status === 'uploaded' && !!outcome.driveFolderId);
     await reportSafely(deps, {
       ...group.job,
       status,
       progress: 1,
       files,
+      ...(folder?.driveFolderId ? { driveFolderId: folder.driveFolderId } : {}),
+      ...(folder?.driveFolderName ? { driveFolderName: folder.driveFolderName } : {}),
+      ...(folder?.folderWebViewLink ? { folderWebViewLink: folder.folderWebViewLink } : {}),
+      ...(status === 'completed' ? { namingStatus: 'pending' as const } : {}),
       finishedAt: now(),
       ...(recoveryPending ? { recoveryPending: true as const } : {}),
     });
@@ -108,6 +116,7 @@ function groupRecoverableJobs(pending: PendingUpload[], startedAt: number): Map<
         id: entry.jobId,
         historyId: entry.historyId,
         label: entry.recordingFolderName,
+        driveFolderName: entry.recordingFolderName,
         status: 'uploading',
         progress: 0,
         files: [{ stream: entry.stream, filename: entry.filename, status: 'uploading' }],

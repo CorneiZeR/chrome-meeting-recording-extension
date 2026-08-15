@@ -59,11 +59,34 @@ describe('shared/recording helpers', () => {
           { stream: 'unexpected', filename: ' fallback.webm ', error: ' failed ' },
           null,
         ],
+        driveFolderId: ' folder-1 ',
+        driveFolderName: ' recording-folder ',
       })
     ).toEqual({
       uploaded: [{ stream: 'tab', filename: 'meeting.webm' }],
       localFallbacks: [{ stream: 'tab', filename: 'fallback.webm', error: 'failed' }],
+      driveFolderId: 'folder-1',
+      driveFolderName: 'recording-folder',
     });
+  });
+
+  it('normalizes persisted upload naming and folder metadata', () => {
+    expect(normalizeUploadJobs([{
+      id: 'job-1',
+      historyId: 'recording:1',
+      label: 'Quarterly Review',
+      status: 'completed',
+      progress: 1,
+      driveFolderId: ' folder-1 ',
+      driveFolderName: ' quarterly-review ',
+      namingStatus: 'pending',
+      files: [{ stream: 'tab', filename: 'meeting.webm', status: 'uploaded' }],
+      startedAt: 1,
+    }]))?.toEqual([expect.objectContaining({
+      driveFolderId: 'folder-1',
+      driveFolderName: 'quarterly-review',
+      namingStatus: 'pending',
+    })]);
   });
 });
 

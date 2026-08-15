@@ -21,6 +21,10 @@ export type RecordingHistoryEntry = {
   /** Captured duration when the recorder runtime supplied it. Legacy rows omit it. */
   durationMs?: number;
   userNamed?: true;
+  /** Persisted per-recording Drive folder metadata for later artifact renames. */
+  driveFolderId?: string;
+  driveFolderName?: string;
+  folderWebViewLink?: string;
   createdAt: number;
   storageMode: StorageMode;
   status: 'saving' | 'complete' | 'partial';
@@ -86,6 +90,9 @@ export function normalizeRecordingHistoryEntry(value: unknown): RecordingHistory
     ...(note ? { note } : {}),
     ...(durationMs != null ? { durationMs } : {}),
     ...(candidate.userNamed === true ? { userNamed: true as const } : {}),
+    ...(typeof candidate.driveFolderId === 'string' && candidate.driveFolderId.trim() ? { driveFolderId: candidate.driveFolderId.trim() } : {}),
+    ...(typeof candidate.driveFolderName === 'string' && candidate.driveFolderName.trim() ? { driveFolderName: candidate.driveFolderName.trim() } : {}),
+    ...(typeof candidate.folderWebViewLink === 'string' && candidate.folderWebViewLink.trim() ? { folderWebViewLink: candidate.folderWebViewLink.trim() } : {}),
     createdAt,
     storageMode,
     status,

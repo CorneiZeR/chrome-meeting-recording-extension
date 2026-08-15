@@ -118,7 +118,13 @@ describe('resumePendingDriveUploads', () => {
     const reportJob = jest.fn();
     const deps = makeDeps({
       store: fakeStore([owned]),
-      uploadFile: jest.fn(async () => ({ id: 'drive-1', webViewLink: 'https://drive.example/file/1' })),
+      uploadFile: jest.fn(async () => ({
+        id: 'drive-1',
+        webViewLink: 'https://drive.example/file/1',
+        driveFolderId: 'folder-1',
+        driveFolderName: 'folder',
+        folderWebViewLink: 'https://drive.example/folder/1',
+      })),
       reportJob,
     });
 
@@ -129,6 +135,8 @@ describe('resumePendingDriveUploads', () => {
     }));
     expect(reportJob).toHaveBeenLastCalledWith(expect.objectContaining({
       id: 'job-1', historyId: 'recording:1', status: 'completed',
+      driveFolderId: 'folder-1', driveFolderName: 'folder',
+      folderWebViewLink: 'https://drive.example/folder/1', namingStatus: 'pending',
       files: [expect.objectContaining({ stream: 'tab', status: 'uploaded', driveFileId: 'drive-1' })],
     }));
   });

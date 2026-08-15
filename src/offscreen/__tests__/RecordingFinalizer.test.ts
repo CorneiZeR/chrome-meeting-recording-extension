@@ -110,6 +110,8 @@ describe('RecordingFinalizer', () => {
           error: 'AbortError: network timeout code=20',
         },
       ],
+      driveFolderId: 'folder-1',
+      driveFolderName: expect.stringMatching(/^google-meet-/),
       folderWebViewLink: 'https://drive.google.com/drive/folders/folder-1',
     });
     expect(deps.requestSave).toHaveBeenCalledWith(expect.objectContaining({ stream: 'tab', filename: 'tab.webm', blobUrl: 'blob:4', opfsFilename: 'tab.webm' }));
@@ -238,6 +240,8 @@ describe('RecordingFinalizer', () => {
         { stream: 'mic', filename: 'mic.webm', bytes: 4 },
       ],
       localFallbacks: [],
+      driveFolderId: 'folder-1',
+      driveFolderName: expect.stringMatching(/^google-meet-/),
       folderWebViewLink: 'https://drive.google.com/drive/folders/folder-1',
     });
     expect(deps.getDriveToken).toHaveBeenCalledTimes(1);
@@ -287,6 +291,8 @@ describe('RecordingFinalizer', () => {
         { stream: 'mic', filename: 'mic.webm', bytes: 4 },
       ],
       localFallbacks: [],
+      driveFolderId: 'folder-1',
+      driveFolderName: expect.stringMatching(/^google-meet-/),
       folderWebViewLink: 'https://drive.google.com/drive/folders/folder-1',
     });
   });
@@ -313,6 +319,7 @@ describe('RecordingFinalizer', () => {
         { stream: 'tab', filename: 'tab.webm', bytes: 4, error: 'Error: folder lookup failed' },
         { stream: 'mic', filename: 'mic.webm', bytes: 4, error: 'Error: folder lookup failed' },
       ],
+      driveFolderName: expect.stringMatching(/^google-meet-/),
     });
     expect(deps.requestSave).toHaveBeenNthCalledWith(1, expect.objectContaining({ stream: 'tab', filename: 'tab.webm', blobUrl: 'blob:4', opfsFilename: 'tab.webm' }));
     expect(deps.requestSave).toHaveBeenNthCalledWith(2, expect.objectContaining({ stream: 'mic', filename: 'mic.webm', blobUrl: 'blob:4', opfsFilename: 'mic.webm' }));
@@ -354,6 +361,8 @@ describe('RecordingFinalizer', () => {
       localFallbacks: [
         { stream: 'tab', filename: 'tab.webm', bytes: 4, error: 'AbortError: network timeout code=20' },
       ],
+      driveFolderId: 'folder-1',
+      driveFolderName: expect.stringMatching(/^google-meet-/),
       folderWebViewLink: 'https://drive.google.com/drive/folders/folder-1',
     });
     expect(deps.requestSave).toHaveBeenCalledWith(expect.objectContaining({ stream: 'tab', filename: 'tab.webm', blobUrl: 'blob:4', opfsFilename: 'tab.webm' }));

@@ -117,6 +117,7 @@ export class UploadManager {
       })),
       startedAt: this.now(),
     };
+    job.driveFolderName = job.label;
     const task = { job, artifacts, skipLocalFallback, telemetryRunId, controller: new AbortController() };
     this.pending.push(task);
     this.jobs.set(id, task);
@@ -258,7 +259,17 @@ export class UploadManager {
     const allFallback = files.length > 0 && files.every((f) => f.status === 'fallback');
     const anyFallback = files.some((f) => f.status === 'fallback');
     const status: UploadJobStatus = canceled ? 'canceled' : allFallback ? 'failed' : anyFallback ? 'partial' : 'completed';
-    return { ...job, status, progress: 1, folderWebViewLink: summary?.folderWebViewLink ?? job.folderWebViewLink, files, finishedAt: this.now() };
+    return {
+      ...job,
+      status,
+      progress: 1,
+      folderWebViewLink: summary?.folderWebViewLink ?? job.folderWebViewLink,
+      driveFolderId: summary?.driveFolderId ?? job.driveFolderId,
+      driveFolderName: summary?.driveFolderName ?? job.driveFolderName,
+      namingStatus: status === 'completed' && job.historyId ? (job.namingStatus ?? 'pending') : undefined,
+      files,
+      finishedAt: this.now(),
+    };
   }
 }
 

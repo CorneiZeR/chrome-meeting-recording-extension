@@ -20,6 +20,7 @@ import type {
 } from '../shared/protocol';
 import type { RecorderEngine } from './RecorderEngine';
 import { describeRuntimeError } from './errors';
+import type { DriveRenameResource } from './drive/DriveMetadataRenamer';
 
 export type RpcHandlerDeps = {
   engine: RecorderEngine;
@@ -35,6 +36,7 @@ export type RpcHandlerDeps = {
   /** Cancels an active/queued upload and starts local fallback downloads. */
   cancelUpload: (jobId: string) => boolean;
   acknowledgeUploadState: (jobId: string) => Promise<void>;
+  renameDriveResources?: (resources: DriveRenameResource[]) => Promise<DriveRenameResource[]>;
   pushState: (
     phase: RecordingPhase,
     extra?: Pick<OffscreenPhaseUpdate, 'uploadSummary' | 'error' | 'tabResolution'>
@@ -173,6 +175,23 @@ async function handleOffscreenCancelUpload(
   return canceled ? { ok: true } : { ok: false, error: 'Upload is no longer active' };
 }
 
+async function handleOffscreenRenameDriveResources(
+  msg: Extract<BgToOffscreenRpc, { type: 'OFFSCREEN_RENAME_DRIVE_RESOURCES' }>,
+  deps: RpcHandlerDeps,
+): Promise<{ ok: boolean; resources?: DriveRenameResource[]; error?: string; rollbackIncomplete?: boolean }> {
+  if (!deps.renameDriveResources) return { ok: false, error: 'Drive rename is unavailable' };
+  try {
+    return { ok: true, resources: await deps.renameDriveResources(msg.resources) };
+  } catch (error: any) {
+    return {
+      ok: false,
+      error: describeRuntimeError(error),
+      ...(Array.isArray(error?.currentResources) ? { resources: error.currentResources } : {}),
+      ...(error?.rollbackIncomplete === true ? { rollbackIncomplete: true } : {}),
+    };
+  }
+}
+
 async function handleRevokeBlobUrl(
   msg: Extract<BgToOffscreenOneWay, { type: 'REVOKE_BLOB_URL' }>,
   deps: RpcHandlerDeps
@@ -212,6 +231,7 @@ export function wirePortHandlers(port: chrome.runtime.Port, deps: RpcHandlerDeps
       OFFSCREEN_SET_PAUSED: (msg) => handleOffscreenSetPaused(msg, deps),
       OFFSCREEN_RETRY_UPLOAD: (msg) => handleOffscreenRetryUpload(msg, deps),
       OFFSCREEN_CANCEL_UPLOAD: (msg) => handleOffscreenCancelUpload(msg, deps),
+      OFFSCREEN_RENAME_DRIVE_RESOURCES: (msg) => handleOffscreenRenameDriveResources(msg, deps),
       REVOKE_BLOB_URL:   (msg) => handleRevokeBlobUrl(msg, deps),
       OFFSCREEN_ACK_UPLOAD_STATE: (msg) => handleAcknowledgeUploadState(msg, deps),
     },

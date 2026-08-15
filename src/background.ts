@@ -48,7 +48,15 @@ import { TelemetryRuntime } from './background/TelemetryRuntime';
 
 const L = makeLogger('background');
 const offscreen = new OffscreenManager();
-const history = new RecordingHistoryService(new RecordingHistoryRepository(), openDownloadedFile);
+const history = new RecordingHistoryService(
+  new RecordingHistoryRepository(),
+  openDownloadedFile,
+  Date.now,
+  async (resources) => {
+    await offscreen.ensureReady();
+    return await offscreen.rpc({ type: 'OFFSCREEN_RENAME_DRIVE_RESOURCES', resources });
+  },
+);
 const telemetry = new TelemetryRuntime();
 
 globalThis.addEventListener?.('error', (event: ErrorEvent) => {
@@ -167,9 +175,17 @@ offscreen.onUploadJobChanged = (job, telemetryRunId, telemetrySnapshot) => {
 
 async function persistUploadState(job: import('./shared/recording').UploadJob): Promise<void> {
   try {
-    session.upsertUploadJob(job);
-    await session.flush();
-    await history.applyUploadJob(job);
+    // A terminal state can trigger the popup's naming modal immediately. Persist its
+    // history entry first so the rename command can never race a missing recording.
+    if (job.status === 'uploading') {
+      session.upsertUploadJob(job);
+      await session.flush();
+      await history.applyUploadJob(job);
+    } else {
+      await history.applyUploadJob(job);
+      session.upsertUploadJob(job);
+      await session.flush();
+    }
     if (job.status !== 'uploading') await offscreen.acknowledgeUploadState?.(job.id);
   } catch (error) {
     // Do not acknowledge a terminal outbox item unless both persisted views are

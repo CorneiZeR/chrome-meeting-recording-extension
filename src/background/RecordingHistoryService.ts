@@ -1,5 +1,6 @@
 import type { DownloadSettledResult } from '../platform/chrome/downloads';
 import type { RecordingStream, StorageMode, UploadJob } from '../shared/recording';
+import { buildRenamedRecordingFilename, slugifyRecordingTitle } from '../shared/recording';
 import {
   recordingLabelFromFilename,
   type RecordingHistoryCursor,
@@ -10,6 +11,14 @@ import {
 import type { RecordingHistoryRepositoryPort } from './RecordingHistoryRepository';
 
 type PendingFile = Pick<RecordingHistoryFile, 'id' | 'stream' | 'filename' | 'bytes'>;
+type DriveRenameResource = { id: string; name: string };
+export type DriveRenameResult = {
+  ok: boolean;
+  resources?: DriveRenameResource[];
+  error?: string;
+  rollbackIncomplete?: boolean;
+};
+export type DriveRecordingRenamer = (resources: DriveRenameResource[]) => Promise<DriveRenameResult>;
 
 /** Owns every recording-history transition, including delayed upload and download work. */
 export class RecordingHistoryService {
@@ -17,6 +26,7 @@ export class RecordingHistoryService {
     private readonly repository: RecordingHistoryRepositoryPort,
     private readonly openDownload: (downloadId: number) => Promise<void>,
     private readonly now: () => number = Date.now,
+    private readonly renameDriveResources?: DriveRecordingRenamer,
   ) {}
 
   async listPage(cursor?: RecordingHistoryCursor): Promise<RecordingHistoryPage> {
@@ -30,11 +40,74 @@ export class RecordingHistoryService {
   async rename(id: string, name: string): Promise<RecordingHistoryEntry | undefined> {
     const trimmed = name.trim();
     if (!trimmed) throw new Error('Recording name cannot be blank');
+    const slug = slugifyRecordingTitle(trimmed);
+    if (!slug) throw new Error('Recording name must contain at least one letter or number');
+    const current = await this.repository.get(id);
+    if (!current || current.deletedAt) return undefined;
+
+    const remoteTargets = this.buildDriveRenameTargets(current, trimmed, slug);
+    const renamedFileIds = new Set(remoteTargets?.slice(0, -1).map((target) => target.id) ?? []);
+    if (remoteTargets) {
+      if (!this.renameDriveResources) throw new Error('Drive rename is unavailable');
+      const result = await this.renameDriveResources(remoteTargets);
+      if (!result.ok) {
+        if (result.rollbackIncomplete && result.resources?.length) {
+          await this.syncObservedDriveNames(id, result.resources);
+        }
+        throw new Error(result.error || 'Could not rename the recording in Google Drive');
+      }
+    }
+
     const updated = await this.repository.update(id, (current) => {
       if (!current || current.deletedAt) return current;
-      return { ...current, name: trimmed, userNamed: true as const };
+      const files = remoteTargets
+        ? current.files.map((file) => file.driveFileId && renamedFileIds.has(file.driveFileId)
+          ? { ...file, filename: buildRenamedRecordingFilename(trimmed, file.stream, file.filename) }
+          : file)
+        : current.files;
+      return {
+        ...current,
+        name: trimmed,
+        userNamed: true as const,
+        files,
+        ...(remoteTargets ? { driveFolderName: slug } : {}),
+      };
     });
     return updated?.deletedAt ? undefined : updated;
+  }
+
+  private buildDriveRenameTargets(entry: RecordingHistoryEntry, title: string, slug: string): DriveRenameResource[] | null {
+    if (entry.storageMode !== 'drive') return null;
+    // Legacy history rows predate folder IDs. Keep their established display-only
+    // rename behavior because there is no reliable remote folder to target.
+    if (!entry.driveFolderId) return null;
+    const remoteFiles = entry.files.filter((file) => file.destination === 'drive' && file.status === 'available');
+    if (remoteFiles.some((file) => !file.driveFileId)) {
+      throw new Error('This Drive recording is missing the metadata needed to rename all uploaded files');
+    }
+    return [
+      ...remoteFiles.map((file) => ({
+        id: file.driveFileId!,
+        name: buildRenamedRecordingFilename(title, file.stream, file.filename),
+      })),
+      { id: entry.driveFolderId, name: slug },
+    ];
+  }
+
+  private async syncObservedDriveNames(id: string, resources: DriveRenameResource[]): Promise<void> {
+    const byId = new Map(resources.map((resource) => [resource.id, resource.name]));
+    await this.repository.update(id, (current) => {
+      if (!current || current.deletedAt) return current;
+      return {
+        ...current,
+        files: current.files.map((file) => file.driveFileId && byId.has(file.driveFileId)
+          ? { ...file, filename: byId.get(file.driveFileId)! }
+          : file),
+        ...(current.driveFolderId && byId.has(current.driveFolderId)
+          ? { driveFolderName: byId.get(current.driveFolderId)! }
+          : {}),
+      };
+    });
   }
 
   async setNote(id: string, note: string): Promise<RecordingHistoryEntry | undefined> {
@@ -110,7 +183,15 @@ export class RecordingHistoryService {
         if (file.destination === 'local' && file.status === 'available') return file;
         return { ...file, destination: 'local' as const, status: 'pending' as const };
       });
-      return { ...current, storageMode: 'drive', files, status: summarize(files) };
+      return {
+        ...current,
+        storageMode: 'drive',
+        files,
+        status: summarize(files),
+        ...(job.driveFolderId ? { driveFolderId: job.driveFolderId } : {}),
+        ...(job.driveFolderName ? { driveFolderName: job.driveFolderName } : {}),
+        ...(job.folderWebViewLink ? { folderWebViewLink: job.folderWebViewLink } : {}),
+      };
     });
   }
 
@@ -174,7 +255,17 @@ function createEntryFromUploadJob(job: UploadJob): RecordingHistoryEntry {
     webViewLink: file.webViewLink,
     error: file.error,
   }));
-  return { id: historyId, name: job.label, createdAt: job.startedAt, storageMode: 'drive', status: summarize(files), files };
+  return {
+    id: historyId,
+    name: job.label,
+    createdAt: job.startedAt,
+    storageMode: 'drive',
+    status: summarize(files),
+    files,
+    ...(job.driveFolderId ? { driveFolderId: job.driveFolderId } : {}),
+    ...(job.driveFolderName ? { driveFolderName: job.driveFolderName } : {}),
+    ...(job.folderWebViewLink ? { folderWebViewLink: job.folderWebViewLink } : {}),
+  };
 }
 
 function summarize(files: RecordingHistoryFile[]): RecordingHistoryEntry['status'] {

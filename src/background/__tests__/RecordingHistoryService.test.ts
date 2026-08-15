@@ -117,4 +117,131 @@ describe('RecordingHistoryService', () => {
       files: [expect.objectContaining({ destination: 'drive', status: 'pending', error: 'network down' })],
     }));
   });
+
+  it('renames a completed Drive folder and every media file before committing history', async () => {
+    const repo = new MemoryRepository();
+    const renameDrive = jest.fn(async () => ({ ok: true }));
+    const service = new RecordingHistoryService(repo, jest.fn(), () => 10, renameDrive);
+    await service.applyUploadJob({
+      id: 'job-1',
+      historyId: 'r1',
+      label: 'Default recording',
+      status: 'completed',
+      progress: 1,
+      driveFolderId: 'folder-1',
+      driveFolderName: 'default-recording',
+      folderWebViewLink: 'https://drive.example/folder-1',
+      namingStatus: 'pending',
+      files: [
+        { stream: 'tab', filename: 'default-recording.webm', status: 'uploaded', driveFileId: 'tab-1' },
+        { stream: 'mic', filename: 'default-mic.m4a', status: 'uploaded', driveFileId: 'mic-1' },
+        { stream: 'self-video', filename: 'default-self-video.mp4', status: 'uploaded', driveFileId: 'camera-1' },
+      ],
+      startedAt: 10,
+      finishedAt: 11,
+    });
+
+    const renamed = await service.rename('r1', '  Quarterly Review  ');
+
+    expect(renameDrive).toHaveBeenCalledWith([
+      { id: 'tab-1', name: 'quarterly-review-recording.webm' },
+      { id: 'mic-1', name: 'quarterly-review-mic.m4a' },
+      { id: 'camera-1', name: 'quarterly-review-self-video.mp4' },
+      { id: 'folder-1', name: 'quarterly-review' },
+    ]);
+    expect(renamed).toEqual(expect.objectContaining({
+      name: 'Quarterly Review',
+      userNamed: true,
+      driveFolderName: 'quarterly-review',
+      files: [
+        expect.objectContaining({ filename: 'quarterly-review-recording.webm' }),
+        expect.objectContaining({ filename: 'quarterly-review-mic.m4a' }),
+        expect.objectContaining({ filename: 'quarterly-review-self-video.mp4' }),
+      ],
+    }));
+  });
+
+  it('keeps local filenames unchanged when only the history title can be renamed', async () => {
+    const repo = new MemoryRepository();
+    const renameDrive = jest.fn();
+    const service = new RecordingHistoryService(repo, jest.fn(), () => 10, renameDrive);
+    await service.createPending('r1', [{ id: 'r1:tab', stream: 'tab', filename: 'default-recording.webm' }], 'local');
+
+    const renamed = await service.rename('r1', 'Quarterly Review');
+
+    expect(renameDrive).not.toHaveBeenCalled();
+    expect(renamed).toEqual(expect.objectContaining({
+      name: 'Quarterly Review',
+      files: [expect.objectContaining({ filename: 'default-recording.webm' })],
+    }));
+  });
+
+  it('renames only uploaded artifacts for a partial Drive recording', async () => {
+    const repo = new MemoryRepository();
+    const renameDrive = jest.fn(async () => ({ ok: true }));
+    const service = new RecordingHistoryService(repo, jest.fn(), () => 10, renameDrive);
+    repo.entries.set('r1', {
+      id: 'r1', name: 'Default recording', createdAt: 1, storageMode: 'drive', status: 'partial',
+      driveFolderId: 'folder-1', driveFolderName: 'default-recording',
+      files: [
+        { id: 'r1:tab', stream: 'tab', filename: 'default-recording.webm', destination: 'drive', status: 'available', driveFileId: 'tab-1' },
+        { id: 'r1:mic', stream: 'mic', filename: 'default-mic.m4a', destination: 'local', status: 'available', downloadId: 7 },
+      ],
+    });
+
+    const renamed = await service.rename('r1', 'Quarterly Review');
+
+    expect(renameDrive).toHaveBeenCalledWith([
+      { id: 'tab-1', name: 'quarterly-review-recording.webm' },
+      { id: 'folder-1', name: 'quarterly-review' },
+    ]);
+    expect(renamed?.files).toEqual([
+      expect.objectContaining({ filename: 'quarterly-review-recording.webm' }),
+      expect.objectContaining({ filename: 'default-mic.m4a' }),
+    ]);
+  });
+
+  it('keeps legacy Drive history rename-compatible when folder metadata is absent', async () => {
+    const repo = new MemoryRepository();
+    const renameDrive = jest.fn();
+    const service = new RecordingHistoryService(repo, jest.fn(), () => 10, renameDrive);
+    repo.entries.set('r1', {
+      id: 'r1', name: 'Legacy recording', createdAt: 1, storageMode: 'drive', status: 'complete',
+      files: [{ id: 'r1:tab', stream: 'tab', filename: 'legacy-recording.webm', destination: 'drive', status: 'available', driveFileId: 'tab-1' }],
+    });
+
+    const renamed = await service.rename('r1', 'New display title');
+
+    expect(renameDrive).not.toHaveBeenCalled();
+    expect(renamed).toEqual(expect.objectContaining({
+      name: 'New display title',
+      files: [expect.objectContaining({ filename: 'legacy-recording.webm' })],
+    }));
+  });
+
+  it('synchronizes observed Drive names after an incomplete rollback and leaves the title unchanged', async () => {
+    const repo = new MemoryRepository();
+    const service = new RecordingHistoryService(repo, jest.fn(), () => 10, async () => ({
+      ok: false,
+      error: 'partial rename',
+      rollbackIncomplete: true,
+      resources: [
+        { id: 'tab-1', name: 'quarterly-review-recording.webm' },
+        { id: 'folder-1', name: 'default-recording' },
+      ],
+    }));
+    await service.applyUploadJob({
+      id: 'job-1', historyId: 'r1', label: 'Default recording', status: 'completed', progress: 1,
+      driveFolderId: 'folder-1', driveFolderName: 'default-recording',
+      files: [{ stream: 'tab', filename: 'default-recording.webm', status: 'uploaded', driveFileId: 'tab-1' }],
+      startedAt: 10, finishedAt: 11,
+    });
+
+    await expect(service.rename('r1', 'Quarterly Review')).rejects.toThrow('partial rename');
+    expect(await repo.get('r1')).toEqual(expect.objectContaining({
+      name: 'Default recording',
+      driveFolderName: 'default-recording',
+      files: [expect.objectContaining({ filename: 'quarterly-review-recording.webm' })],
+    }));
+  });
 });

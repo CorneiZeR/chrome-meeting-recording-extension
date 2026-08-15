@@ -153,7 +153,25 @@ export function registerMessageHandlers({ L, session, perfDebugStore, controller
       }
       if (msg.type === 'RENAME_RECORDING_HISTORY') {
         if (!history) throw new Error('Recording history is unavailable');
-        sendResponse({ ok: true, entry: await history.rename(msg.id, msg.name) }); return;
+        const entry = await history.rename(msg.id, msg.name);
+        let renamedSnapshot = session.getSnapshot();
+        const job = renamedSnapshot.uploadJobs?.find((candidate) => candidate.historyId === msg.id);
+        if (entry && job) {
+          renamedSnapshot = session.upsertUploadJob({
+            ...job,
+            label: entry.name,
+            namingStatus: 'named',
+            driveFolderId: entry.driveFolderId ?? job.driveFolderId,
+            driveFolderName: entry.driveFolderName ?? job.driveFolderName,
+            folderWebViewLink: entry.folderWebViewLink ?? job.folderWebViewLink,
+            files: job.files.map((file) => {
+              const renamed = entry.files.find((candidate) => candidate.stream === file.stream);
+              return renamed ? { ...file, filename: renamed.filename } : file;
+            }),
+          });
+          await session.flush();
+        }
+        sendResponse({ ok: true, entry, session: toStatusView(renamedSnapshot) }); return;
       }
       if (msg.type === 'SET_RECORDING_HISTORY_NOTE') {
         if (!history) throw new Error('Recording history is unavailable');
@@ -179,6 +197,13 @@ export function registerMessageHandlers({ L, session, perfDebugStore, controller
       if (msg.type === 'DISMISS_UPLOAD_JOB')   { sendResponse({ session: toStatusView(session.removeUploadJob(msg.jobId)) }); return; }
       if (msg.type === 'RETRY_UPLOAD_JOB')     { send(await controller.retryUpload(msg.jobId)); return; }
       if (msg.type === 'CANCEL_UPLOAD_JOB')    { send(await controller.cancelUpload(msg.jobId)); return; }
+      if (msg.type === 'SKIP_RECORDING_NAMING') {
+        const job = session.getSnapshot().uploadJobs?.find((candidate) => candidate.id === msg.jobId);
+        if (!job || job.status !== 'completed') { send({ ok: false, error: 'Completed upload was not found', session: toStatusView(session.getSnapshot()) }); return; }
+        const skippedSnapshot = session.upsertUploadJob({ ...job, namingStatus: 'skipped' });
+        await session.flush();
+        send({ ok: true, session: toStatusView(skippedSnapshot) }); return;
+      }
     })().catch((err) => {
       console.error('[background] top-level error', err);
       const error = String(err);

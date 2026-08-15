@@ -67,6 +67,8 @@ export type PopupDismissUploadJob = { type: 'DISMISS_UPLOAD_JOB'; jobId: string 
 export type PopupRetryUploadJob = { type: 'RETRY_UPLOAD_JOB'; jobId: string };
 /** Cancels an active Drive upload and downloads every unfinished file locally. */
 export type PopupCancelUploadJob = { type: 'CANCEL_UPLOAD_JOB'; jobId: string };
+/** Marks the one-time completed-upload naming prompt handled without renaming. */
+export type PopupSkipRecordingNaming = { type: 'SKIP_RECORDING_NAMING'; jobId: string };
 /** Reads one bounded, newest-first page of recording history. */
 export type PopupListRecordingHistory = { type: 'LIST_RECORDING_HISTORY'; cursor?: RecordingHistoryCursor };
 export type PopupRenameRecordingHistory = { type: 'RENAME_RECORDING_HISTORY'; id: string; name: string };
@@ -87,6 +89,7 @@ export type PopupToBg =
   | PopupDismissUploadJob
   | PopupRetryUploadJob
   | PopupCancelUploadJob
+  | PopupSkipRecordingNaming
   | PopupListRecordingHistory
   | PopupRenameRecordingHistory
   | PopupSetRecordingHistoryNote
@@ -107,7 +110,8 @@ export type PopupToBgResponse<T extends PopupToBg> =
   T extends PopupRetryUploadJob ? CommandResult :
   T extends PopupCancelUploadJob ? CommandResult :
   T extends PopupListRecordingHistory ? { ok: true; entries: RecordingHistoryEntry[]; nextCursor?: RecordingHistoryCursor } | { ok: false; error: string } :
-  T extends PopupRenameRecordingHistory ? { ok: true; entry?: RecordingHistoryEntry } | { ok: false; error: string } :
+  T extends PopupRenameRecordingHistory ? { ok: true; entry?: RecordingHistoryEntry; session?: RecordingStatusView } | { ok: false; error: string } :
+  T extends PopupSkipRecordingNaming ? CommandResult :
   T extends PopupSetRecordingHistoryNote ? { ok: true; entry?: RecordingHistoryEntry } | { ok: false; error: string } :
   T extends PopupRemoveRecordingHistory ? { ok: true; removed: boolean } | { ok: false; error: string } :
   T extends PopupOpenRecordingHistoryFile ? { ok: true } | { ok: false; error: string } :
@@ -184,7 +188,11 @@ export type BgToOffscreenRpc =
   | RpcRequest<{ type: 'OFFSCREEN_SET_INPUT_DEVICE'; device: RecordingInputDevice; deviceId: string }>
   | RpcRequest<{ type: 'OFFSCREEN_SET_PAUSED'; paused: boolean }>
   | RpcRequest<{ type: 'OFFSCREEN_RETRY_UPLOAD'; jobId: string }>
-  | RpcRequest<{ type: 'OFFSCREEN_CANCEL_UPLOAD'; jobId: string }>;
+  | RpcRequest<{ type: 'OFFSCREEN_CANCEL_UPLOAD'; jobId: string }>
+  | RpcRequest<{
+      type: 'OFFSCREEN_RENAME_DRIVE_RESOURCES';
+      resources: Array<{ id: string; name: string }>;
+    }>;
 
 export type BgToOffscreenOneWay =
   | { type: 'REVOKE_BLOB_URL'; blobUrl: string; opfsFilename?: string }

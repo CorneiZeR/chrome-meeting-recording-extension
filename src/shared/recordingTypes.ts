@@ -78,11 +78,16 @@ export type UploadSummaryEntry = {
 export type UploadSummary = {
   uploaded: UploadSummaryEntry[];
   localFallbacks: UploadSummaryEntry[];
+  /** Stable id of the per-recording Drive folder used by every uploaded artifact. */
+  driveFolderId?: string;
+  /** Actual Drive folder name, kept separately from the human-facing recording title. */
+  driveFolderName?: string;
   folderWebViewLink?: string;
 };
 
 /** Terminal-or-running state of one background Drive-upload job (ADR-0004). */
 export type UploadJobStatus = 'uploading' | 'completed' | 'failed' | 'partial' | 'canceled';
+export type RecordingNamingStatus = 'pending' | 'named' | 'skipped';
 
 /** Per-stream file outcome shown in an upload job's detail view. */
 export type UploadJobFile = {
@@ -113,6 +118,11 @@ export type UploadJob = {
   progress: number;
   /** Browser-openable Drive folder URL once the upload parent is known. */
   folderWebViewLink?: string;
+  /** Stable id/name of the per-recording Drive folder for post-upload metadata changes. */
+  driveFolderId?: string;
+  driveFolderName?: string;
+  /** One-time post-upload naming workflow state. Set only for completed uploads. */
+  namingStatus?: RecordingNamingStatus;
   /** A crash-recovery attempt retained its OPFS source and will retry when the recorder runtime starts again. */
   recoveryPending?: true;
   files: UploadJobFile[];

@@ -35,6 +35,9 @@ export type DriveUploadSharedContext = {
 };
 export type DriveUploadResult = DriveUploadFile & {
   webViewLink?: string;
+  driveFolderId?: string;
+  driveFolderName?: string;
+  folderWebViewLink?: string;
 };
 
 type DriveTargetCtorOptions = DriveFolderHierarchy & {
@@ -61,6 +64,7 @@ export class DriveTarget {
   private readonly onProgress?: (uploadedBytes: number, totalBytes: number) => void;
   private readonly signal?: AbortSignal;
   private used = false;
+  private parentFolderId: string | null = null;
 
   constructor(
     private readonly filename: string,
@@ -130,13 +134,19 @@ export class DriveTarget {
       durationMs: roundMs(nowMs() - uploadStartedAt),
     });
     this.onDone(this.filename);
-    return uploadedFile;
+    return {
+      ...uploadedFile,
+      ...(this.parentFolderId ? { driveFolderId: this.parentFolderId } : {}),
+      ...(this.hierarchy.recordingFolderName ? { driveFolderName: this.hierarchy.recordingFolderName } : {}),
+      ...(this.parentFolderId ? { folderWebViewLink: `https://drive.google.com/drive/folders/${encodeURIComponent(this.parentFolderId)}` } : {}),
+    };
   }
 
   /** Starts a resumable upload session and stores the returned session URI. */
   private async initSession(contentType: string): Promise<void> {
     this.throwIfCanceled();
     const parentFolderId = await this.folderResolver.resolveUploadParentId(this.hierarchy, this.signal);
+    this.parentFolderId = parentFolderId;
     const metadata: Record<string, any> = { name: this.filename, mimeType: contentType };
     if (parentFolderId) metadata.parents = [parentFolderId];
 

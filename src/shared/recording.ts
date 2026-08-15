@@ -15,6 +15,7 @@ export type {
   CapturedTabResolution,
   RecordingCaptureDevices,
   RecordingInputDevice,
+  RecordingNamingStatus,
   DesiredState,
   MicMode,
   ObservedState,
@@ -31,6 +32,11 @@ export type {
   UploadSummary,
   UploadSummaryEntry,
 } from './recordingTypes';
+
+export {
+  buildRenamedRecordingFilename,
+  slugifyRecordingTitle,
+} from './recordingNames';
 
 export {
   BUSY_RECORDING_PHASES,

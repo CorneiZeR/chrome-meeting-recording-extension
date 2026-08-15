@@ -132,6 +132,12 @@ export function normalizeUploadSummary(value: unknown): UploadSummary | undefine
   return {
     uploaded: normalizeEntries(candidate.uploaded),
     localFallbacks: normalizeEntries(candidate.localFallbacks),
+    driveFolderId: typeof candidate.driveFolderId === 'string' && candidate.driveFolderId.trim()
+      ? candidate.driveFolderId.trim()
+      : undefined,
+    driveFolderName: typeof candidate.driveFolderName === 'string' && candidate.driveFolderName.trim()
+      ? candidate.driveFolderName.trim()
+      : undefined,
     folderWebViewLink: typeof candidate.folderWebViewLink === 'string' && candidate.folderWebViewLink.trim()
       ? candidate.folderWebViewLink.trim()
       : undefined,
@@ -139,6 +145,7 @@ export function normalizeUploadSummary(value: unknown): UploadSummary | undefine
 }
 
 const VALID_UPLOAD_JOB_STATUSES: readonly UploadJobStatus[] = ['uploading', 'completed', 'failed', 'partial', 'canceled'];
+const VALID_NAMING_STATUSES = ['pending', 'named', 'skipped'] as const;
 const VALID_UPLOAD_JOB_FILE_STATUSES: readonly UploadJobFile['status'][] = ['uploading', 'uploaded', 'fallback', 'retry-pending', 'unavailable'];
 const VALID_RECORDING_STREAMS: readonly RecordingStream[] = ['tab', 'mic', 'self-video'];
 
@@ -187,6 +194,15 @@ function parseUploadJob(value: unknown): UploadJob | null {
     progress: typeof progress === 'number' && progress >= 0 ? Math.min(1, progress) : 0,
     folderWebViewLink: typeof value.folderWebViewLink === 'string' && value.folderWebViewLink.trim()
       ? value.folderWebViewLink.trim()
+      : undefined,
+    driveFolderId: typeof value.driveFolderId === 'string' && value.driveFolderId.trim()
+      ? value.driveFolderId.trim()
+      : undefined,
+    driveFolderName: typeof value.driveFolderName === 'string' && value.driveFolderName.trim()
+      ? value.driveFolderName.trim()
+      : undefined,
+    namingStatus: (VALID_NAMING_STATUSES as readonly unknown[]).includes(value.namingStatus)
+      ? value.namingStatus as UploadJob['namingStatus']
       : undefined,
     recoveryPending: value.recoveryPending === true ? true : undefined,
     files: normalizedFiles,

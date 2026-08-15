@@ -26,6 +26,7 @@ import { RecordingFinalizer } from './offscreen/RecordingFinalizer';
 import { UploadManager } from './offscreen/UploadManager';
 import { createChromePendingUploadStore } from './offscreen/drive/PendingUploadStore';
 import { createChromeUploadJobStateOutbox } from './offscreen/drive/UploadJobStateOutbox';
+import { renameDriveResources } from './offscreen/drive/DriveMetadataRenamer';
 import { resumePendingDriveUploadsWithChrome } from './offscreen/drive/resumePendingUploads';
 import { recoverOrphanRecordingsWithChrome } from './offscreen/storage/recoverOrphanRecordings';
 import { RuntimeSampler } from './offscreen/RuntimeSampler';
@@ -193,6 +194,7 @@ function connectPort(retryDelay = 1_000): chrome.runtime.Port {
     retryUpload: (jobId) => uploadManager.retry(jobId),
     cancelUpload: (jobId) => uploadManager.cancel(jobId),
     acknowledgeUploadState: (jobId) => uploadJobStateOutbox.remove(jobId),
+    renameDriveResources: (resources) => renameDriveResources(getDriveToken, resources),
     pushState: controller.pushState,
     log: L.log,
     error: L.error,

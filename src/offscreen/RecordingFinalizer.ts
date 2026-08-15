@@ -196,11 +196,12 @@ export class RecordingFinalizer {
   ): Promise<UploadSummary> {
     const sharedGetUploadToken = createCachedTokenProvider(this.deps.getDriveToken);
     const folderResolver = new DriveFolderResolver(sharedGetUploadToken);
+    let folderId: string | null = null;
     let folderWebViewLink: string | undefined;
     let sharedSetupError: string | null = null;
     try {
       if (signal?.aborted) throw new DOMException('Upload canceled', 'AbortError');
-      const folderId = await folderResolver.resolveUploadParentId(
+      folderId = await folderResolver.resolveUploadParentId(
         { rootFolderName: DRIVE_ROOT_FOLDER_NAME, recordingFolderName },
         signal,
       );
@@ -229,7 +230,12 @@ export class RecordingFinalizer {
       progressSink(loaded / totalBytes);
     };
 
-    const summary: UploadSummary = { uploaded: [], localFallbacks: [] };
+    const summary: UploadSummary = {
+      uploaded: [],
+      localFallbacks: [],
+      driveFolderName: recordingFolderName,
+    };
+    if (folderId) summary.driveFolderId = folderId;
     if (folderWebViewLink) summary.folderWebViewLink = folderWebViewLink;
     const outcomes = await runWithConcurrency(
       artifacts,
