@@ -11,6 +11,7 @@ import { CaptionPoller } from './CaptionPoller';
 import { ConfirmDialog } from './ConfirmDialog';
 import { MicPermissionService } from './MicPermissionService';
 import { RecordingTimer } from './RecordingTimer';
+import { RecordingNameDialog } from './RecordingNameDialog';
 import { SessionTabsView } from './SessionTabsView';
 import { PopupStateController } from './controllers/PopupStateController';
 import type {
@@ -141,6 +142,9 @@ export class PopupController {
   private readonly captionPoller: CaptionPoller;
   private readonly sessionTabs: SessionTabsView;
   private readonly confirmDialog = new ConfirmDialog();
+  private readonly recordingNameDialog = new RecordingNameDialog();
+  private namingJobId: string | null = null;
+  private destroyed = false;
   private inFlight = false;
   private micMuted = false;
   private cameraMuted = false;
@@ -176,6 +180,7 @@ export class PopupController {
 
   /** Wires every popup interaction and kicks off the initial status refresh. */
   init() {
+    this.destroyed = false;
     // Paint the last-known view synchronously, before the async GET_RECORDING_STATUS
     // round-trip resolves, so a popup reopened mid-recording shows the recording view
     // on the first frame instead of flashing the Setup screen. The fetch then corrects
@@ -253,10 +258,12 @@ export class PopupController {
 
   /** Clears transient timers when the popup is torn down. */
   destroy() {
+    this.destroyed = true;
     this.timer.stop();
     this.captionPoller.stop();
     this.sessionTabs.dispose();
     this.confirmDialog.dispose();
+    this.recordingNameDialog.dispose();
     this.closeDevicePicker(false);
   }
 
@@ -268,6 +275,7 @@ export class PopupController {
   private onPhaseChange(phase: RecordingPhase, session?: RecordingStatusView) {
     this.lastPhase = phase;
     this.lastSession = session;
+    this.queueCompletedNamingPrompt(phase, session);
     writeCachedPhase(phase);
     this.updateUploadNavigation(session);
     // `showRecordingsView` awaits the history query. The initial status refresh can
@@ -884,7 +892,7 @@ export class PopupController {
     this.wireRecordingDetailMenu();
     back?.addEventListener('click', () => void this.showRecordingsView());
     document.getElementById('recording-detail-copy')?.addEventListener('click', () => void this.copyDetailDriveLink());
-    document.getElementById('recording-detail-rename')?.addEventListener('click', () => this.startDetailRename());
+    document.getElementById('recording-detail-rename')?.addEventListener('click', () => void this.startDetailRename());
     document.getElementById('recording-detail-delete')?.addEventListener('click', () => void this.deleteDetailRecording());
     document.getElementById('recording-detail-diagnostics')?.addEventListener('click', () => void createRuntimeTab('debug.html'));
     document.getElementById('recording-detail-settings')?.addEventListener('click', () => void createRuntimeTab('settings.html'));
@@ -1255,48 +1263,70 @@ export class PopupController {
     }
   }
 
-  private startDetailRename(): void {
+  private async startDetailRename(): Promise<void> {
     if (this.detailTarget?.kind !== 'recording') return;
     this.closeRecordingDetailMenu();
-    const title = document.getElementById('recording-detail-title');
-    if (!title || title.parentElement?.querySelector('.recording-detail-title-input')) return;
-    const input = document.createElement('input');
-    input.className = 'recording-detail-title-input';
-    input.value = this.detailTarget.entry.name;
-    input.setAttribute('aria-label', 'Recording name');
-    title.replaceWith(input);
-    input.focus();
-    input.select();
-    let committing = false;
-    let cancelled = false;
-    const restore = () => this.renderRecordingDetail();
-    const commit = async () => {
-      if (committing || cancelled) return;
-      const name = input.value.trim();
-      if (!name) { restore(); return; }
-      const target = this.detailTarget;
-      if (!target || target.kind !== 'recording') return;
-      if (name === target.entry.name) { restore(); return; }
-      committing = true;
-      try {
-        const response = await sendToBackground({ type: 'RENAME_RECORDING_HISTORY', id: target.entry.id, name });
-        if (response.ok === false) {
-          this.toast(response.error || 'Could not rename this recording');
-          restore();
-          return;
-        }
-        this.detailTarget = { kind: 'recording', entry: response.entry ?? { ...target.entry, name, userNamed: true } };
+    const target = this.detailTarget;
+    await this.recordingNameDialog.ask({
+      title: 'Name this recording',
+      message: target.entry.storageMode === 'drive'
+        ? 'The recording folder and every uploaded media file will use this name.'
+        : 'This changes the name shown in recording history.',
+      initialValue: target.entry.name,
+      saveLabel: 'Save name',
+      cancelLabel: 'Cancel',
+      onSave: async (name) => {
+        if (name === target.entry.name) return;
+        const entry = await this.renameRecording(target.entry.id, name);
+        if (entry) this.detailTarget = { kind: 'recording', entry };
         this.renderRecordingDetail();
-      } catch {
-        this.toast('Could not rename this recording');
-        restore();
-      }
-    };
-    input.addEventListener('keydown', (event) => {
-      if (event.key === 'Enter') { event.preventDefault(); void commit(); }
-      if (event.key === 'Escape') { cancelled = true; restore(); }
+      },
     });
-    input.addEventListener('blur', () => void commit());
+  }
+
+  /** Schedules naming after the current session render, avoiding recursive tab selection. */
+  private queueCompletedNamingPrompt(phase: RecordingPhase, session?: RecordingStatusView): void {
+    if (this.previewing || this.destroyed) return;
+    queueMicrotask(() => void this.openNextCompletedNamingPrompt(phase, session));
+  }
+
+  private async openNextCompletedNamingPrompt(phase: RecordingPhase, session?: RecordingStatusView): Promise<void> {
+    if (this.previewing || this.destroyed || this.namingJobId || this.recordingNameDialog.isOpen()) return;
+    if (phase === 'starting' || phase === 'recording' || phase === 'stopping') return;
+    const job = [...(session?.uploadJobs ?? [])]
+      .filter((candidate) => candidate.status === 'completed' && candidate.namingStatus === 'pending' && !!candidate.historyId)
+      .sort((a, b) => (a.finishedAt ?? a.startedAt) - (b.finishedAt ?? b.startedAt))[0];
+    if (!job?.historyId) return;
+
+    this.namingJobId = job.id;
+    this.sessionTabs.select(job.id);
+    try {
+      const outcome = await this.recordingNameDialog.ask({
+        title: 'Name this recording',
+        message: 'The recording folder and every uploaded media file will use this name.',
+        initialValue: job.label,
+        saveLabel: 'Save name',
+        cancelLabel: 'Skip',
+        onSave: async (name) => { await this.renameRecording(job.historyId!, name); },
+      });
+      if (outcome === 'canceled') {
+        const response = await sendToBackground({ type: 'SKIP_RECORDING_NAMING', jobId: job.id });
+        if (response.ok === false) throw new Error(response.error || 'Could not skip recording naming');
+        if (response.session) this.state.applySession(response.session);
+      }
+    } catch (error) {
+      this.toast(error instanceof Error ? error.message : 'Could not update recording name');
+    } finally {
+      this.namingJobId = null;
+      this.queueCompletedNamingPrompt(this.lastPhase, this.lastSession);
+    }
+  }
+
+  private async renameRecording(id: string, name: string): Promise<RecordingHistoryEntry | undefined> {
+    const response = await sendToBackground({ type: 'RENAME_RECORDING_HISTORY', id, name });
+    if (response.ok === false) throw new Error(response.error || 'Could not rename this recording');
+    if (response.session) this.state.applySession(response.session);
+    return response.entry;
   }
 
   private async deleteDetailRecording(): Promise<void> {

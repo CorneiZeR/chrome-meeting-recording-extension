@@ -197,4 +197,14 @@ describe('SessionTabsView', () => {
     expect(mockSend).toHaveBeenCalledWith({ type: 'DISMISS_UPLOAD_JOB', jobId: 'j1' });
     expect(callbacks.applySession).toHaveBeenCalledWith({ phase: 'idle' });
   });
+
+  it('does not auto-dismiss a completed upload while its naming prompt is pending', () => {
+    jest.useFakeTimers();
+    view.sync('idle', sessionWith([job({ status: 'completed', progress: 1, namingStatus: 'pending' })]));
+
+    jest.advanceTimersByTime(20_000);
+
+    expect(mockSend).not.toHaveBeenCalledWith({ type: 'DISMISS_UPLOAD_JOB', jobId: 'j1' });
+    jest.useRealTimers();
+  });
 });

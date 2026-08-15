@@ -214,6 +214,162 @@ describe('PopupController', () => {
     expect(elements.viewRecording.hidden).toBe(true);
   });
 
+  it('opens the naming modal when a Drive upload completes and applies the renamed session', async () => {
+    controller.init();
+    await flush();
+    const completed = {
+      id: 'job-1', historyId: 'recording:1', label: 'google-meet-demo-20260815T1200',
+      status: 'completed', progress: 1, namingStatus: 'pending', startedAt: 1, finishedAt: 2,
+      driveFolderId: 'folder-1', driveFolderName: 'google-meet-demo-20260815T1200',
+      files: [{ stream: 'tab', filename: 'google-meet-demo-20260815T1200-recording.webm', status: 'uploaded', driveFileId: 'file-1' }],
+    };
+    mockSendMessage.mockImplementation(async (message: any) => {
+      if (message.type === 'RENAME_RECORDING_HISTORY') return {
+        ok: true,
+        entry: {
+          id: 'recording:1', name: 'Quarterly Review', userNamed: true, createdAt: 1,
+          storageMode: 'drive', status: 'complete', driveFolderId: 'folder-1', driveFolderName: 'quarterly-review',
+          files: [{ id: 'recording:1:tab', stream: 'tab', filename: 'quarterly-review-recording.webm', destination: 'drive', status: 'available', driveFileId: 'file-1' }],
+        },
+        session: { phase: 'idle', runConfig: null, uploadJobs: [{ ...completed, label: 'Quarterly Review', namingStatus: 'named', driveFolderName: 'quarterly-review', files: [{ ...completed.files[0], filename: 'quarterly-review-recording.webm' }] }], updatedAt: 3 },
+      };
+      return { session: { phase: 'idle', runConfig: null, updatedAt: 3 } };
+    });
+
+    emitRecordingState({ phase: 'idle', runConfig: null, uploadJobs: [completed], updatedAt: 2 });
+    await flush();
+
+    const nameInput = document.querySelector<HTMLInputElement>('.recording-name-input')!;
+    expect(nameInput.value).toBe('google-meet-demo-20260815T1200');
+    expect(elements.viewUpload.hidden).toBe(false);
+    nameInput.value = 'Quarterly Review';
+    document.querySelector<HTMLButtonElement>('[data-recording-name-save]')!.click();
+    await flush();
+
+    expect(mockSendMessage).toHaveBeenCalledWith({
+      type: 'RENAME_RECORDING_HISTORY', id: 'recording:1', name: 'Quarterly Review',
+    });
+    expect(document.querySelector<HTMLElement>('.recording-name-overlay')!.hidden).toBe(true);
+    expect(elements.uploadJobFiles.textContent).toContain('quarterly-review-recording.webm');
+  });
+
+  it('reuses the naming modal for a later local recording rename', async () => {
+    const entry = {
+      id: 'recording:local', name: 'Original title', createdAt: 1, storageMode: 'local', status: 'complete',
+      files: [{ id: 'recording:local:tab', stream: 'tab', filename: 'original-recording.webm', destination: 'local', status: 'available', downloadId: 9 }],
+    };
+    mockSendMessage.mockImplementation(async (message: any) => message.type === 'RENAME_RECORDING_HISTORY'
+      ? { ok: true, entry: { ...entry, name: message.name, userNamed: true } }
+      : { session: { phase: 'idle', runConfig: null, updatedAt: 1 } });
+    (controller as any).detailTarget = { kind: 'recording', entry };
+
+    const rename = (controller as any).startDetailRename();
+    await flush();
+    const input = document.querySelector<HTMLInputElement>('.recording-name-input')!;
+    expect(input.value).toBe('Original title');
+    expect(document.querySelector('.recording-name-card')?.textContent).toContain('history');
+    input.value = 'New display title';
+    document.querySelector<HTMLButtonElement>('[data-recording-name-save]')!.click();
+    await rename;
+    await flush();
+
+    expect(mockSendMessage).toHaveBeenCalledWith({
+      type: 'RENAME_RECORDING_HISTORY', id: 'recording:local', name: 'New display title',
+    });
+    expect((controller as any).detailTarget.entry.files[0].filename).toBe('original-recording.webm');
+  });
+
+  it('defers completed-upload naming during an active recording and opens it once idle', async () => {
+    controller.init();
+    await flush();
+    const completed = {
+      id: 'job-1', historyId: 'recording:1', label: 'Default recording', status: 'completed', progress: 1,
+      namingStatus: 'pending', startedAt: 1, finishedAt: 2,
+      files: [{ stream: 'tab', filename: 'default-recording.webm', status: 'uploaded', driveFileId: 'file-1' }],
+    };
+
+    emitRecordingState({ phase: 'recording', runConfig: (global as any).__TEST_RUN_CONFIG__(), uploadJobs: [completed], updatedAt: 2 });
+    await flush();
+    expect(document.querySelector('.recording-name-overlay')).toBeNull();
+
+    emitRecordingState({ phase: 'idle', runConfig: null, uploadJobs: [completed], updatedAt: 3 });
+    await flush();
+    expect(document.querySelector<HTMLElement>('.recording-name-overlay')!.hidden).toBe(false);
+  });
+
+  it('restores a pending naming prompt from the initial persisted session', async () => {
+    mockSendMessage.mockResolvedValueOnce({
+      session: {
+        phase: 'idle', runConfig: null, updatedAt: 2,
+        uploadJobs: [{
+          id: 'job-1', historyId: 'recording:1', label: 'Persisted recording', status: 'completed', progress: 1,
+          namingStatus: 'pending', startedAt: 1, finishedAt: 2,
+          files: [{ stream: 'tab', filename: 'persisted-recording.webm', status: 'uploaded', driveFileId: 'file-1' }],
+        }],
+      },
+    });
+
+    controller.init();
+    await flush();
+
+    expect(document.querySelector<HTMLInputElement>('.recording-name-input')?.value).toBe('Persisted recording');
+    expect(document.querySelector<HTMLElement>('.recording-name-overlay')?.hidden).toBe(false);
+  });
+
+  it('persists Skip and does not reopen the automatic naming modal', async () => {
+    controller.init();
+    await flush();
+    const completed = {
+      id: 'job-1', historyId: 'recording:1', label: 'Default recording', status: 'completed', progress: 1,
+      namingStatus: 'pending', startedAt: 1, finishedAt: 2,
+      files: [{ stream: 'tab', filename: 'default-recording.webm', status: 'uploaded', driveFileId: 'file-1' }],
+    };
+    const skipped = { ...completed, namingStatus: 'skipped' };
+    mockSendMessage.mockImplementation(async (message: any) => message.type === 'SKIP_RECORDING_NAMING'
+      ? { ok: true, session: { phase: 'idle', runConfig: null, uploadJobs: [skipped], updatedAt: 3 } }
+      : { session: { phase: 'idle', runConfig: null, updatedAt: 1 } });
+
+    emitRecordingState({ phase: 'idle', runConfig: null, uploadJobs: [completed], updatedAt: 2 });
+    await flush();
+    document.querySelector<HTMLButtonElement>('[data-recording-name-cancel]')!.click();
+    await flush();
+
+    expect(mockSendMessage).toHaveBeenCalledWith({ type: 'SKIP_RECORDING_NAMING', jobId: 'job-1' });
+    emitRecordingState({ phase: 'idle', runConfig: null, uploadJobs: [skipped], updatedAt: 4 });
+    await flush();
+    expect(document.querySelector<HTMLElement>('.recording-name-overlay')!.hidden).toBe(true);
+  });
+
+  it('queues multiple completed recordings and opens the next prompt after Skip', async () => {
+    controller.init();
+    await flush();
+    const makeCompleted = (id: string, label: string, finishedAt: number) => ({
+      id, historyId: `recording:${id}`, label, status: 'completed', progress: 1,
+      namingStatus: 'pending', startedAt: 1, finishedAt,
+      files: [{ stream: 'tab', filename: `${id}.webm`, status: 'uploaded', driveFileId: `file-${id}` }],
+    });
+    const first = makeCompleted('one', 'First recording', 2);
+    const second = makeCompleted('two', 'Second recording', 3);
+    mockSendMessage.mockImplementation(async (message: any) => message.type === 'SKIP_RECORDING_NAMING'
+      ? {
+          ok: true,
+          session: {
+            phase: 'idle', runConfig: null, updatedAt: 4,
+            uploadJobs: [{ ...first, namingStatus: 'skipped' }, second],
+          },
+        }
+      : { session: { phase: 'idle', runConfig: null, updatedAt: 1 } });
+
+    emitRecordingState({ phase: 'idle', runConfig: null, uploadJobs: [second, first], updatedAt: 3 });
+    await flush();
+    expect(document.querySelector<HTMLInputElement>('.recording-name-input')!.value).toBe('First recording');
+
+    document.querySelector<HTMLButtonElement>('[data-recording-name-cancel]')!.click();
+    await flush();
+    expect(document.querySelector<HTMLInputElement>('.recording-name-input')!.value).toBe('Second recording');
+    expect(document.querySelector<HTMLElement>('.recording-name-overlay')!.hidden).toBe(false);
+  });
+
   it('renders a deterministic preview through the same recording renderer', () => {
     controller.renderPreview({
       screen: 'session',

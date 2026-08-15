@@ -303,7 +303,7 @@ export class SessionTabsView {
       if (!ids.has(id)) { clearTimeout(timer); this.fadeTimers.delete(id); }
     }
     for (const job of jobs) {
-      const eligible = job.status === 'completed' && this.selectedTab !== job.id;
+      const eligible = job.status === 'completed' && job.namingStatus !== 'pending' && this.selectedTab !== job.id;
       if (eligible && !this.fadeTimers.has(job.id)) {
         this.fadeTimers.set(job.id, setTimeout(() => this.fadeAndDismiss(job.id), COMPLETED_TAB_LINGER_MS));
       } else if (!eligible && this.fadeTimers.has(job.id)) {

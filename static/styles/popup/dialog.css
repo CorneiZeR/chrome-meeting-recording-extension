@@ -13,3 +13,12 @@ body:has(.modal-overlay:not([hidden])) #view-recording .controls { margin-top: a
 .modal-actions .btn-secondary { height: 44px; }
 .modal-card:focus-visible,
 .modal-actions .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.recording-name-card { text-align: left; }
+.recording-name-card .modal-icon { display: flex; }
+.recording-name-icon { background: var(--secondary); color: var(--accent); }
+.recording-name-input { box-sizing: border-box; width: 100%; height: 44px; margin-top: 15px; padding: 0 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--ink); font: 600 14px 'Space Grotesk', sans-serif; outline: 0; }
+.recording-name-input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+.recording-name-input[aria-invalid="true"] { border-color: var(--danger, #c43d3d); }
+.recording-name-error { min-height: 17px; margin-top: 6px; color: var(--danger, #c43d3d); font-size: 11px; line-height: 1.4; }
+.recording-name-error[hidden] { display: block; visibility: hidden; }
+.recording-name-card .modal-actions { margin-top: 10px; }
