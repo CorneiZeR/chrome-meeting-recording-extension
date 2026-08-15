@@ -27,9 +27,12 @@ export type DriveSimulatorStats = {
   retryResponses: number;
   authFailures: number;
   permanentFailures: number;
+  metadataReads: number;
+  metadataUpdates: number;
   activeUploads: number;
   maxConcurrentUploads: number;
   uploadedBytes: number;
+  resources: Record<string, string>;
   requests: DriveRequestRecord[];
 };
 
@@ -92,6 +95,7 @@ function createHandler(
   stats: DriveSimulatorStats
 ) {
   const sessions = new Map<string, SessionState>();
+  const resources = new Map<string, string>();
   let folderSequence = 0;
   let sessionSequence = 0;
 
@@ -122,10 +126,46 @@ function createHandler(
     if (url.pathname === '/drive/v3/files' && method === 'POST') {
       folderSequence += 1;
       stats.foldersCreated += 1;
+      let metadata: { name?: string } = {};
+      try {
+        metadata = request.postData ? JSON.parse(request.postData) : {};
+      } catch {}
+      const id = `mock-folder-${folderSequence}`;
+      const name = metadata.name ?? id;
+      resources.set(id, name);
+      stats.resources[id] = name;
       return record({
         status: 200,
-        body: JSON.stringify({ id: `mock-folder-${folderSequence}` }),
+        body: JSON.stringify({ id, name }),
       });
+    }
+
+    const metadataMatch = url.pathname.match(/^\/drive\/v3\/files\/([^/]+)$/);
+    if (metadataMatch && method === 'GET') {
+      const id = decodeURIComponent(metadataMatch[1]);
+      const name = resources.get(id);
+      stats.metadataReads += 1;
+      return name == null
+        ? record({ status: 404, body: JSON.stringify({ error: { message: 'Unknown mock resource' } }) })
+        : record({ status: 200, body: JSON.stringify({ id, name }) });
+    }
+
+    if (metadataMatch && method === 'PATCH') {
+      const id = decodeURIComponent(metadataMatch[1]);
+      if (!resources.has(id)) {
+        return record({ status: 404, body: JSON.stringify({ error: { message: 'Unknown mock resource' } }) });
+      }
+      let metadata: { name?: string } = {};
+      try {
+        metadata = request.postData ? JSON.parse(request.postData) : {};
+      } catch {}
+      if (typeof metadata.name !== 'string') {
+        return record({ status: 400, body: JSON.stringify({ error: { message: 'Missing resource name' } }) });
+      }
+      resources.set(id, metadata.name);
+      stats.resources[id] = metadata.name;
+      stats.metadataUpdates += 1;
+      return record({ status: 200, body: JSON.stringify({ id, name: metadata.name }) });
     }
 
     if (url.pathname === '/upload/drive/v3/files' && method === 'POST') {
@@ -239,6 +279,11 @@ function createHandler(
         }
         session.committedEnd = Math.max(session.committedEnd, range.end);
         const isFinal = session.committedEnd + 1 >= range.total;
+        if (isFinal) {
+          const resourceId = `mock-file-${id}`;
+          resources.set(resourceId, session.filename);
+          stats.resources[resourceId] = session.filename;
+        }
         return record({
           status: isFinal ? 200 : 308,
           headers: isFinal ? undefined : { Range: `bytes=0-${session.committedEnd}` },
@@ -274,9 +319,12 @@ export async function installDriveSimulator(
     retryResponses: 0,
     authFailures: 0,
     permanentFailures: 0,
+    metadataReads: 0,
+    metadataUpdates: 0,
     activeUploads: 0,
     maxConcurrentUploads: 0,
     uploadedBytes: 0,
+    resources: {},
     requests: [],
   };
   const handle = createHandler(profile, options.throttleMs ?? 300, stats);
