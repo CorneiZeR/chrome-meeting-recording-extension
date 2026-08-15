@@ -222,13 +222,16 @@ test.describe('mock Meet performance E2E', () => {
     if (maxLag != null) expect(maxLag).toBeLessThan(500);
     expect(result.artifacts).toHaveLength(3);
 
-    // Each stream's duration fix ran inside the worker (off the main thread),
-    // not via the main-thread fallback — proving the Bonus is actually realized.
+    // Video WebM duration fixes ran inside the worker (off the main thread),
+    // not via the main-thread fallback. Audio-only WebM intentionally skips the
+    // video duration fixer and therefore reports durationFixedInWorker=false.
     const sealed = result.snapshot.entries.filter(
       (e) => e.scope === 'recorder' && e.event === 'artifact_sealed'
     );
     expect(sealed.length).toBeGreaterThan(0);
-    expect(sealed.every((e) => e.fields.durationFixedInWorker === true)).toBe(true);
+    const sealedVideo = sealed.filter((e) => e.fields.stream !== 'mic');
+    expect(sealedVideo).toHaveLength(2);
+    expect(sealedVideo.every((e) => e.fields.durationFixedInWorker === true)).toBe(true);
   });
 
   const resolutions: ResolutionPreset[] = [
