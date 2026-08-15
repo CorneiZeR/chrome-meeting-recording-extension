@@ -1,0 +1,17 @@
+export const ALLOWED_METRICS = new Set([
+  'capture.attempts', 'capture.successes', 'capture.failures', 'capture.start.count', 'capture.start.total_ms', 'capture.start.max_ms',
+  'recorder.starts', 'recorder.chunks', 'recorder.bytes', 'recorder.write.count', 'recorder.write.total_ms', 'recorder.write.max_ms',
+  'recorder.seal.count', 'recorder.seal.total_ms', 'recorder.seal.max_ms', 'recorder.artifact_bytes',
+  'storage.opens', 'storage.open_failures', 'storage.writes', 'storage.write_failures', 'storage.worker_writes', 'storage.pending_writes.max',
+  'storage.soft_backpressure', 'storage.hard_backpressure', 'storage.closes', 'storage.cleanups',
+  'recording.duration.count', 'recording.duration.total_ms', 'recording.duration.max_ms',
+  'finalize.count', 'finalize.total_ms', 'finalize.max_ms', 'local_save.requests', 'local_save.successes', 'local_save.failures',
+  'upload.jobs', 'upload.files', 'upload.chunks', 'upload.bytes', 'upload.request.count', 'upload.request.total_ms', 'upload.request.max_ms',
+  'upload.job.count', 'upload.job.total_ms', 'upload.job.max_ms', 'upload.retries', 'upload.concurrency.max',
+  'upload.completed', 'upload.partial', 'upload.failed', 'upload.canceled',
+  'captions.mutations', 'captions.changes', 'captions.coalesced', 'captions.misses', 'captions.processing.count',
+  'captions.processing.total_ms', 'captions.processing.max_ms', 'captions.source_latency.count', 'captions.source_latency.total_ms',
+  'captions.source_latency.max_ms', 'captions.observers.max', 'captions.long_tasks', 'captions.long_task.total_ms', 'captions.long_task.max_ms',
+  'runtime.samples', 'runtime.event_loop_lag.count', 'runtime.event_loop_lag.total_ms', 'runtime.event_loop_lag.max_ms',
+  'runtime.long_tasks', 'runtime.long_task.total_ms', 'runtime.active_recorders.max', 'runtime.heap_bucket.max', 'lifecycle.failures',
+]);

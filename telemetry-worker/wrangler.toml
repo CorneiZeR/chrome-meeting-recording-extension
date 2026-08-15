@@ -1,0 +1,26 @@
+name = "meeting-recorder-telemetry"
+main = "src/index.ts"
+compatibility_date = "2026-08-15"
+
+[observability]
+enabled = true
+head_sampling_rate = 0.1
+
+[[d1_databases]]
+binding = "TELEMETRY_DB"
+database_name = "meeting-recorder-telemetry"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"
+migrations_dir = "migrations"
+
+[[unsafe.bindings]]
+name = "TELEMETRY_RATE_LIMITER"
+type = "ratelimit"
+namespace_id = "1001"
+simple = { limit = 30, period = 60 }
+
+[triggers]
+crons = ["17 3 * * *"]
+
+[vars]
+# Comma-separated exact extension origins. Add every store-assigned ID before deploy.
+ALLOWED_EXTENSION_ORIGINS = "chrome-extension://kiineaoggnikfpcicndeocnbmaeediom"
