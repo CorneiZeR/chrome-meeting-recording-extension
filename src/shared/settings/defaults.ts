@@ -87,6 +87,9 @@ export const defaultMicMode: MicMode =
   EXTENSION_DEFAULTS.configurable.microphoneRecordingMode;
 
 export const DEFAULT_EXTENSION_SETTINGS: Readonly<ExtensionSettings> = Object.freeze({
+  privacy: Object.freeze({
+    anonymousDiagnostics: true,
+  }),
   appearance: Object.freeze({
     theme: 'system' as ThemePreference,
   }),

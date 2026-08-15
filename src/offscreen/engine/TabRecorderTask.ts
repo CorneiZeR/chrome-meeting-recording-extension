@@ -19,6 +19,7 @@ import type {
   CompletedRecordingArtifact,
   RecorderEngineDeps,
 } from './RecorderEngineTypes';
+import { debugPerf } from '../../shared/perf';
 
 export type TabRecorderCallbacks = {
   onStarted: () => void;
@@ -115,6 +116,7 @@ export async function startTabRecorder(
 
   recorder.onerror = (e: any) => {
     deps.error('Tab MediaRecorder error', e);
+    debugPerf(deps.log, 'lifecycle', 'recorder_error', { stream: 'tab' });
     callbacks.onError?.();
     void finalize('Tab');
   };

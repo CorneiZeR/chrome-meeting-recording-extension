@@ -11,6 +11,7 @@ describe('RuntimeSampler', () => {
     expect(sample.avgEventLoopLagMs).toBe(0);
     expect(sample.maxEventLoopLagMs).toBe(0);
     expect(sample.longTaskCount).toBe(0);
+    expect(sample.longTaskDurationMs).toBe(0);
     expect(sample.lastLongTaskMs).toBeUndefined();
     expect(sample.maxLongTaskMs).toBeUndefined();
   });
@@ -52,6 +53,7 @@ describe('RuntimeSampler', () => {
 
     const sample = sampler.sample(INTERVAL);
     expect(sample.longTaskCount).toBe(2);
+    expect(sample.longTaskDurationMs).toBe(210);
     expect(sample.lastLongTaskMs).toBe(90);
     expect(sample.maxLongTaskMs).toBe(120);
   });

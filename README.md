@@ -12,7 +12,7 @@ Everything runs in your browser. Capture is **local-first**: recording data stre
 
 ## Why this extension
 
-- **Private by design** — nothing leaves the device during capture, and transcripts live only in the page until you explicitly download them.
+- **Private by design** — media and captions never enter diagnostics. Optional anonymous diagnostics send only bounded aggregates and sanitized error fingerprints; transcripts remain in the page until you explicitly download them.
 - **Built for long meetings** — chunks stream to disk continuously, so memory stays flat on multi-hour recordings instead of growing until the tab crashes.
 - **Efficient encoding** — the camera bitrate adapts to the frame Chrome actually delivers (and defaults to 24 fps for a talking head), and the tab bitrate follows its content type — so files and CPU stay low with no visible quality loss.
 - **Flexible per run** — microphone off / mixed / separate, optional camera, screen-vs-video tab quality, and local-or-Drive, all chosen per recording.
@@ -53,6 +53,8 @@ Everything runs in your browser. Capture is **local-first**: recording data stre
 
 **Diagnostics dashboard** (dev builds) — aggregates structured perf events from every runtime context: recorder start latency, chunk persistence, audio-bridge behavior, Drive upload timings, memory, event-loop lag, and long tasks (offscreen and the Meet-tab main thread).
 
+**Anonymous production diagnostics** — enabled by default with an opt-out in Settings. The extension keeps bounded counters/totals/maxima locally, checkpoints active runs once per minute, and sends compact completion summaries plus incident breadcrumbs only for failures or data-loss risks. It never sends recording media, captions, meeting/file names, Drive or device identifiers, OAuth data, raw error messages, raw stacks, a persistent browser identity, or per-event network requests. Pending diagnostics are deleted immediately on opt-out.
+
 ---
 
 ## Requirements
@@ -61,7 +63,7 @@ Everything runs in your browser. Capture is **local-first**: recording data stre
 - **Node.js 18+** and **npm** to build the extension.
 - **FFmpeg and FFprobe** for performance E2E artifact analysis.
 
-The extension requests the following Chrome permissions: `activeTab`, `downloads`, `tabCapture`, `offscreen`, `storage`, `tabs`, `desktopCapture`
+The extension requests the following Chrome permissions: `activeTab`, `downloads`, `tabCapture`, `offscreen`, `storage`, `tabs`, `desktopCapture`, `alarms`. The one-shot alarm retries a queued anonymous diagnostics batch after a retryable network failure; it does not create a periodic heartbeat.
 
 Drive mode additionally requires: `identity` and host access to `https://www.googleapis.com/*`.
 
@@ -75,7 +77,7 @@ git clone https://github.com/kstroevsky/chrome-meeting-recording-extension.git
 cd chrome-recording-transcription-extension
 npm install
 
-# 2. Build
+# 2. Configure TELEMETRY_ENDPOINT in .env, then build
 npm run build          # outputs to ./dist
 
 # 3. Load into Chrome
@@ -187,6 +189,7 @@ Open the settings page by clicking the gear icon in the popup. Settings persist 
 
 | Setting | Description |
 | :--- | :--- |
+| Anonymous diagnostics | Default on; sends bounded recording/upload summaries and sanitized failure evidence. Turning it off deletes queued batches and active checkpoints immediately. |
 | Tab capture preset | Output resolution for the tab recording: `640×360`, `854×480`, `1280×720`, or `1920×1080` |
 | Tab video bitrate | Encoder bitrate at the `1920×1080`@30 reference; the recorder scales it down automatically for smaller tab presets / frame rates |
 | Tab recording format | `WebM` (default) or `MP4`; controls the main tab artifact, including mixed microphone audio |
@@ -200,6 +203,8 @@ The tab and camera capture presets control what size the final file targets, not
 Every settings field shows a tooltip (click the label) with a short operational explanation. MP4 and M4A are offered only when the current browser reports a compatible native `MediaRecorder` encoder; unavailable options are disabled. The extension never substitutes another container: if a persisted MP4/M4A choice becomes unsupported, starting a recording explains that you must change the format in Settings.
 
 Legacy stored width/height values from previous extension versions are normalized to the nearest supported preset on settings load.
+
+Production builds require `TELEMETRY_ENDPOINT` to be the exact HTTPS `/api/telemetry/batches` route. Webpack injects that endpoint and only its origin into `host_permissions`; an invalid or missing production endpoint fails the build. The Worker, D1 schema, deployment sequence, tests, retention job, and read-only operational queries live in [`telemetry-worker/`](telemetry-worker/README.md).
 
 ---
 
@@ -400,9 +405,11 @@ State persistence:  chrome.storage.session → RecordingSessionSnapshot + detach
 | `tabCapture` / `desktopCapture` | Capture video and audio from the current tab |
 | `offscreen` | Create a hidden offscreen document to run `MediaRecorder` (not available in MV3 service workers) |
 | `storage` | Persist ephemeral session state for UI sync and service worker recovery after suspension |
+| `alarms` | Schedule one-shot 5/15/60-minute retries for queued anonymous diagnostics after retryable delivery failures |
 | `identity` | Authenticate the user silently to write to Google Drive (Drive mode only) |
 | `host: meet.google.com/*` | Scope the content script to Google Meet pages |
 | `host: googleapis.com/*` | Allow Drive API requests during post-stop upload (Drive mode only) |
+| `host: <telemetry Worker>/*` | Injected from the exact production `TELEMETRY_ENDPOINT`; allows bounded anonymous batch delivery to that one origin |
 | `system.cpu` | **Dev builds only** — system CPU% for the diagnostics dashboard; injected into the manifest only in development builds, never requested in production |
 
 ---

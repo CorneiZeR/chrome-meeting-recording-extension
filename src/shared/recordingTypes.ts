@@ -29,6 +29,8 @@ export type StorageMode = 'local' | 'drive';
 export type MicMode = 'off' | 'mixed' | 'separate';
 /** Immutable ownership carried with sealed artifacts after capture has ended. */
 export type RecordingArtifactContext = {
+  /** Random per-recording telemetry identity; never derived from history/upload identity. */
+  telemetryRunId?: string;
   /** History aggregate that owns the artifacts, omitted only for legacy orphan recovery. */
   historyId?: string;
   /** Detached Drive job that owns a retry/recovery attempt. */

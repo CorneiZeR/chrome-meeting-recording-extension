@@ -235,8 +235,10 @@ export function makeChunkHandler(
       })
       .catch((err) => {
         consecutiveWriteFailures += 1;
+        debugPerf(deps.log, 'storage', 'write_failed', { stream, consecutiveFailures: consecutiveWriteFailures });
         deps.error(`${stream} target write error`, describeMediaError(err));
         if (consecutiveWriteFailures >= MAX_CONSECUTIVE_WRITE_FAILURES) {
+          debugPerf(deps.log, 'storage', 'write_failure_stop', { stream, consecutiveFailures: consecutiveWriteFailures });
           escalate(
             `Recording stopped to protect your data: the ${stream} stream could no longer be saved to disk `
             + `(${consecutiveWriteFailures} consecutive write failures). The recording up to this point was saved.`

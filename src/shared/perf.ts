@@ -14,6 +14,7 @@ import {
 } from '../platform/chrome/storage';
 import { DEFAULT_PERF_SETTINGS, PERF_FLAGS, PERF_SETTINGS_STORAGE_KEY } from './constants/perfConstants';
 import type { PerfEventEntry, PerfEventSink, PerfFields, PerfSettings, PerfSource } from './types/perfTypes';
+import { reducePerfEntryToTelemetry, type TelemetrySink } from './telemetry';
 
 export * from './constants/perfConstants';
 export * from './types/perfTypes';
@@ -22,12 +23,14 @@ export * from './utils/mathUtils';
 type ConfigurePerfRuntimeOptions = {
   source: PerfSource;
   sink?: PerfEventSink;
+  telemetrySink?: TelemetrySink;
   onSettingsChanged?: (settings: PerfSettings) => void;
 };
 
 let debugMode = DEFAULT_PERF_SETTINGS.debugMode;
 let perfSource: PerfSource = 'unknown';
 let perfSink: PerfEventSink | null = null;
+let telemetrySink: TelemetrySink | null = null;
 let storageWatchInstalled = false;
 
 function cleanPerfFields(fields?: PerfFields): Record<string, string | number | boolean | null> {
@@ -102,6 +105,7 @@ export async function updateStoredPerfSettings(partial: Partial<PerfSettings>): 
 export async function configurePerfRuntime(options: ConfigurePerfRuntimeOptions): Promise<PerfSettings> {
   perfSource = options.source;
   perfSink = options.sink ?? null;
+  telemetrySink = options.telemetrySink ?? null;
 
   const settings = applyPerfSettings(await readStoredPerfSettings());
   options.onSettingsChanged?.(settings);
@@ -126,11 +130,11 @@ export function resetPerfFlags(): void {
   applyPerfSettings(DEFAULT_PERF_SETTINGS);
   perfSource = 'unknown';
   perfSink = null;
+  telemetrySink = null;
   storageWatchInstalled = false;
 }
 
 function emitPerfEntry(scope: string, event: string, fields: Record<string, string | number | boolean | null>): void {
-  if (!debugMode || !perfSink) return;
   const entry: PerfEventEntry = {
     source: perfSource,
     scope,
@@ -138,6 +142,10 @@ function emitPerfEntry(scope: string, event: string, fields: Record<string, stri
     ts: Date.now(),
     fields,
   };
+  try {
+    if (telemetrySink) reducePerfEntryToTelemetry(entry, telemetrySink);
+  } catch {}
+  if (!debugMode || !perfSink) return;
   try {
     void perfSink(entry);
   } catch {}
@@ -150,6 +158,5 @@ export function logPerf(log: (...a: any[]) => void, scope: string, event: string
 }
 
 export function debugPerf(log: (...a: any[]) => void, scope: string, event: string, fields?: PerfFields): void {
-  if (!debugMode) return;
   logPerf(log, scope, event, fields);
 }

@@ -5,10 +5,10 @@
 | Script | npm script | What it does |
 | :--- | :--- | :--- |
 | `check-version-monotonic.mjs` | `check:version` (part of `release:build`) | asserts the release version only ever increases — guards against shipping a non-monotonic Chrome Web Store version |
-| `check-production-build.mjs` | `test:production-guards` (part of `release:build`) | asserts a production bundle leaked **no** dev-only bits (e.g. `system.cpu`, the dev `key`) — the production-safety gate |
+| `check-production-build.mjs` | `test:production-guards` (part of `release:build`) | asserts a production bundle has the exact telemetry host permission and retry alarm and leaked no E2E-only markers — the production-safety gate |
 | `run-real-meet-e2e.mjs` | `test:e2e:real` / `:live` | drives the real-Google-Meet harness against a configured Chrome profile |
 | `setup-real-meet-profile.mjs` | `test:e2e:real:profile` | provisions the stable Chrome profile the real-Meet run reuses |
-| `lib/` | — | shared helpers (e.g. `manifestVersion.cjs` — `toChromeManifestVersion`, used by both the build and `tests/scripts/manifestVersion.test.mjs`) |
+| `lib/` | — | shared helpers for manifest versioning, target profiles, and strict telemetry endpoint validation |
 
 ## Release flow
 

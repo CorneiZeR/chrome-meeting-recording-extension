@@ -12,10 +12,12 @@ const {
   usesWebAuthFlow,
   applyTargetToManifest,
 } = require('./scripts/lib/manifestTargets.cjs')
+const { telemetryHostPermission } = require('./scripts/lib/telemetryEndpoint.cjs')
 
 const GOOGLE_OAUTH_CLIENT_ID_ENV_KEY = 'GOOGLE_OAUTH_CLIENT_ID'
 const GOOGLE_WEB_OAUTH_CLIENT_ID_ENV_KEY = 'GOOGLE_WEB_OAUTH_CLIENT_ID'
 const GOOGLE_WEB_OAUTH_CLIENT_SECRET_ENV_KEY = 'GOOGLE_WEB_OAUTH_CLIENT_SECRET'
+const TELEMETRY_ENDPOINT_ENV_KEY = 'TELEMETRY_ENDPOINT'
 const OAUTH_CLIENT_ID_PLACEHOLDER = '__GOOGLE_OAUTH_CLIENT_ID__'
 const STATIC_DIR = 'static'
 const PUBLIC_DIR = 'public'
@@ -80,7 +82,7 @@ function resolveBrowserTarget(rawTarget) {
   return target
 }
 
-function transformManifest(content, oauthClientId, isDevBuild, browserTarget) {
+function transformManifest(content, oauthClientId, isDevBuild, browserTarget, telemetryEndpoint) {
   const manifest = JSON.parse(content.toString('utf8'))
   // Per-target manifest decisions (oauth2 / key) live in the tested profile model
   // (scripts/lib/manifestTargets.cjs), keyed off browser family + auth capability.
@@ -96,6 +98,10 @@ function transformManifest(content, oauthClientId, isDevBuild, browserTarget) {
   // and avoids a permission re-review prompt for users.
   if (isDevBuild && Array.isArray(manifest.permissions) && !manifest.permissions.includes('system.cpu')) {
     manifest.permissions.push('system.cpu')
+  }
+  const telemetryPermission = telemetryHostPermission(telemetryEndpoint)
+  if (telemetryPermission && !manifest.host_permissions.includes(telemetryPermission)) {
+    manifest.host_permissions.push(telemetryPermission)
   }
   return Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`)
 }
@@ -125,6 +131,12 @@ module.exports = (_env, argv) => {
   // in a Chrome bundle that uses getAuthToken.
   const webOauthClientId = isWebAuthFlowTarget ? resolveWebOauthClientId(__dirname) : ''
   const webOauthClientSecret = isWebAuthFlowTarget ? resolveWebOauthClientSecret(__dirname) : ''
+  const fileEnv = loadProjectDotEnv(__dirname)
+  const telemetryEndpoint = String(process.env[TELEMETRY_ENDPOINT_ENV_KEY] || fileEnv[TELEMETRY_ENDPOINT_ENV_KEY] || '').trim()
+  if (!isDevBuild && !telemetryEndpoint) {
+    throw new Error(`${TELEMETRY_ENDPOINT_ENV_KEY} is required for production builds`)
+  }
+  telemetryHostPermission(telemetryEndpoint)
 
   if (targetProfile.auth === 'chrome-identity' && !configuredGoogleOauthClientId) {
     console.warn(
@@ -181,6 +193,7 @@ module.exports = (_env, argv) => {
         '__BROWSER_TARGET__': JSON.stringify(browserTarget),
         '__WEB_OAUTH_CLIENT_ID__': JSON.stringify(webOauthClientId),
         '__WEB_OAUTH_CLIENT_SECRET__': JSON.stringify(webOauthClientSecret),
+        '__TELEMETRY_ENDPOINT__': JSON.stringify(telemetryEndpoint),
         'process.env.NODE_ENV': JSON.stringify(mode),
       }),
       // Stamp the per-compilation content hash into every entry bundle as
@@ -197,7 +210,7 @@ module.exports = (_env, argv) => {
           {
             from: path.join(STATIC_DIR, 'manifest.json'),
             to: 'manifest.json',
-            transform: (content) => transformManifest(content, googleOauthClientId, isDevBuild, browserTarget),
+            transform: (content) => transformManifest(content, googleOauthClientId, isDevBuild, browserTarget, telemetryEndpoint),
           },
           { from: path.join(STATIC_DIR, 'popup.html'),     to: 'popup.html' },
           ...(isDevBuild ? [{ from: path.join(STATIC_DIR, 'popup-gallery.html'), to: 'popup-gallery.html' }] : []),

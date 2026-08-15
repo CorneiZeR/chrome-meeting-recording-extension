@@ -75,6 +75,10 @@ export function registerSaveHandler(
         await broadcastToPopup({ type: 'RECORDING_SAVED', filename: resolvedFilename });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
+        debugPerf(L.log, 'finalizer', 'download_failed', {
+          durationMs: roundMs(nowMs() - downloadStartedAt),
+          stream,
+        });
         L.warn('downloads.download error:', message);
         await broadcastToPopup({ type: 'RECORDING_SAVE_ERROR', filename: resolvedFilename, error: message });
         if (historyId) void history?.localSaveSettled(historyId, stream, undefined, 'interrupted', message)

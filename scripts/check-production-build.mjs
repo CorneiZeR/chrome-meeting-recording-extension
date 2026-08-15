@@ -5,6 +5,7 @@ import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const { toChromeManifestVersion } = require('./lib/manifestVersion.cjs');
 const pkg = require('../package.json');
+const telemetryEndpoint = process.env.TELEMETRY_ENDPOINT?.trim() ?? '';
 
 const distDir = path.resolve(process.cwd(), 'dist');
 const forbiddenMarkers = [
@@ -30,6 +31,14 @@ async function collectFiles(directory) {
 
 const files = await collectFiles(distDir);
 const violations = [];
+let telemetryOrigin = '';
+try {
+  const url = new URL(telemetryEndpoint);
+  if (url.protocol !== 'https:' || url.pathname !== '/api/telemetry/batches' || url.search || url.hash || url.username || url.password) throw new Error('invalid shape');
+  telemetryOrigin = url.origin;
+} catch {
+  violations.push('TELEMETRY_ENDPOINT must be the exact HTTPS /api/telemetry/batches endpoint used for this build');
+}
 for (const file of files.filter((candidate) => candidate.endsWith('.js'))) {
   const source = await fs.readFile(file, 'utf8');
   for (const marker of forbiddenMarkers) {
@@ -50,6 +59,12 @@ try {
   } else if (manifest.version !== expectedVersion) {
     violations.push(`dist/manifest.json version "${manifest.version}" != package.json-derived "${expectedVersion}"`);
   }
+  if (telemetryOrigin && !manifest.host_permissions?.includes(`${telemetryOrigin}/*`)) {
+    violations.push(`dist/manifest.json is missing the exact telemetry host permission ${telemetryOrigin}/*`);
+  }
+  if (!manifest.permissions?.includes('alarms')) {
+    violations.push('dist/manifest.json is missing the alarms permission required for bounded one-shot telemetry retries');
+  }
 } catch (error) {
   violations.push(`cannot validate dist/manifest.json version: ${error.message}`);
 }
@@ -59,6 +74,6 @@ if (violations.length) {
   process.exitCode = 1;
 } else {
   console.log(
-    `Production build clean: version ${expectedVersion} derived from package.json; no synthetic capture, fake OAuth, Drive fetch bridge, or live-E2E recorder-tab markers.`
+    `Production build clean: version ${expectedVersion}, telemetry endpoint permission, and retry alarm are present; no synthetic capture, fake OAuth, Drive fetch bridge, or live-E2E recorder-tab markers.`
   );
 }

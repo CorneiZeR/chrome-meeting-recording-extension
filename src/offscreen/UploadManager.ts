@@ -37,7 +37,7 @@ export interface JobFinalizer {
 export type UploadManagerDeps = {
   finalizer: JobFinalizer;
   /** Sink for the job's latest state; the offscreen posts it as OFFSCREEN_UPLOAD_STATE. */
-  report: (job: UploadJob) => void | Promise<void>;
+  report: (job: UploadJob, telemetryRunId?: string) => void | Promise<void>;
   /** Max jobs uploading at once; default 1 so an upload never starves a live capture. */
   concurrency?: number;
   now?: () => number;
@@ -59,7 +59,7 @@ export class UploadManager {
    * in-memory) artifacts. Bounded to one: a newer failure or a successful retry
    * evicts it, so a failed recording can't pin its bytes in memory indefinitely.
    */
-  private lastFailed: { jobId: string; historyId?: string; artifacts: CompletedRecordingArtifact[]; expiresAt: number } | null = null;
+  private lastFailed: { jobId: string; historyId?: string; telemetryRunId?: string; artifacts: CompletedRecordingArtifact[]; expiresAt: number } | null = null;
   private retryExpiryTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(private readonly deps: UploadManagerDeps) {
@@ -73,8 +73,8 @@ export class UploadManager {
    * job and returns its id. Reports the job's initial `uploading` state immediately
    * so a tab appears at once, then pumps the queue.
    */
-  enqueue(artifacts: CompletedRecordingArtifact[], historyId?: string): string {
-    return this.enqueueJob(this.genId(), artifacts, false, historyId);
+  enqueue(artifacts: CompletedRecordingArtifact[], historyId?: string, telemetryRunId?: string): string {
+    return this.enqueueJob(this.genId(), artifacts, false, historyId, telemetryRunId);
   }
 
   /**
@@ -86,11 +86,11 @@ export class UploadManager {
   retry(jobId: string): boolean {
     this.clearExpiredRetry();
     if (this.lastFailed?.jobId !== jobId) return false;
-    const { artifacts, historyId } = this.lastFailed;
+    const { artifacts, historyId, telemetryRunId } = this.lastFailed;
     this.clearRetryable();
     // The original failure already saved a local copy, so suppress the download
     // failsafe on the retry — a re-failure must not duplicate it (ADR-0004).
-    this.enqueueJob(jobId, artifacts, true, historyId);
+    this.enqueueJob(jobId, artifacts, true, historyId, telemetryRunId);
     return true;
   }
 
@@ -102,7 +102,7 @@ export class UploadManager {
     return true;
   }
 
-  private enqueueJob(id: string, artifacts: CompletedRecordingArtifact[], skipLocalFallback = false, historyId?: string): string {
+  private enqueueJob(id: string, artifacts: CompletedRecordingArtifact[], skipLocalFallback = false, historyId?: string, telemetryRunId?: string): string {
     const job: UploadJob = {
       id,
       historyId,
@@ -117,7 +117,7 @@ export class UploadManager {
       })),
       startedAt: this.now(),
     };
-    const task = { job, artifacts, skipLocalFallback, controller: new AbortController() };
+    const task = { job, artifacts, skipLocalFallback, telemetryRunId, controller: new AbortController() };
     this.pending.push(task);
     this.jobs.set(id, task);
     void this.emit(job);
@@ -133,6 +133,10 @@ export class UploadManager {
   /** Replays current in-flight work after a background reconnect. */
   activeJobs(): UploadJob[] {
     return [...this.jobs.values()].map((task) => structuredClone(task.job));
+  }
+
+  telemetryRunId(jobId: string): string | undefined {
+    return this.jobs.get(jobId)?.telemetryRunId;
   }
 
   /** Starts queued jobs up to the concurrency limit, refilling as each settles. */
@@ -201,6 +205,7 @@ export class UploadManager {
       this.lastFailed = {
         jobId: settled.id,
         historyId: settled.historyId,
+        telemetryRunId: this.jobs.get(settled.id)?.telemetryRunId,
         artifacts: retryArtifacts,
         expiresAt: this.now() + RETRY_RETENTION_MS,
       };
@@ -212,7 +217,7 @@ export class UploadManager {
 
   private async emit(job: UploadJob): Promise<void> {
     try {
-      await this.deps.report(job);
+      await this.deps.report(job, this.jobs.get(job.id)?.telemetryRunId);
     } catch (error) {
       // Transport failure must never change the completed upload outcome. The
       // offscreen outbox retries terminal delivery after reconnect.
@@ -261,5 +266,6 @@ type UploadTask = {
   job: UploadJob;
   artifacts: CompletedRecordingArtifact[];
   skipLocalFallback: boolean;
+  telemetryRunId?: string;
   controller: AbortController;
 };

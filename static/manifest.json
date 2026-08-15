@@ -11,7 +11,8 @@
     "storage",
     "tabs",
     "desktopCapture",
-    "identity"
+    "identity",
+    "alarms"
   ],
   "oauth2": {
     "client_id": "__GOOGLE_OAUTH_CLIENT_ID__",

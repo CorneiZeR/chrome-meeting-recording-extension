@@ -18,6 +18,7 @@ import { getRecordingFormatCapabilities, type RecordingFormatCapabilities } from
 import { applyThemePreference } from '../shared/theme';
 
 export type SettingsElements = {
+  anonymousDiagnostics: HTMLInputElement | null;
   theme: HTMLSelectElement | null;
   recordingMode: HTMLSelectElement | null;
   micMode: HTMLSelectElement | null;
@@ -106,6 +107,7 @@ export class SettingsController {
   /** Mirrors normalized settings into the current form controls. */
   private applySettings(settings: Readonly<ExtensionSettings>): void {
     const el = this.el;
+    if (el.anonymousDiagnostics) el.anonymousDiagnostics.checked = settings.privacy.anonymousDiagnostics;
     if (el.theme) el.theme.value = settings.appearance.theme;
     applyThemePreference(settings.appearance.theme);
     if (el.recordingMode) el.recordingMode.value = settings.basic.recordingMode;
@@ -138,6 +140,9 @@ export class SettingsController {
   private readSettingsFromForm(): unknown {
     const el = this.el;
     return {
+      privacy: {
+        anonymousDiagnostics: el.anonymousDiagnostics?.checked !== false,
+      },
       appearance: {
         theme: el.theme?.value,
       },

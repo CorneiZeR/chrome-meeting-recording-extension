@@ -15,6 +15,7 @@ export type RuntimeDiagnosticsSample = {
   avgEventLoopLagMs: number;
   maxEventLoopLagMs: number;
   longTaskCount: number;
+  longTaskDurationMs: number;
   lastLongTaskMs: number | undefined;
   maxLongTaskMs: number | undefined;
 };
@@ -25,6 +26,7 @@ export class RuntimeSampler {
   private cumulativeLagMs = 0;
   private maxLagMs = 0;
   private longTaskCount = 0;
+  private cumulativeLongTaskMs = 0;
   private lastLongTaskMs: number | null = null;
   private maxLongTaskMs = 0;
 
@@ -43,8 +45,21 @@ export class RuntimeSampler {
   /** Records one long task observed by the PerformanceObserver. */
   recordLongTask(durationMs: number): void {
     this.longTaskCount += 1;
+    this.cumulativeLongTaskMs += durationMs;
     this.lastLongTaskMs = durationMs;
     this.maxLongTaskMs = Math.max(this.maxLongTaskMs, durationMs);
+  }
+
+  /** Clears cumulative diagnostics at the start of a new recording run. */
+  reset(now: number): void {
+    this.expectedSampleAt = now + this.intervalMs;
+    this.sampleCount = 0;
+    this.cumulativeLagMs = 0;
+    this.maxLagMs = 0;
+    this.longTaskCount = 0;
+    this.cumulativeLongTaskMs = 0;
+    this.lastLongTaskMs = null;
+    this.maxLongTaskMs = 0;
   }
 
   /** Computes a diagnostics sample for `now` and advances the lag baseline. */
@@ -60,6 +75,7 @@ export class RuntimeSampler {
       avgEventLoopLagMs: roundMs(this.cumulativeLagMs / this.sampleCount),
       maxEventLoopLagMs: roundMs(this.maxLagMs),
       longTaskCount: this.longTaskCount,
+      longTaskDurationMs: roundMs(this.cumulativeLongTaskMs),
       lastLongTaskMs: this.lastLongTaskMs ?? undefined,
       maxLongTaskMs: this.longTaskCount > 0 ? roundMs(this.maxLongTaskMs) : undefined,
     };

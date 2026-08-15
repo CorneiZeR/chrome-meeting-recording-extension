@@ -159,6 +159,8 @@ export type OffscreenPhaseUpdate = {
   warnings?: string[];
   tabResolution?: CapturedTabResolution;
   capturedDevices?: RecordingCaptureDevices;
+  /** Bounded anonymous producer snapshot carried only to the background coordinator. */
+  telemetrySnapshot?: import('./telemetry').TelemetrySnapshot;
 };
 
 export type BgToOffscreenRpc =
@@ -170,6 +172,8 @@ export type BgToOffscreenRpc =
       recorderSettings: RecorderRuntimeSettingsSnapshot;
       perfSettings: PerfSettings;
       historyId: string;
+      /** Random telemetry-only identity, never derived from history, meeting, or upload identifiers. */
+      telemetryRunId: string;
       /** Monotonic run epoch the offscreen must echo in OFFSCREEN_STATE; see ADR-0003. */
       epoch: number;
     }>
@@ -193,8 +197,12 @@ export type BgToOffscreenRuntime =
 export type OffscreenToBg =
   | { type: 'OFFSCREEN_READY'; version?: string }
   | ({ type: 'OFFSCREEN_STATE' } & OffscreenPhaseUpdate)
-  | { type: 'OFFSCREEN_UPLOAD_STATE'; job: UploadJob }
-  | { type: 'OFFSCREEN_SAVE'; historyId: string; stream: import('./recording').RecordingStream; filename: string; blobUrl: string; opfsFilename?: string };
+  | { type: 'OFFSCREEN_UPLOAD_STATE'; job: UploadJob; telemetryRunId?: string; telemetrySnapshot?: import('./telemetry').TelemetrySnapshot }
+  | { type: 'OFFSCREEN_SAVE'; historyId: string; stream: import('./recording').RecordingStream; filename: string; blobUrl: string; opfsFilename?: string }
+  | { type: 'TELEMETRY_SNAPSHOT'; snapshot: import('./telemetry').TelemetrySnapshot; critical?: boolean }
+  | { type: 'TELEMETRY_FLUSH'; snapshot: import('./telemetry').TelemetrySnapshot; reason: 'incident' | 'recording_complete' | 'upload_complete' };
+
+export type TelemetryRunMessage = { type: 'TELEMETRY_RUN'; runId: string | null; enabled: boolean };
 
 export type PerfEventMessage = {
   type: 'PERF_EVENT';

@@ -45,6 +45,7 @@ export type OffscreenControllerDeps = {
   sampler: Pick<RuntimeSampler, 'markActivePhaseStart'>;
   error: (...args: unknown[]) => void;
   onWarning?: (warning: string) => void;
+  onFinalizeFailed?: (error: unknown) => void;
   /** Monotonic clock; defaults to Date.now for tests. */
   now?: () => number;
 };
@@ -54,6 +55,7 @@ export class OffscreenController {
   private warnings: string[] = [];
   private storageMode: StorageMode = DEFAULT_RECORDING_RUN_CONFIG.storageMode;
   private historyId: string | undefined;
+  private telemetryRunId: string | undefined;
   /** Device labels from the tracks opened for the active run. */
   private capturedDevices: RecordingCaptureDevices | undefined;
   /** Run epoch from the latest OFFSCREEN_START; echoed in every OFFSCREEN_STATE (ADR-0003). */
@@ -89,10 +91,11 @@ export class OffscreenController {
   isFinalizing = (): boolean => this.finalizeRunPromise !== null;
   clearWarnings = (): void => { this.warnings = []; };
 
-  onStartRequested = (_runConfig: RecordingRunConfig, storageMode: StorageMode, epoch: number, historyId: string): void => {
+  onStartRequested = (_runConfig: RecordingRunConfig, storageMode: StorageMode, epoch: number, historyId: string, telemetryRunId?: string): void => {
     this.storageMode = storageMode;
     this.epoch = epoch;
     this.historyId = historyId || undefined;
+    this.telemetryRunId = telemetryRunId || undefined;
     this.capturedDevices = undefined;
   };
 
@@ -153,7 +156,7 @@ export class OffscreenController {
           // ADR-0004: capture is sealed — hand it to the background upload manager
           // and return to idle at once so a new recording can start while it uploads.
           if (!this.enqueueUpload) throw new Error('Drive finalize requires an upload manager');
-          this.enqueueUpload(artifacts, { historyId: this.historyId });
+          this.enqueueUpload(artifacts, { historyId: this.historyId, telemetryRunId: this.telemetryRunId });
         } else {
           // Local saves are instant; finalize inline.
           await finalizer.finalize({ artifacts, storageMode: 'local', historyId: this.historyId });
@@ -163,6 +166,7 @@ export class OffscreenController {
     })()
       .catch((e) => {
         this.deps.error('Stop/finalize pipeline failed', describeRuntimeError(e));
+        this.deps.onFinalizeFailed?.(e);
         this.pushState('failed', { error: describeRuntimeError(e) });
       })
       .finally(() => {

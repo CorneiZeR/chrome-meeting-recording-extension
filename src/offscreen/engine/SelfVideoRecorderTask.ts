@@ -19,7 +19,7 @@ import { describeMediaError } from '../RecorderSupport';
 import { maybeGetSelfVideoStream } from '../RecorderCapture';
 import { enforceSelfVideoResolution } from '../SelfVideoResize';
 import type { RecorderRuntimeSettingsSnapshot } from '../../shared/settings';
-import { logPerf } from '../../shared/perf';
+import { debugPerf, logPerf } from '../../shared/perf';
 import {
   awaitRecorderStart,
   buildRecordingFilename,
@@ -244,7 +244,11 @@ async function startWiredSelfVideoRecorder(
     if (recorder.state !== 'inactive') try { recorder.stop(); } catch {}
   });
   recorder.ondataavailable = makeChunkHandler(target, 'self-video', deps, videoBitsPerSecond);
-  recorder.onerror = (e: any) => { deps.error('Self video MediaRecorder error', e); void finalize('Self video'); };
+  recorder.onerror = (e: any) => {
+    deps.error('Self video MediaRecorder error', e);
+    debugPerf(deps.log, 'lifecycle', 'recorder_error', { stream: 'self-video' });
+    void finalize('Self video');
+  };
   recorder.onstop = () => { void finalize('Self video'); };
 
   const { actualStartTimeMs: startMs } = await awaitRecorderStart(

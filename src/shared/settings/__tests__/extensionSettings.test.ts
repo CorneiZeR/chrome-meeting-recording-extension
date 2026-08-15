@@ -12,6 +12,11 @@ import {
 } from '..';
 
 describe('settings', () => {
+  it('migrates anonymous diagnostics as default-on while preserving an explicit opt-out', () => {
+    expect(normalizeExtensionSettings({}).privacy.anonymousDiagnostics).toBe(true);
+    expect(normalizeExtensionSettings({ privacy: { anonymousDiagnostics: false } }).privacy.anonymousDiagnostics).toBe(false);
+  });
+
   it('defaults to the system theme and accepts only supported preferences', () => {
     expect(DEFAULT_EXTENSION_SETTINGS.appearance.theme).toBe('system');
     expect(normalizeExtensionSettings({}).appearance.theme).toBe('system');

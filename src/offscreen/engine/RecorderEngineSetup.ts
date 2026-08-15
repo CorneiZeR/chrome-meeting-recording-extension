@@ -106,6 +106,7 @@ export function attachTabEndedHandler(
 ): void {
   stream.getVideoTracks()[0]?.addEventListener('ended', () => {
     log('Video track ended');
+    debugPerf(log, 'lifecycle', 'required_stream_lost', { stream: 'tab' });
     stopAll();
   });
 }

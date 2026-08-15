@@ -18,6 +18,7 @@ import {
   sealAndFixArtifact,
 } from './RecorderTaskUtils';
 import type { CompletedRecordingArtifact, RecorderEngineDeps } from './RecorderEngineTypes';
+import { debugPerf } from '../../shared/perf';
 
 export type MicRecorderCallbacks = {
   onStarted: () => void;
@@ -82,6 +83,7 @@ export async function startMicRecorder(
   recorder.ondataavailable = makeChunkHandler(target, 'mic', deps, 96_000);
   recorder.onerror = (e: any) => {
     deps.error('Mic MediaRecorder error', e);
+    debugPerf(deps.log, 'lifecycle', 'recorder_error', { stream: 'mic' });
     void finalize('Mic');
   };
   recorder.onstop = () => {

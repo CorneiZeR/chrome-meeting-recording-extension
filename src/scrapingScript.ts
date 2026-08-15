@@ -28,7 +28,6 @@ import { trySendRuntimeMessage } from './platform/chrome/runtime';
 import { isPopupToContentMessage } from './shared/protocol';
 import {
   configurePerfRuntime,
-  isPerfDebugMode,
   logPerf,
   nowMs,
   roundMs,
@@ -36,12 +35,66 @@ import {
 } from './shared/perf';
 import { CaptionBuffer } from './content/captionBuffer';
 import { MeetingEndDetector, type MeetingEndedPayload } from './content/MeetingEndDetector';
+import { TelemetryAccumulator, type TelemetrySink, type TelemetrySnapshot } from './shared/telemetry';
+import { addStorageChangedListener } from './platform/chrome/storage';
+import { normalizeExtensionSettings } from './shared/settings';
+
+let captionTelemetry: TelemetryAccumulator | null = null;
+let perfDebugEnabled = false;
+let contentLongTaskObserver: PerformanceObserver | null = null;
+const captionTelemetrySink: TelemetrySink = {
+  increment: (...args) => captionTelemetry?.increment(...args),
+  measure: (...args) => captionTelemetry?.measure(...args),
+  context: (...args) => captionTelemetry?.context(...args),
+  incident: (...args) => captionTelemetry?.incident(...args),
+  checkpoint: (...args) => captionTelemetry?.checkpoint(...args),
+  flush: (...args) => captionTelemetry?.flush(...args),
+};
 
 function sendPerfEvent(entry: PerfEventEntry) {
   void trySendRuntimeMessage({ type: 'PERF_EVENT', entry });
 }
 
-void configurePerfRuntime({ source: 'captions', sink: sendPerfEvent });
+const perfRuntimeReady = configurePerfRuntime({
+  source: 'captions',
+  sink: sendPerfEvent,
+  telemetrySink: captionTelemetrySink,
+  onSettingsChanged: (settings) => {
+    perfDebugEnabled = settings.debugMode;
+    updateContentMainThreadLongTaskObserver();
+  },
+});
+
+setInterval(() => captionTelemetry?.checkpoint(), 60_000);
+chrome.runtime.onMessage.addListener((msg: unknown, _sender, sendResponse) => {
+  if (!msg || typeof msg !== 'object') return false;
+  if ((msg as any).type === 'TELEMETRY_RUN') {
+    const runId = typeof (msg as any).runId === 'string' ? (msg as any).runId : null;
+    captionTelemetry?.checkpoint(true);
+    captionTelemetry = runId && (msg as any).enabled !== false
+      ? new TelemetryAccumulator(runId, 'captions', {
+          onCheckpoint: (snapshot, critical) => void trySendRuntimeMessage({ type: 'TELEMETRY_SNAPSHOT', snapshot, critical }),
+        })
+      : null;
+    updateContentMainThreadLongTaskObserver();
+    collector.reportActiveBlockObserverCount();
+    sendResponse({ ok: true });
+    return false;
+  }
+  if ((msg as any).type === 'TELEMETRY_GET_SNAPSHOT') {
+    sendResponse({ snapshot: captionTelemetry?.snapshot() as TelemetrySnapshot | undefined });
+    return false;
+  }
+  return false;
+});
+addStorageChangedListener((changes, areaName) => {
+  if (areaName !== 'local' || !changes.extensionSettings) return;
+  if (!normalizeExtensionSettings(changes.extensionSettings.newValue).privacy.anonymousDiagnostics) {
+    captionTelemetry?.reset();
+    captionTelemetry = null;
+    updateContentMainThreadLongTaskObserver();
+  }
+});
 
 type ObservedCaptionBlock = {
   observer: MutationObserver;
@@ -190,9 +243,11 @@ class TranscriptCollector {
     this.reportObserverCount();
   }
 
-  private reportObserverCount() {
+  reportActiveBlockObserverCount() {
     logPerf(console.log, 'captions', 'observer_count', { activeBlockObservers: this.activeBlockObserverCount });
   }
+
+  private reportObserverCount() { this.reportActiveBlockObserverCount(); }
 
   getActiveBlockObserverCount(): number { return this.activeBlockObserverCount; }
 
@@ -250,16 +305,19 @@ class TranscriptCollector {
 }
 
 /**
- * Debug-only: records long tasks (>50ms) on the Meet-tab main thread so the
- * diagnostics snapshot can show whether content-script work (caption processing)
- * actually blocks the user-facing tab — the one metric the offscreen
- * RuntimeSampler cannot see. Emits one aggregate event per PerformanceObserver
- * batch (not per entry) to bound its own overhead, and only in debug builds so
- * production pays nothing. See PerfDebugSummary.captions.longTask*.
+ * Records long tasks (>50ms) on the Meet-tab main thread while either the local
+ * development dashboard or an active anonymous diagnostics run needs them. It
+ * emits one aggregate event per PerformanceObserver batch and disconnects as
+ * soon as neither consumer is active.
  */
-function observeContentMainThreadLongTasks(): void {
-  if (!isPerfDebugMode()) return;
-  if (typeof PerformanceObserver === 'undefined') return;
+function updateContentMainThreadLongTaskObserver(): void {
+  const shouldObserve = perfDebugEnabled || captionTelemetry !== null;
+  if (!shouldObserve) {
+    contentLongTaskObserver?.disconnect();
+    contentLongTaskObserver = null;
+    return;
+  }
+  if (contentLongTaskObserver || typeof PerformanceObserver === 'undefined') return;
   try {
     const observer = new PerformanceObserver((list) => {
       const entries = list.getEntries();
@@ -277,6 +335,7 @@ function observeContentMainThreadLongTasks(): void {
       });
     });
     observer.observe({ type: 'longtask', buffered: true });
+    contentLongTaskObserver = observer;
   } catch {
     /* longtask entry type unsupported here — diagnostics-only, never fatal */
   }
@@ -287,5 +346,7 @@ if (typeof process !== 'undefined' && process.env.NODE_ENV === 'test') {
   (window as any).collector = collector;
 } else {
   collector.start();
-  observeContentMainThreadLongTasks();
+  void perfRuntimeReady
+    .then(() => collector.reportActiveBlockObserverCount())
+    .catch(() => {});
 }
