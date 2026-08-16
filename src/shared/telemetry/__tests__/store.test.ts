@@ -16,7 +16,7 @@ const makeBatch = (index: number, padding = 0): TelemetryBatchV1 => ({
 describe('TelemetryStore bounds', () => {
   beforeEach(async () => {
     await new Promise<void>((resolve) => {
-      const request = indexedDB.deleteDatabase('meeting-recorder-telemetry-v1');
+      const request = indexedDB.deleteDatabase('recording-extension-telemetry-v1');
       request.onsuccess = () => resolve(); request.onerror = () => resolve(); request.onblocked = () => resolve();
     });
   });

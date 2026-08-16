@@ -1,4 +1,4 @@
-name = "meeting-recorder-telemetry"
+name = "recording-extension-telemetry"
 main = "src/index.ts"
 compatibility_date = "2026-08-15"
 
@@ -8,14 +8,13 @@ head_sampling_rate = 0.1
 
 [[d1_databases]]
 binding = "TELEMETRY_DB"
-database_name = "meeting-recorder-telemetry"
-database_id = "REPLACE_WITH_D1_DATABASE_ID"
+database_name = "recording-extension-telemetry"
+database_id = "247543ef-795a-4fd5-975d-0c098a3904b9"
 migrations_dir = "migrations"
 
-[[unsafe.bindings]]
+[[ratelimits]]
 name = "TELEMETRY_RATE_LIMITER"
-type = "ratelimit"
-namespace_id = "1001"
+namespace_id = "20260816"
 simple = { limit = 30, period = 60 }
 
 [triggers]

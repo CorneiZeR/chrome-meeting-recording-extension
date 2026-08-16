@@ -26,6 +26,6 @@ if (!sql) {
   console.log(sql);
   console.log('\nGenerated only. Add --remote to execute this read-only query against D1.');
 } else {
-  const result = spawnSync('npx', ['wrangler', 'd1', 'execute', 'meeting-recorder-telemetry', '--remote', '--command', sql], { cwd: new URL('..', import.meta.url), stdio: 'inherit' });
+  const result = spawnSync('npx', ['wrangler', 'd1', 'execute', 'recording-extension-telemetry', '--remote', '--command', sql], { cwd: new URL('..', import.meta.url), stdio: 'inherit' });
   process.exitCode = result.status ?? 1;
 }

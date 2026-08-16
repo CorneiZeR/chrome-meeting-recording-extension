@@ -1,5 +1,5 @@
 {
-  "name": "meeting-recorder-telemetry",
+  "name": "recording-extension-telemetry",
   "private": true,
   "type": "module",
   "scripts": {

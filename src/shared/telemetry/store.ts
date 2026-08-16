@@ -1,6 +1,6 @@
 import { TELEMETRY_MAX_BATCH_BYTES, type TelemetryBatchV1 } from './contracts';
 
-const DB_NAME = 'meeting-recorder-telemetry-v1';
+const DB_NAME = 'recording-extension-telemetry-v1';
 const DB_VERSION = 1;
 const OUTBOX = 'outbox';
 const CHECKPOINTS = 'checkpoints';
