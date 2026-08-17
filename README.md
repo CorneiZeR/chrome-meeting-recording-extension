@@ -45,9 +45,9 @@ Everything runs in your browser. Capture is **local-first**: recording data stre
 
 **State-driven popup** — a different layout per capture phase: a clean **configuration** screen before recording, a **recording** screen with a red banner, a pause-aware elapsed **timer** (counts recorded time only — it freezes on pause and equals the saved file's duration), a read-only live **mic meter**, status chips (a Transcript indicator that tracks whether Meet captions are actually on, plus the storage target), mic/camera **toggle rows**, and a short **finalizing** screen while capture seals.
 
-**Local or Google Drive output** — finalized files download locally or enter a detached background upload to `Google Meet Records/<meeting-id>-<timestamp>/` in Drive. Capture returns to idle as soon as a Drive job is queued, so another recording can start; the job has its own progress tab, is retryable briefly after a fallback, and falls back per file to a local download on failure or cancellation.
+**Local or Google Drive output** — finalized files download locally or enter a detached background upload to `Google Meet Records/<meeting-id>-<timestamp>/` in Drive. Capture returns to idle as soon as a Drive job is queued, so another recording can start; the job has its own progress tab, is retryable briefly after a fallback, and falls back per file to a local download on failure or cancellation. After a successful Drive upload, the popup offers a one-time naming prompt: saving renames the Drive folder and every uploaded media file, while Skip leaves their original names unchanged.
 
-**Recording history** — the popup opens a paginated, IndexedDB-backed history page for local and Drive artifacts. Rename an entry, open a confirmed local download or Drive file, or hide its history entry without deleting the underlying file. Pending and unavailable recovery outcomes are shown honestly rather than reported as saved.
+**Recording history** — the popup opens a paginated, IndexedDB-backed history page for local and Drive artifacts. A local recording rename changes its history label; a modern Drive recording rename updates the remote folder and uploaded filenames before committing the matching history projection, rolling completed remote changes back if a later rename fails. Open a confirmed local download or Drive file, or hide its history entry without deleting the underlying file. Pending and unavailable recovery outcomes are shown honestly rather than reported as saved.
 
 **MV3 / offscreen architecture** — recording runs in a hidden offscreen document, the only MV3 context Chrome allows `MediaRecorder` and `AudioContext`. The background service worker keeps the run alive and rehydrates session state from `chrome.storage.session` after Chrome suspends and restarts it.
 
@@ -77,8 +77,9 @@ git clone https://github.com/kstroevsky/chrome-meeting-recording-extension.git
 cd chrome-recording-transcription-extension
 npm install
 
-# 2. Configure TELEMETRY_ENDPOINT in .env, then build
-npm run build          # outputs to ./dist
+# 2. Build production with the deployed write-only telemetry endpoint
+TELEMETRY_ENDPOINT=https://recording-extension-telemetry.kstroevsky.workers.dev/api/telemetry/batches npm run build
+# outputs to ./dist; development builds may omit TELEMETRY_ENDPOINT
 
 # 3. Load into Chrome
 #    chrome://extensions → Developer mode ON → Load unpacked → select ./dist
@@ -161,7 +162,7 @@ The popup renders one of three **capture** layouts depending on the current reco
 - **Configuration** (idle) — the setup screen above: microphone mode, storage, "record my camera separately", Download Transcript, Enable Mic, and **Start Recording**. None of the in-recording controls appear here.
 - **Recording** (recording / paused) — a red **Recording** banner (amber **Paused** when paused) with a live elapsed **timer**, a read-only **mic meter**, two status chips (**Transcript on/off** and the storage target), a **Microphone** row and a **Camera** row each with an on/off toggle, and **Pause**, **Stop**, and **Discard**.
 - **Finalizing** (stopping) — a spinner with the run summary: storage target, recorded duration, microphone mode, and whether the camera was separate, plus "you can close this popup".
-- **Upload tab** (independent of capture phase) — the progress and per-file results of one background Drive job. It may continue while the setup screen starts another recording; retry is available only while its failed artifacts remain temporarily retained, and cancel saves unfinished files locally.
+- **Upload tab** (independent of capture phase) — the progress and per-file results of one background Drive job. It may continue while the setup screen starts another recording; retry is available only while its failed artifacts remain temporarily retained, and cancel saves unfinished files locally. A completed unnamed job opens the accessible **Name this recording** dialog once; saving updates the remote Drive names and session/history projections, while Skip durably suppresses the prompt.
 
 **The live timer is pause-aware.** It counts only *recorded* time: it freezes while paused and stops at stop, so the number you see equals the duration of the saved file. It is computed from authoritative timing on the session, so reopening the popup mid-recording shows the correct elapsed time.
 
@@ -219,7 +220,7 @@ All filenames include the Google Meet meeting ID suffix and a UTC timestamp.
 | Self-video | `google-meet-self-video-<meet-suffix>-<timestamp>.webm` (default) or `.mp4` |
 | Transcript | `google-meet-transcript-<meet-suffix>-<timestamp>.txt` |
 
-In Drive mode, all artifacts for one recording session are uploaded to a per-recording folder: `Google Meet Records/<meeting-id>-<timestamp>/`. The detached upload tab and recording history expose the folder and per-file Drive links once Drive returns them.
+In Drive mode, all artifacts for one recording session are uploaded to a per-recording folder: `Google Meet Records/<meeting-id>-<timestamp>/`. The detached upload tab and recording history expose the folder and per-file Drive links once Drive returns them. Naming a completed Drive recording slugifies the title for the folder and preserves each artifact extension while producing `<slug>-recording.<ext>`, `<slug>-mic.<ext>`, and `<slug>-self-video.<ext>` filenames. The metadata update is sequential and rollback-aware so history is not advanced to names Drive did not accept.
 
 ---
 
@@ -514,7 +515,7 @@ Per-module documentation lives in each module's `README.md` — the *why*, invar
 | Debug | [`src/debug`](src/debug/README.md) | the diagnostics dashboard |
 | Platform | [`src/platform`](src/platform/README.md) | browser-abstraction layer ([chrome seam](src/platform/chrome/README.md), [auth capability](src/platform/capabilities/README.md)) |
 
-Also: [`tests/`](tests/README.md) · [`scripts/`](scripts/README.md) · [`static/`](static/README.md) · [`docs/`](docs/README.md) · [module-README conventions](docs/agents/module-readmes.md).
+Also: [`tests/`](tests/README.md) · [`scripts/`](scripts/README.md) · [`static/`](static/README.md) · [`docs/`](docs/README.md) · [`telemetry-worker/`](telemetry-worker/README.md) · [module-README conventions](docs/agents/module-readmes.md).
 
 
 ## Design principles
@@ -1082,7 +1083,9 @@ flowchart LR
 | `RETRY_UPLOAD_JOB` / `CANCEL_UPLOAD_JOB` | `jobId` | `CommandResult`; retry is bounded by retained artifact availability, cancel falls back locally |
 | `GET_DRIVE_TOKEN` | optional `refresh` | token or error |
 | `LIST_RECORDING_HISTORY` | optional `(createdAt, id)` cursor | cursor page of history entries |
-| `RENAME_RECORDING_HISTORY` / `REMOVE_RECORDING_HISTORY` | entry id + name when renaming | atomic entry update / soft delete |
+| `RENAME_RECORDING_HISTORY` | entry id + requested title | updated entry/session; current Drive rows rename remote folder/files before history commits |
+| `SKIP_RECORDING_NAMING` | completed upload `jobId` | authoritative session with its one-time naming prompt marked handled |
+| `REMOVE_RECORDING_HISTORY` | entry id | atomic soft delete |
 | `OPEN_RECORDING_HISTORY_FILE` | recording id + file id | open a confirmed local Chrome download |
 
 ### Popup → Content
@@ -1098,24 +1101,34 @@ flowchart LR
 | Message | Meaning |
 | :--- | :--- |
 | `OFFSCREEN_READY` | offscreen port is attached and ready |
-| `OFFSCREEN_STATE` | phase transition or finalize result; carries the run `epoch` the background fences on (ADR-0003) |
+| `OFFSCREEN_STATE` | phase transition or finalize result; carries the fenced run `epoch` and optional bounded telemetry snapshot |
 | `OFFSCREEN_SAVE` | request a local save through background |
-| `OFFSCREEN_UPLOAD_STATE` | current or terminal detached Drive job; terminal jobs are replayed until acknowledged |
+| `OFFSCREEN_UPLOAD_STATE` | current or terminal detached Drive job plus optional telemetry-only run association/snapshot; terminal jobs replay until acknowledged |
+| `TELEMETRY_SNAPSHOT` / `TELEMETRY_FLUSH` | bounded producer aggregate for background merge/checkpoint or lifecycle flush; never per-event media/text data |
 
 ### Content Script → Background
 
 | Message | Meaning |
 | :--- | :--- |
 | `MEETING_ENDED` | Meet page entered a post-call state; routed to auto-stop, which stops any active recording |
+| `TELEMETRY_SNAPSHOT` | bounded caption counts/totals/maxima and sanitized incidents for the current telemetry-only run |
+
+### Background → Content
+
+| Message | Meaning |
+| :--- | :--- |
+| `TELEMETRY_RUN` | start/reset the caption reducer for a random telemetry-only run, or disable it on opt-out |
+| `TELEMETRY_GET_SNAPSHOT` | request the final bounded caption aggregate before stopping capture |
 
 ### Background → Offscreen
 
 | Message | Meaning |
 | :--- | :--- |
-| `OFFSCREEN_START` | begin a run for a specific `streamId` and `runConfig`; carries the run `epoch` the offscreen echoes back (ADR-0003) |
+| `OFFSCREEN_START` | begin a run for a specific `streamId`/`runConfig`; carries independent fenced `epoch` and telemetry-only run ID |
 | `OFFSCREEN_STOP` | stop active recording and begin finalize flow |
 | `OFFSCREEN_DISCARD` | stop capture and delete sealed temporary artifacts without delivery |
 | `OFFSCREEN_RETRY_UPLOAD` / `OFFSCREEN_CANCEL_UPLOAD` | control a detached Drive job by id |
+| `OFFSCREEN_RENAME_DRIVE_RESOURCES` | rename an exact bounded list of Drive file/folder IDs and names with rollback-aware result |
 | `OFFSCREEN_ACK_UPLOAD_STATE` | confirms background/session/history persistence of a terminal upload state, allowing outbox removal |
 | `REVOKE_BLOB_URL` | release local save blob URLs and optionally cleanup OPFS temp files |
 | `OFFSCREEN_CONNECT` | ask an existing offscreen page to reconnect its runtime port |

@@ -91,7 +91,9 @@ Rule of thumb: **if it's a selector or a Meet-DOM shape, the fix is in `GoogleMe
 
 ## Observability
 
-The pipeline emits `logPerf(console.log, 'captions', …)` events: `mutation_processed` (with `durationMs`, `sourceLatencyMs`, `coalesced`, `textLength`) and `observer_count` (`activeBlockObservers`). `sourceLatencyMs` (now − the caption's `emittedAt`) is the best signal for "are we keeping up with Meet's caption rate." A **dev-only** `PerformanceObserver('longtask')` also emits `long_task` batches (`count` / `totalMs` / `maxMs`) — the one way to see whether content-script work actually blocks the Meet tab's main thread, since the offscreen `RuntimeSampler` can't observe this thread.
+The pipeline emits `logPerf(console.log, 'captions', …)` events: `mutation_processed` (with `durationMs`, `sourceLatencyMs`, `coalesced`, `textLength`) and `observer_count` (`activeBlockObservers`). `sourceLatencyMs` (now − the caption's `emittedAt`) is the best signal for "are we keeping up with Meet's caption rate." The complete entries still feed the development dashboard only.
+
+For anonymous production diagnostics, `scrapingScript.ts` reduces those same allowlisted events into a per-run `TelemetryAccumulator`: counts, duration/source-latency totals and maxima, observer maximum, and long-task aggregates—never caption text, speaker names, meeting identifiers, or raw DOM data. Dirty state is checkpointed to the background at most once per minute and on lifecycle boundaries, not per mutation. The Meet-tab `PerformanceObserver('longtask')` is installed only while either the development dashboard or an active diagnostics run needs it; it disconnects immediately when neither consumer is active or the user opts out. `TELEMETRY_GET_SNAPSHOT` supplies the final caption aggregate before stop.
 
 ## Configuration
 
@@ -113,7 +115,7 @@ All timing lives in `shared/timeouts.ts` (`TIMEOUTS`), so the latency/safety tra
 | `MeetingEndDetector.ts` | conservative auto-stop signal (observer + poll + grace + once) |
 | `captionBuffer.ts` | per-speaker dedup + grace-commit into timestamped transcript lines |
 
-Orchestrator: [`../scrapingScript.ts`](../scrapingScript.ts) — `TranscriptCollector` wires the observers and exposes this module's only outside surface: `window.getTranscript()` / `window.resetTranscript()`; the runtime handlers `GET_TRANSCRIPT` / `RESET_TRANSCRIPT` / `GET_CAPTION_STATE` (popup → content); and the `MEETING_ENDED` message it emits to the background to drive auto-stop.
+Orchestrator: [`../scrapingScript.ts`](../scrapingScript.ts) — `TranscriptCollector` wires the observers and exposes this module's outside surfaces: `window.getTranscript()` / `window.resetTranscript()`; the runtime handlers `GET_TRANSCRIPT` / `RESET_TRANSCRIPT` / `GET_CAPTION_STATE` (popup → content); `TELEMETRY_RUN` / `TELEMETRY_GET_SNAPSHOT`; and the `MEETING_ENDED` message it emits to the background to drive auto-stop.
 
 ## Testing notes
 

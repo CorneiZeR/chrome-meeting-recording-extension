@@ -1,6 +1,6 @@
 # Popup — the control panel (state-driven, non-authoritative UI)
 
-> The browser-action UI: start/stop/discard, live recording controls (mute/hide/pause), transcript download, permission priming, history navigation, and detached-upload controls. It is **created fresh every time the user opens it and destroyed on close** — so it owns *no* truth; it renders from the background's authoritative session. For symbol-level structure use codegraph (`codegraph_explore "PopupController SessionTabsView RecordingTimer CaptionPoller"`). The entry `../popup.ts` is intentionally thin (boots the shared shell and controller), and `PopupController` is itself a **thin orchestrator** that delegates the recording timer, caption poll, and session-tab/upload UI to focused collaborators.
+> The browser-action UI: start/stop/discard, live recording controls (mute/hide/pause), transcript download, permission priming, history navigation, detached-upload controls, and completed-upload naming. It is **created fresh every time the user opens it and destroyed on close** — so it owns *no* truth; it renders from the background's authoritative session. For symbol-level structure use codegraph (`codegraph_explore "PopupController SessionTabsView RecordingNameDialog"`). The entry `../popup.ts` is intentionally thin (boots the shared shell and controller), and `PopupController` is itself a **thin orchestrator** that delegates the recording timer, caption poll, dialogs, and session-tab/upload UI to focused collaborators.
 
 > **Archetype:** *Interactive Surface*. The defining constraint is that this UI is **ephemeral and not the source of truth** — it must render correctly from state it doesn't own, every time it reopens, with live controls that never interrupt the recording. So this README leads with the view-state model and the authority/reconciliation rules. If you read one section, read **The authority model**.
 
@@ -50,7 +50,7 @@ The single most important rule: **the popup is not authoritative.** Two conseque
 ## Message flow
 
 ```
-popup → background : START_RECORDING · STOP_RECORDING · DISCARD_RECORDING · GET_RECORDING_STATUS · SET_MIC_MUTED · SET_CAMERA_MUTED · SET_PAUSED · RETRY_UPLOAD_JOB · CANCEL_UPLOAD_JOB
+popup → background : START_RECORDING · STOP_RECORDING · DISCARD_RECORDING · GET_RECORDING_STATUS · SET_MIC_MUTED · SET_CAMERA_MUTED · SET_PAUSED · RETRY_UPLOAD_JOB · CANCEL_UPLOAD_JOB · RENAME_RECORDING_HISTORY · SKIP_RECORDING_NAMING
 popup → content    : GET_TRANSCRIPT · RESET_TRANSCRIPT · GET_CAPTION_STATE
 background → popup  : RECORDING_STATE · RECORDING_SAVED · RECORDING_SAVE_ERROR
 ```
@@ -86,6 +86,10 @@ When separate camera capture is selected with a sub-1080p camera preset, the set
 
 An upload tab shows the latest job/file outcomes and opens the resolved Drive folder or each uploaded Drive file when metadata is available. Retry is only offered while the offscreen runtime still retains the failed artifacts; retention is bounded to the latest failed job, five minutes, and 128 MB. Cancel aborts queued or active Drive work and routes unfinished files through the normal local-download fallback. Both actions reconcile from the response/session update rather than assuming a local tab mutation succeeded.
 
+### Naming completed Drive uploads
+
+When the oldest completed job still has `namingStatus: 'pending'`, `PopupController` selects that job and opens `RecordingNameDialog` after the current render. Save sends `RENAME_RECORDING_HISTORY`; for a Drive entry the background renames the remote folder and every available uploaded file before returning the updated history/session projections. Skip sends `SKIP_RECORDING_NAMING`, which durably marks the job handled so reopening the ephemeral popup does not ask again. The same dialog is reused by the recording-detail rename action. It validates a nonblank, slug-compatible title, traps focus, blocks dismissal while the remote update is active, and surfaces rollback errors without inventing local success.
+
 ## Transcript download
 
 Separate from recording: the header **Save** button (`wireTranscriptDownload`) pulls the transcript on demand — query the active tab → `GET_TRANSCRIPT` to the content script → if it's unreachable or empty, toast (`noTranscriptOnPage` / `transcriptEmpty`); otherwise wrap the text in a `text/plain` blob and `downloadFile(saveAs: true)` named by meeting id. Because the transcript is scraped live by the [content script](../content/README.md) (not produced by the recorder), this works whenever Meet captions are present — with or without an active recording.
@@ -99,6 +103,7 @@ Separate from recording: the header **Save** button (`wireTranscriptDownload`) p
 - **The mic meter is observational.** A missing/paused/muted mic returns zero and clears the bars; it must never create an audio destination, alter gain, or influence capture.
 - **Upload state is not a phase.** Do not add `uploading` back to `setActiveView`; render detached jobs through `SessionTabsView` so capture can return to idle and start another run.
 - **Caption polling is best-effort** — never block UI on it; an unreachable tab just shows "Transcript off".
+- **Naming state is authoritative session/history state.** `namingJobId` only prevents duplicate dialogs during one popup lifetime; `namingStatus` and command responses decide whether another popup should ask.
 
 ## Files
 
@@ -108,6 +113,7 @@ Separate from recording: the header **Save** button (`wireTranscriptDownload`) p
 | `RecordingTimer.ts` | the pause-aware 1 s recording clock (extracted from the controller) |
 | `CaptionPoller.ts` | the recording-view caption-state poll that drives the Transcript chip (extracted) |
 | `SessionTabsView.ts` | the session tab bar + per-job background-upload view (ADR-0004), including retry/cancel affordances and recovery-state messaging; owns its tab/selection state and talks back to the controller via a `{ rerender, applySession, toast }` callback bag |
+| `RecordingNameDialog.ts` | accessible reusable title-input modal for the one-time completed-upload prompt and later recording-detail rename |
 | `controllers/PopupStateController.ts` | maps the session → phase → view; `applySession`, `refreshInitialState`, persistent-status text |
 | `popupView.ts` | `setActiveView` + DOM helpers (the view switch) |
 | `popupRunConfig.ts`, `popupStatus.ts`, `popupMessages.ts` | config-view run-config reads, status/label text, message/toast string builders |
@@ -117,7 +123,8 @@ Entry: `../popup.ts` (DOM wiring only). The Settings *page* is a separate surfac
 
 ## Testing notes
 
-- `__tests__/PopupController.test.ts` and `PopupStateController.test.ts` drive the controller against a fake element set + mocked `chrome.runtime`, asserting view switches, stop/discard reconciliation, and the session-tab/upload flows.
+- `__tests__/PopupController.test.ts` and `PopupStateController.test.ts` drive the controller against a fake element set + mocked `chrome.runtime`, asserting view switches, stop/discard reconciliation, session-tab/upload flows, naming prompt ordering, skip persistence, and rename response reconciliation.
+- `__tests__/RecordingNameDialog.test.ts` covers validation, focus trapping, busy/error state, Save, Skip, and disposal. `tests/e2e/recording-rename.spec.ts` proves a completed mocked-Drive upload can rename the real remote folder/file projections through the built extension.
 - The extracted collaborators are unit-tested in isolation: `RecordingTimer.test.ts` (tick / pause / stop-idempotence), `CaptionPoller.test.ts` (on / off / unreachable tab / idempotent start), and `SessionTabsView.test.ts` (tab render/select, retry/cancel, and recovery states).
 - `MicPermissionService`/`CameraPermissionService` are tested against a mocked `navigator.permissions`/`mediaDevices` — the ladder (granted / denied / prompt→prime→fallback) is the unit under test.
 - `popupMessages.test.ts` pins the user-facing strings.

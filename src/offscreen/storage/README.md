@@ -216,7 +216,7 @@ Both `makeChunkHandler` (the write wrapper — backpressure + the consecutive-fa
 
 ## Observability — diagnostic events & warnings
 
-This subsystem surfaces through two channels, both of which originate here and fold into `PerfDebugStore` in the background (see the [instrumentation doc](../../../docs/plans/storage-and-instrumentation-architecture.md)):
+This subsystem surfaces through the local development snapshot and the bounded production reducer (see the [instrumentation doc](../../../docs/plans/storage-and-instrumentation-architecture.md)):
 
 | Signal | Channel | Meaning |
 | :--- | :--- | :--- |
@@ -224,7 +224,7 @@ This subsystem surfaces through two channels, both of which originate here and f
 | `write_backpressure_ceiling` | `debugPerf(log, 'storage', …)` | hard ceiling — a protective stop is now in flight |
 | user-facing warning | `reportWarning(…)` | the human-readable "storage may be slow / recording at risk" surfaced in the UI |
 
-`WriteBackpressure` itself emits nothing — it invokes `onWarn`/`onCeiling` callbacks, and `makeChunkHandler` wires those to `reportWarning` + `debugPerf`. So a new failure signal goes there, not deep in a target. When diagnosing a slow-disk report after the fact, **`peakPendingBytes` is the single most useful field** — it captures the worst backlog even if the queue later drained.
+`WriteBackpressure` itself emits nothing — it invokes `onWarn`/`onCeiling` callbacks, and `makeChunkHandler` wires those to `reportWarning` + `debugPerf`. The production reducer treats soft backpressure as aggregate context/counters; a hard ceiling or persistent write failure becomes a sanitized `storage_backpressure_stop` / `storage_write_failed` incident and queues immediately. It preserves write/open counts, duration totals/maxima, worker-path usage, and pending-write maxima, never OPFS filenames or raw errors. So a new failure signal goes in the wrapper, not deep in a target. In the local dashboard, **`peakPendingBytes`** remains the most useful slow-disk field because it captures the worst backlog even if the queue later drained.
 
 ## Testing notes
 

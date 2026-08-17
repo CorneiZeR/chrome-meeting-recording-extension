@@ -92,6 +92,7 @@ The popup toggles, the background commands, the engine **actuates** — never in
 
 - **mute mic** → the mic track is silenced (records silence); **hide camera** → black frames; both via per-stream control callbacks captured at start.
 - **pause** (`setPaused` / `applyPauseState`) pauses every recorder *and* idles the upstream producers, **in order**: on resume, restart producers (mixer/self-video) *before* the recorders so frames/audio are already flowing; on pause, idle producers *after* the recorders so no work is wasted. A toggle during `starting` is applied to recorders as they come up.
+- **switch input device** replaces the live microphone/camera source behind the existing recorder path so the artifact timeline stays continuous. A physical picker choice pins that device for the run. Selecting the microphone's `default` alias keeps follow-default mode active; on `devicechange` the engine reopens that alias so Chrome resolves the current browser/OS default even when offscreen enumeration hides physical IDs. Camera follow-default still compares the first enumerated camera because there is no equivalent reliable virtual video alias.
 - **stop/discard during startup** is valid. If device acquisition resolves after the engine has left `starting`, it releases the just-acquired tracks instead of starting a late recorder. If a stop wins before any recorder reaches `onstart`, the engine still completes cleanup and resolves the stop path.
 
 ## Key invariants & gotchas
@@ -101,6 +102,7 @@ The popup toggles, the background commands, the engine **actuates** — never in
 - **Stop the mic *source* track before nulling `micStream`.** Stopping a `MediaRecorder` does **not** stop its source track; in `separate` mode the engine owns that track, so the `onStopped` callback stops it first (`safeStopStream`, idempotent) — otherwise the OS mic indicator stays lit after recording ends. (This was a real regression; the fix lives in `buildRecorderStartTasks`.)
 - **`runId` is the staleness fence.** Every async task re-checks it; don't attach a recorder without the `isStale()` guard.
 - **Pause ordering matters** — producers and recorders start/stop in the opposite order on pause vs. resume (see above) to avoid black/blank filler and wasted mixing.
+- **`default` microphone is semantic, not a physical ID.** Keep `followsDefaultInput.microphone` true when that alias is selected; otherwise an OS default change silently leaves the recording on the old device.
 - **Stop owns all source cleanup.** The mic analyser, microphone stream, tab stream, mixer, and playback bridge must be released whether stop happens during startup, normal recording, or a partial optional-stream failure.
 
 ## Files
@@ -121,11 +123,11 @@ The popup toggles, the background commands, the engine **actuates** — never in
 
 ## Observability
 
-The engine emits the `lifecycle.*` events (`start_requested`/`start_completed`, `stop_requested`/`stop_completed`, `failure`) and the `capture.*` / `recorder.*` metrics (per-stream attempt/success/failure, requested-vs-delivered profile, start latency, chunk throughput, seal duration, last bitrate/timeslice) — all folded by `background/PerfDebugStore` and rendered by [`debug`](../../debug/README.md).
+The engine emits the `lifecycle.*` events (`start_requested`/`start_completed`, `stop_requested`/`stop_completed`, `failure`, recorder/required-stream failures) and the `capture.*` / `recorder.*` metrics (per-stream attempt/success/failure, requested-vs-delivered profile, start latency, chunk throughput, seal duration, last bitrate/timeslice). `background/PerfDebugStore` keeps the rich development timeline/distributions for [`debug`](../../debug/README.md); the allowlisted production reducer separately keeps bounded counts/totals/maxima and turns terminal recorder or required-stream failures into sanitized incidents. Neither path can include media bytes or device labels.
 
 ## Testing notes
 
-- `__tests__/RecorderEngine.test.ts` drives start/stop/pause and the per-stream task wiring against mocked `MediaRecorder`/streams — including regressions for late startup after stop/discard, actual tab-resolution reporting, and stopping the separate-mic source track (the lingering-mic-indicator bug).
+- `__tests__/RecorderEngine.test.ts` drives start/stop/pause/device switching and the per-stream task wiring against mocked `MediaRecorder`/streams—including regressions for late startup after stop/discard, actual tab-resolution reporting, the live `default` microphone alias after `devicechange`, and stopping the separate-mic source track (the lingering-mic-indicator bug).
 - `RecorderProfiles`, `SelfVideoResize`, `RecorderCapture` have focused unit tests; real encode/CPU behavior is only meaningful on real hardware → the `@perf-*` e2e tiers, not jsdom.
 
 ## Related

@@ -94,6 +94,12 @@ If the offscreen document dies mid-upload, recovery does **not** resume the aban
 
 `DriveFolderResolver` resolves `rootFolderName / recordingFolderName` to a parent id, creating folders as needed (`DRIVE_ROOT_FOLDER_NAME = "Google Meet Records"`). It caches a recording-folder **flight** statically (shared across `DriveTarget` instances, so the several files of one recording resolve the folder once and race-free), evicting a failed or fully canceled flight. Folder-name lookups escape the Drive query literal (`'` and `\`) to keep the `q=` search safe. Each flight owns an `AbortController`: it passes that signal into lookup/create requests, but aborts only when no cancelable caller remains. This preserves shared work without leaving abandoned Drive setup running.
 
+## Post-upload metadata rename
+
+Completed jobs persist `driveFolderId`, folder name/link, and each available `driveFileId` into the session/history projections. When the user names that recording, the background builds deterministic targets with `slugifyRecordingTitle` / `buildRenamedRecordingFilename` and calls `OFFSCREEN_RENAME_DRIVE_RESOURCES`; the offscreen owns the token and invokes `DriveMetadataRenamer`.
+
+The renamer first reads every original name, then PATCHes files followed by the folder **sequentially**. If any PATCH fails, it rolls already-changed resources back in reverse order. A complete rollback leaves history untouched and returns an actionable error. If rollback itself is incomplete, the renamer reads current names best-effort and returns them so `RecordingHistoryService` can synchronize history to observable Drive reality rather than claim either the old or requested names. IDs and names remain delivery/history data only—they are excluded from telemetry.
+
 ## Configuration & flags
 
 | Constant / flag | Value | Role |
@@ -109,7 +115,7 @@ If the offscreen document dies mid-upload, recovery does **not** resume the aban
 
 ## Observability
 
-Drive upload feeds the `upload.*` section of the perf snapshot (folded by `background/PerfDebugStore` — see the [instrumentation doc](../../../docs/plans/storage-and-instrumentation-architecture.md)): `chunkCount` / `totalChunkBytes`, `retryCount` / `retriedChunkCount`, `lastChunkThroughputMbps`, `fileCount` / `uploadedCount` / `fallbackCount`, `lastFallbackRate`, and `lastConcurrency`. **`lastFallbackRate`** (files that fell back to a local download) is the key health signal for a Drive run; `retryCount` + throughput together diagnose a flaky link vs. a slow one.
+Drive upload feeds the `upload.*` section of the local perf snapshot and the production telemetry reducer. The development dashboard retains chunk/job distributions, throughput, concurrency, and fallback detail. Production retains only bounded job/file/chunk/byte counts, request/job duration totals and maxima, retries, concurrency maximum, and completed/partial/failed/canceled outcomes. It never includes Drive IDs, filenames, folder names, links, tokens, or raw errors. Metadata rename is intentionally outside telemetry because its inputs are user and Drive data.
 
 ## Key invariants & gotchas
 
@@ -127,6 +133,7 @@ Drive upload feeds the `upload.*` section of the perf snapshot (folded by `backg
 | :--- | :--- |
 | `DriveChunkUploader.ts` | the resumable chunk `PUT` loop: byte-range protocol, 308/200 handling, retry/backoff, `recoverFromCommittedState` |
 | `DriveFolderResolver.ts` | resolve/create `root/recording` folders, static race-free cache, query escaping |
+| `DriveMetadataRenamer.ts` | GET current metadata, sequential PATCH rename, reverse rollback, and incomplete-rollback reconciliation evidence |
 | `PendingUploadStore.ts` | per-file `chrome.storage.local` crash-recovery markers |
 | `resumePendingUploads.ts` | next-launch fresh re-upload of interrupted uploads |
 | `UploadJobStateOutbox.ts` | durable terminal detached-upload state, replayed until `OFFSCREEN_ACK_UPLOAD_STATE` |
@@ -144,8 +151,8 @@ After capture seals, `UploadManager` owns a detached job and drives `RecordingFi
 ## Testing notes
 
 - `__tests__/DriveChunkUploader.test.ts` drives the byte-range protocol against scripted responses (308 chain, 200 final, 401-refresh, 5xx-recover-and-backoff, the `Range`-header committed-offset recovery) — the protocol is unit-tested without a network.
-- `__tests__/DriveFolderResolver.test.ts` covers find-vs-create, the static cache, pre-canceled callers, last-consumer abort, shared-consumer survival, and hard-timeout wrapping; `__tests__/resumePendingUploads.test.ts` covers fresh re-upload, `retry-pending`, and unavailable-source reporting. `UploadJobStateOutbox.test.ts` covers terminal-state persistence and acknowledgement removal.
-- The full path against a *simulated* Drive is the `@perf-full` Drive-scenario e2e (via the `driveFetch` E2E bridge). Real Google Drive is only exercised by the real-Meet harness.
+- `__tests__/DriveFolderResolver.test.ts` covers find-vs-create, the static cache, pre-canceled callers, last-consumer abort, shared-consumer survival, and hard-timeout wrapping; `DriveMetadataRenamer.test.ts` covers no-op names, sequential success, rollback, and incomplete rollback; `resumePendingUploads.test.ts` covers fresh re-upload, `retry-pending`, and unavailable-source reporting. `UploadJobStateOutbox.test.ts` covers terminal-state persistence and acknowledgement removal.
+- The full path against a *simulated* Drive is covered by the `@perf-full` Drive scenario and `tests/e2e/recording-rename.spec.ts` through the `driveFetch` E2E bridge. Real Google Drive is only exercised by the real-Meet harness.
 
 ## Related
 
@@ -156,6 +163,6 @@ After capture seals, `UploadManager` owns a detached job and drives `RecordingFi
 
 ## External references
 
-- Google Drive API — [Resumable upload](https://developers.google.com/workspace/drive/api/guides/manage-uploads#resumable) (the `308` / `Content-Range` / session-URI protocol) and [Files: create](https://developers.google.com/workspace/drive/api/reference/rest/v3/files/create).
+- Google Drive API — [Resumable upload](https://developers.google.com/workspace/drive/api/guides/manage-uploads#resumable) (the `308` / `Content-Range` / session-URI protocol), [Files: create](https://developers.google.com/workspace/drive/api/reference/rest/v3/files/create), and [Files: update](https://developers.google.com/workspace/drive/api/reference/rest/v3/files/update) (metadata rename PATCH).
 - MDN — [`Content-Range`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Range) and [`Range`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Range) (the resume protocol's headers).
 - [OAuth 2.0 (RFC 6749)](https://datatracker.ietf.org/doc/html/rfc6749) — the bearer-token model; acquisition specifics live with the auth seam.

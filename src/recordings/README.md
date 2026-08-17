@@ -13,7 +13,7 @@ Open **Recordings** from the popup to see recordings in newest-first order. An e
 - a pending save/upload;
 - an unavailable file, with the recovery or download error that explains why it cannot be opened.
 
-Renaming changes only the history label. **Delete history** is a soft delete: it hides the entry from this page but never deletes a local download or a Drive file. The tombstone also prevents delayed upload, download-settlement, or recovery messages from recreating an entry the user removed.
+Renaming a local recording changes only its history label. Renaming a current Drive recording with persisted folder/file IDs changes the remote Drive folder and every available uploaded filename first, then commits the matching history projection. Legacy Drive rows without a folder ID retain display-only rename behavior because they cannot safely identify the remote folder. **Delete history** is a soft delete: it hides the entry from this page but never deletes a local download or a Drive file. The tombstone also prevents delayed upload, download-settlement, or recovery messages from recreating an entry the user removed.
 
 ## Data flow
 
@@ -27,7 +27,7 @@ flowchart LR
     CTRL --> VIEW["RecordingsView"]
 ```
 
-The background creates a pending history record before local download or detached Drive work starts. It then advances that same record as download settlement, Drive-upload updates, crash recovery, or local fallback outcomes arrive. `RecordingHistoryService` owns those transitions; the page never tries to infer a file's availability from an upload tab.
+The background creates a pending history record before local download or detached Drive work starts. It then advances that same record as download settlement, Drive-upload updates, crash recovery, local fallback, or Drive metadata rename outcomes arrive. `RecordingHistoryService` owns those transitions; the page never tries to infer a file's availability from an upload tab. A Drive rename is delegated through the offscreen token/data plane; if a later PATCH fails, completed changes are rolled back, and a rare incomplete rollback synchronizes history to the names Drive actually reports.
 
 ## Pagination and reconciliation
 
@@ -47,7 +47,7 @@ The durable domain types and message guard are [`shared/recordingHistory.ts`](..
 
 ## Testing notes
 
-`__tests__/` covers controller paging, deduplication, rename/remove reconciliation, and local-file actions with mocked background messages. The history service/repository tests live beside the background implementation because atomic mutation and IndexedDB ordering are persistence contracts, not page behavior. `tests/e2e/recording-history.spec.ts` validates a real v2→v3 IndexedDB migration and active-only paging index in the built extension.
+`__tests__/` covers controller paging, deduplication, rename/remove reconciliation, and local-file actions with mocked background messages. The history service/repository tests live beside the background implementation because atomic mutation, remote-rename coordination, and IndexedDB ordering are persistence contracts, not page behavior. `tests/e2e/recording-history.spec.ts` validates a real v2→v3 IndexedDB migration and active-only paging index; `tests/e2e/recording-rename.spec.ts` covers the completed-upload prompt and remote folder/file rename path.
 
 ## Related
 

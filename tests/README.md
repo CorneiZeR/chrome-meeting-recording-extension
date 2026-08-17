@@ -9,7 +9,8 @@
 | **Unit** | `src/**/__tests__/*.test.ts` (+ `src/debug/renderers/tests/`) | jest | one module in isolation; lives beside its source for scoped context, including recording-history pagination and upload-job state/retry behavior |
 | **Integration** | `tests/background.test.ts` | jest | spans modules (the fence + watchdog across session + offscreen + wiring) — no single module home |
 | **e2e** | `tests/e2e/*.spec.ts` (+ `helpers/`, `fixtures/`) | Playwright | the built extension against a mock (or real) Meet page |
-| **Node build-level** | `tests/scripts/*.test.mjs` | `node --test` | manifest source/version, real-meet CLI/profile — release-build concerns |
+| **Node build-level** | `tests/scripts/*.test.mjs` | `node --test` | manifest source/version/targets, telemetry endpoint permission, real-meet CLI/profile—release-build concerns |
+| **Worker service** | `telemetry-worker/test/*.test.ts` | vitest | strict public ingestion, CORS, idempotency, rate/D1 failure classification, scheduled retention |
 | **e2e-adjacent** | `tests/realMeetScenarios.test.ts` | jest | scenario logic that imports `e2e/helpers` (not a module unit) |
 
 `setup.ts` is the jest global setup; `fixtures/mock-meet.html` is the DOM the mock-Meet e2e drives. Jest sets `watchman: false` in its repository config (and the npm command repeats it) so local/CI runs do not depend on a Watchman service.
@@ -23,7 +24,7 @@ Co-locating a module's unit test (`src/foo/__tests__/foo.test.ts`) gives an agen
 | Command | Runs |
 | :--- | :--- |
 | `npm run test:unit` | jest (all unit + integration) **+** `node --test` (build-level) |
-| `npm run test:e2e:mock` | build the e2e bundle + Playwright functional specs (excludes perf tiers) |
+| `npm run test:e2e:mock` | build the e2e bundle + Playwright functional specs and `@perf-smoke`; excludes the heavier full/endurance/hardware/contention tiers |
 | `npm run test:e2e:perf:smoke` / `:full` / `:contention` / `:endurance` / `:hardware` | the perf tiers (tagged `@perf-*`) |
 | `npm run test:e2e:real` | the real-Google-Meet harness (needs a configured profile — `test:e2e:real:profile`) |
 
@@ -38,9 +39,13 @@ The perf tiers are tagged in the spec titles (`@perf-smoke`, `@perf-full`, `@per
 | `storage-contention.spec.ts` | OPFS worker vs. main-thread under load (`@perf-contention`) |
 | `recovery.spec.ts` | crash / orphan recovery |
 | `recording-history.spec.ts` | IndexedDB v2→v3 history migration and tombstone-free paged index |
+| `recording-rename.spec.ts` | completed Drive naming prompt plus remote folder/file metadata rename through the built extension |
+| `upload-retry.spec.ts` | retained-artifact retry, fallback, cancellation, and duplicate-local-download guards for detached Drive jobs |
 | `src/recordings/__tests__/RecordingsController.test.ts` (unit) | history-page paging, rename, remove, and loading-state behavior against the background contract |
 | `settings-matrix.spec.ts` | the settings → recorder parameter matrix |
 | `real-meet.spec.ts` | the real-Meet harness path |
+
+Production telemetry has two coordinated test homes. `src/shared/telemetry/__tests__/` covers client sanitization, reducer/storage bounds, delivery classification, and exactly-once recovery; `telemetry-worker/test/` mirrors the server allowlist and transport contract. Run the Worker checks from that directory with `npm test && npm run typecheck && npm run dry-run`.
 
 ## Related
 

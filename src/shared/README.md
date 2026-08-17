@@ -125,13 +125,21 @@ flowchart LR
 
 `RecordingStatusView` also carries the curated detached `uploadJobs` list. It is intentionally independent of `phase`: a new recording can start and still render an older Drive job in its own session tab.
 
-Sealed files carry a separate immutable `RecordingArtifactContext` (`historyId`, and, for detached Drive work, `uploadJobId`). The finalizer, local-save request, pending-upload marker, and recovery path pass that context explicitly. It prevents a later capture from assigning an old artifact or fallback download to the wrong history entry/job through mutable session state.
+Sealed files carry a separate immutable `RecordingArtifactContext`: `historyId`, an optional detached `uploadJobId`, and the unrelated random `telemetryRunId`. The finalizer, local-save request, pending-upload marker, recovery path, and telemetry reducer pass only the identity they need. This prevents a later capture from assigning an old artifact/fallback to the wrong history entry or joining diagnostics through a user-visible/persistent identifier.
 
 ## Recording history domain
 
 `recordingHistory.ts` defines the durable, user-facing history vocabulary. A `RecordingHistoryEntry` contains a stable id, name, timestamp, storage mode, aggregate status, and one normalized file record per stream. A file is `pending`, `available`, or `unavailable`, with a local download id or Drive link when available.
 
-The history API is cursor-paged with a `(createdAt, id)` cursor, so equal timestamps remain deterministic. Its messages are `LIST_RECORDING_HISTORY`, `RENAME_RECORDING_HISTORY`, `REMOVE_RECORDING_HISTORY`, and `OPEN_RECORDING_HISTORY_FILE`. `deletedAt` is a soft-delete tombstone: consumers hide it, while delayed download/upload/recovery updates preserve it rather than recreating an entry the user removed.
+The history API is cursor-paged with a `(createdAt, id)` cursor, so equal timestamps remain deterministic. Current Drive rows also persist folder ID/name/link plus per-file Drive IDs so a rename can target the actual remote resources. `recordingNames.ts` owns Unicode-safe title slugging and stream-specific renamed filenames while preserving the resolved extension. Its messages include `LIST_RECORDING_HISTORY`, `RENAME_RECORDING_HISTORY`, `SKIP_RECORDING_NAMING`, `REMOVE_RECORDING_HISTORY`, and `OPEN_RECORDING_HISTORY_FILE`. `deletedAt` is a soft-delete tombstone: consumers hide it, while delayed download/upload/recovery updates preserve it rather than recreating an entry the user removed.
+
+## Production telemetry contract
+
+`shared/telemetry/` is the privacy and cardinality boundary used by background, offscreen, and captions. Each recording receives a random telemetry-only `runId`; it is never derived from or replaced by a history ID, meeting slug, upload job ID, Drive identifier, or persistent browser identity. `TelemetryAccumulator` exposes `increment`, `measure`, `context`, `incident`, `checkpoint`, and `flush`. High-frequency events update only bounded in-memory counters/totals/maxima; context is a 32-event flight recorder copied only into incidents.
+
+Schema v1 caps encoded batches at 32 KiB, summary names at 64, incidents at 10, strings at 128 characters, and metrics at one billion. Errors become an allowlisted stage/kind, bounded error name, and eight-character fingerprint of at most four normalized same-extension frames—never a message or raw stack. The IndexedDB store holds at most 10 queued batches/256 KiB plus four active-run checkpoints/64 KiB each. Delivery is enqueue-before-fetch, oldest first: `202` removes, permanent non-429 `4xx` evicts, and `429`/`5xx`/network failures retain for bounded alarm retry. Opt-out deletes both stores.
+
+Healthy completion batches contain only coarse release/runtime/recording categories and metric aggregates. Incident batches may additionally contain allowlisted breadcrumbs. Recording media, transcript/caption text, meeting/file names, Drive or device identifiers, OAuth data, raw user agent, language/timezone, exact display/hardware details, raw errors, and raw stacks are excluded. The Cloudflare validator mirrors these exact keys/enums/bounds; see the [Worker runbook](../../telemetry-worker/README.md).
 
 ## Design rationale & theory
 
@@ -158,7 +166,7 @@ The contexts talk over `chrome.runtime` ports/messages; `shared/` owns the *mech
 - **`rpc.ts`** — a request/response framework over a port: correlates a request to its reply, bounds it with a timeout (`TIMEOUTS.RPC_MS`), and surfaces transport errors. Used where the caller needs an **ack** — `OFFSCREEN_START` / `OFFSCREEN_STOP` (background → offscreen).
 - **`protocol.ts` / `protocolMessageTypes.ts` / `messages.ts`** — the typed envelopes and their runtime guards (`isOffscreenToBgMessage`, …), so every boundary validates shape before trusting a payload.
 
-Two carriers, by design: **commands** (`OFFSCREEN_START`/`STOP`/`DISCARD` and upload retry/cancel over rpc — need an ack) and **state transfer** (`OFFSCREEN_STATE`, `OFFSCREEN_UPLOAD_STATE`, fire-and-forget, idempotent — the event-carried state transfer the model above relies on). Terminal upload state is separately acknowledged with `OFFSCREEN_ACK_UPLOAD_STATE` only after the background persists the session and history updates. The epoch rides on capture status so the fence can reject a stale sender.
+Two carriers, by design: **commands** (`OFFSCREEN_START`/`STOP`/`DISCARD`, upload retry/cancel, and Drive metadata rename over rpc—need an ack) and **state transfer** (`OFFSCREEN_STATE`, `OFFSCREEN_UPLOAD_STATE`, telemetry snapshots; fire-and-forget/idempotent where no command result is required). Terminal upload state is separately acknowledged with `OFFSCREEN_ACK_UPLOAD_STATE` only after the background persists the session and history updates. The epoch rides on capture status so the fence can reject a stale sender; the independent telemetry run ID follows capture and detached upload evidence without entering user-visible state.
 
 ## Key invariants & gotchas
 
@@ -180,9 +188,11 @@ Two carriers, by design: **commands** (`OFFSCREEN_START`/`STOP`/`DISCARD` and up
 | | `recordingFactories.ts` | `createIdleSession` and **`toStatusView`** → the popup-facing `RecordingStatusView` (strips control-plane fields, preserves detached job views) |
 | | `recording.ts` | the public barrel re-export — import from here, not deep paths |
 | **History domain** | `recordingHistory.ts` | history entries/files, cursor page, normalization, labels, and history-message validation |
+| | `recordingNames.ts` | Unicode-safe title slug and stream filename derivation for coordinated history/Drive rename |
 | **Messaging substrate** | `rpc.ts` | the request/response framework over `chrome.runtime` ports |
 | | `protocol.ts`, `protocolMessageTypes.ts`, `messages.ts` | typed message envelopes + guards |
 | **Perf vocabulary** | `perf.ts`, `types/perfTypes.ts`, `constants/perfConstants.ts`, `utils/mathUtils.ts` | perf event types/names/helpers + math; the *vocabulary* only — the stores live in `background/`/`debug/` (see the instrumentation doc) |
+| **Production telemetry** | `telemetry/` | schema, allowlists, sanitization, reducer, accumulators, checkpoints/outbox, coordinator, and acknowledged delivery |
 | **Cross-cutting infra** | `timeouts.ts` | the single `TIMEOUTS` budget table (watchdogs, RPC, seal, caption/meeting-end) |
 | | `async.ts`, `format.ts`, `logger.ts`, `typeGuards.ts`, `build.ts`, `provider.ts` | `withTimeout`, display formatting, logging, `isRecord`, build flags, meeting-provider metadata |
 | | `recordingFormats.ts` | format-profile resolver and content-type/filename helpers; MP4/M4A are capability-gated, while WebM retains the existing codec preferences |
@@ -193,7 +203,7 @@ Two carriers, by design: **commands** (`OFFSCREEN_START`/`STOP`/`DISCARD` and up
 
 - `__tests__/recordingProjection.test.ts` is the spec: it asserts `projectPhase` over the **exhaustive 20-combination** input space (so the transition table above is *tested*, not aspirational) plus the `decomposeLegacyPhase` ⇄ `projectPhase` **round-trip** for all five capture phases.
 - `projectPhase`/`decomposeLegacyPhase` are pure — test them with values, no mocks. Resist adding a clock or I/O to them; their totality is the property under test.
-- Snapshot normalization edge cases (legacy `phase`, missing planes, phase-gating, detached upload jobs) live alongside in the shared tests. `recordingHistory.test.ts` covers history normalization, stable cursor semantics, and tombstones.
+- Snapshot normalization edge cases (legacy `phase`, missing planes, phase-gating, detached upload jobs/naming state) live alongside in the shared tests. `recordingHistory.test.ts` covers history normalization, Drive folder metadata, stable cursor semantics, and tombstones; `recordingNames.test.ts` pins Unicode slug and extension-preserving filenames. `telemetry/__tests__` covers sanitization/bounds, compaction, queue policy, opt-out deletion, and exactly-once recovery incidents.
 
 ## Related
 

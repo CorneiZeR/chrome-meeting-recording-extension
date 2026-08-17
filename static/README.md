@@ -10,7 +10,7 @@ Each pairs with a `src/` entrypoint (webpack bundles the `.ts`, this provides th
 | :--- | :--- | :--- |
 | `popup.html` | `src/popup.ts` | the browser-action control panel |
 | `recordings.html` | `src/recordings.ts` | paginated durable recording history (local downloads and Drive links) |
-| `settings.html` | `src/settings.ts` | the settings page |
+| `settings.html` | `src/settings.ts` | recorder settings plus the live anonymous-diagnostics opt-out and disclosure |
 | `debug.html` | `src/debug.ts` | the diagnostics dashboard (dev only) |
 | `offscreen.html` | `src/offscreen.ts` | the offscreen recording runtime |
 | `micsetup.html` / `camsetup.html` | `src/micsetup.ts` / `src/camsetup.ts` | the mic/camera permission-priming pages |

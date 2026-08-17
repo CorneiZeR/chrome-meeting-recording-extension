@@ -30,7 +30,7 @@ flowchart TD
 
 - **`ChromeIdentityAuthProvider`** — `chrome.identity.getAuthToken`, which ties the token to the browser's signed-in Google account (no client secret, no redirect). Preferred on Chrome.
 - **`WebAuthFlowAuthProvider`** — the standard `launchWebAuthFlow` OAuth2 redirect flow (client id/secret, `drive.file` scope, `getRedirectURL`). The fallback for every other Chromium target.
-- **Selection** is by **build target + runtime capability**: `target === 'chrome' && chrome.identity.getAuthToken` exists → ChromeIdentity; otherwise WebAuthFlow. The runtime guard means a Chrome build lacking `getAuthToken` still falls back rather than crashing. (A build-target override — e.g. `edge → WebAuthFlow` — is the planned next step.)
+- **Selection** is by **build target + runtime capability**: `target === 'chrome' && chrome.identity.getAuthToken` exists → ChromeIdentity; otherwise WebAuthFlow. The target override is implemented: Edge, Brave, Opera, Vivaldi, and Arc always select WebAuthFlow even if a Chromium runtime happens to expose a `getAuthToken` function. The runtime guard means a misconfigured Chrome build still falls back rather than crashing.
 
 ## Key invariants & gotchas
 

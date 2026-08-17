@@ -6,11 +6,17 @@
 
 ## Purpose & mental model
 
-The single source of *configuration*. Two responsibilities: (1) hold the user's choices (`ExtensionSettings`, persisted in `chrome.storage.local`), and (2) **derive** them into the exact numeric `RecorderRuntimeSettingsSnapshot` the offscreen recorder needs. The mental model: **the Settings page edits the schema; the background freezes a derived snapshot at `start()` and ships it in `OFFSCREEN_START`** — so a run's configuration is fixed for its whole duration and a mid-run settings change can't perturb an active recording.
+The single source of *configuration*. Two responsibilities: (1) hold the user's choices (`ExtensionSettings`, persisted in `chrome.storage.local`), and (2) **derive recording choices** into the exact numeric `RecorderRuntimeSettingsSnapshot` the offscreen recorder needs. The mental model: **the Settings page edits the schema; the background freezes recorder settings at `start()` and ships them in `OFFSCREEN_START`**—so encode/capture choices are fixed for the run. The privacy preference is intentionally different: every runtime watches it live so opt-out stops collection immediately rather than waiting for the next recording.
 
 ## The settings schema
 
-`ExtensionSettings` (`model.ts`) splits into a **basic** tab (the common controls) and a **professional** tab (encode tuning):
+`ExtensionSettings` (`model.ts`) splits into **privacy**, **basic** recording controls, and **professional** encode tuning:
+
+### privacy
+
+| Field | Type | Drives |
+| :--- | :--- | :--- |
+| `anonymousDiagnostics` | `boolean` (default `true`) | production telemetry collection, checkpoint/outbox retention, sampling, and delivery; `false` immediately broadcasts disablement, resets reducers, deletes telemetry IndexedDB data, and cancels retry alarms |
 
 ### basic
 
@@ -63,6 +69,7 @@ The redesigned Settings page still edits this same schema; it does not introduce
 - **`store.ts`** keeps an in-memory `runtimeSettings` cache and `load`/`save`/`reset` against `chrome.storage.local` (key `EXTENSION_SETTINGS_STORAGE_KEY`). When the storage area is absent (e.g. the e2e tab-capture runtime), it **degrades to defaults** rather than throwing.
 - **`normalize.ts`** is the trust boundary: `normalizeExtensionSettings` coerces any persisted/incoming value into a valid, fully-populated `ExtensionSettings` (every field defaulted), so downstream derive code never sees a partial object.
 - **Legacy migration is built in.** `normalizeLegacyVideoFormat` upgrades the *old numeric* self-video size (`1080 | 720 | 480 | 360`, used before preset selectors existed) into a `ResolutionPreset`, so settings persisted by an older version load losslessly — no migration script. Missing or invalid recording-format fields normalize to their WebM defaults, preserving existing installations. Validation is **bounded**: `normalizePositiveInt` clamps numeric fields to a `[min, max]`, and unknown enum values coerce to the default.
+- **Diagnostics migration is default-on but preserves an explicit opt-out.** A legacy settings object with no `privacy` block receives `anonymousDiagnostics: true`; once stored as `false`, normalization/cloning keeps it false.
 - **The public surface is `index.ts`.** Nothing outside this folder should import `model`/`store`/`normalize`/`defaults` directly.
 
 ## Key invariants & gotchas
@@ -71,6 +78,7 @@ The redesigned Settings page still edits this same schema; it does not introduce
 - **Normalize on every read.** Persisted settings are untrusted (old versions, manual edits); `normalizeExtensionSettings` is the only safe entry.
 - **Tab bitrate is derived, not stored.** There is no stored tab bitrate at all — only `tabContentType`. The effective bitrate is `w × h × fps × factor` computed in the offscreen against the resolution Chrome actually delivered, capped at the internal `MAX_TAB_VIDEO_BITRATE`.
 - **A run's settings are frozen at `start()`.** Editing settings mid-recording affects only the *next* run; the active run uses its snapshot.
+- **Privacy is live, not frozen.** Turning anonymous diagnostics off during a run must stop sampling/collection and delete pending evidence immediately; it must never stop or alter capture, saving, fallback, or upload.
 - **Format capability is checked twice.** The Settings page uses `MediaRecorder.isTypeSupported()` to disable unavailable MP4/M4A choices, and startup revalidates the frozen profile before it opens streams. An unsupported persisted choice fails with an instruction to change Settings; it never silently falls back to WebM.
 - **Mixed microphone audio follows the tab format.** `microphoneRecordingFormat` is consulted only when `micMode === 'separate'`; disabled, mixed, and unrequested streams do not block startup on their own format capability.
 - **`selfVideoUseAutoResolution` short-circuits the resize.** It's the lever that trades enforced dimensions for skipping the per-frame re-rasterization.
@@ -91,7 +99,7 @@ Consumers: the **Settings page** (`../../settings.ts`) edits the schema; the **p
 
 ## Testing notes
 
-- `__tests__/extensionSettings.test.ts` and `settings.test.ts` cover normalization (partial/invalid → defaulted), format migration/cloning/snapshot propagation, the derive math (`resolveTabVideoBitrate` factor + clamp, `tabContentType` selection), and the run-config derivation. The delivered-dimension bitrate path itself is exercised in `offscreen/__tests__/RecorderEngine.test.ts`.
+- `__tests__/extensionSettings.test.ts` and `settings.test.ts` cover normalization (including default-on diagnostics and preserved opt-out), UI persistence, format migration/cloning/snapshot propagation, the derive math (`resolveTabVideoBitrate` factor + clamp, `tabContentType` selection), and run-config derivation. Telemetry store/runtime tests cover destructive opt-out propagation; the delivered-dimension bitrate path is exercised in `offscreen/__tests__/RecorderEngine.test.ts`.
 - Normalization and derivation are pure given a settings object — test with values, no storage mock needed (the storage seam is `hasLocalStorageArea`/`get`/`set`, mocked separately).
 
 ## Related
