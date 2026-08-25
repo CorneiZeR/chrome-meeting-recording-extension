@@ -13,6 +13,7 @@ Meet has **no transcript API**. The only way to capture a transcript is to scrap
 ## Why this is fragile (and where the fragility lives)
 
 - **The DOM is Google's, not ours.** Class names are obfuscated and rotate; the captions container, speaker blocks, and leave-call controls can move or disappear in any Meet release. There is no contract and no deprecation window.
+- **Meet is localized; its DOM text is not a stable identifier.** Every `aria-label`, `data-tooltip` and post-call sentence is translated, so a selector written against English text captures nothing for a user running Meet in another language — and does so silently, because an empty transcript looks exactly like a call where nobody spoke. Primary selectors are therefore language-independent: obfuscated `jscontroller`/`jsname` handles, Material Symbols ligature names (`call_end`, marked `notranslate`), and DOM structure. English text patterns remain only as secondary fallbacks.
 - **All of that risk is deliberately concentrated in one place.** Every Meet-specific selector lives behind the `MeetingProviderAdapter` interface, implemented by `GoogleMeetAdapter`. The collection pipeline, the buffer, and the end detector are **provider-agnostic** — they never touch a raw selector. So a Meet redesign is a one-file fix (`GoogleMeetAdapter.ts`), not a scavenger hunt.
 
 ```ts
@@ -82,10 +83,13 @@ The single most likely failure in the whole extension. Triage:
 | Symptom | Almost certainly | Fix location |
 | :--- | :--- | :--- |
 | Transcript empty, recording fine | `findCaptionsRegion` / `collectCaptionBlocks` selectors stale | `GoogleMeetAdapter.ts` |
+| Transcript empty **only** in a non-English Meet | a selector regressed to matching localized UI text | `GoogleMeetAdapter.ts` |
 | Speaker names wrong/blank | `getCaptionBlockData` (name/text node) selector drift | `GoogleMeetAdapter.ts` |
 | Auto-stop never fires / fires late | `getMeetingLifecycleState` no longer recognizes the post-call DOM | `GoogleMeetAdapter.ts` |
 | Auto-stop fires mid-call | lifecycle state flapping to non-`active` | `GoogleMeetAdapter.ts` + grace window |
 | Observer count climbs unbounded | cleanup path regressed | `../scrapingScript.ts` (`TranscriptCollector`) |
+
+When updating a selector, verify it against a call in a **non-English** locale as well — matching UI text passes every English test and fails every other user.
 
 Rule of thumb: **if it's a selector or a Meet-DOM shape, the fix is in `GoogleMeetAdapter.ts`.** If it's machinery (observers, buffering, lifecycle timing), it's in `scrapingScript.ts` / this folder. Keep that line clean — it's the whole point of the adapter.
 

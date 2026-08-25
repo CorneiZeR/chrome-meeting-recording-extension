@@ -166,7 +166,7 @@ The popup renders one of three **capture** layouts depending on the current reco
 
 **The live timer is pause-aware.** It counts only *recorded* time: it freezes while paused and stops at stop, so the number you see equals the duration of the saved file. It is computed from authoritative timing on the session, so reopening the popup mid-recording shows the correct elapsed time.
 
-**The Transcript chip reflects live captions.** While recording, the popup polls the active Meet tab and shows *Transcript on* only while Google Meet's captions region is actually present (dimmed *Transcript off* otherwise).
+**The Transcript chip reflects live captions.** While recording, the popup polls the active Meet tab and shows *Transcript on* only while Google Meet's captions region is actually present (dimmed *Transcript off* otherwise). The region is located in any Meet display language.
 
 **The mic meter is observational.** While an unmuted mic is active, it samples the live input at 100 ms intervals through a read-only analyser. It does not alter gain, create an output, or affect what is recorded.
 
@@ -422,6 +422,7 @@ State persistence:  chrome.storage.session → RecordingSessionSnapshot + detach
 - Enable **Captions** in the Google Meet UI before or during the meeting.
 - The extension only scrapes from `https://meet.google.com/*`.
 - Reload the Google Meet page after loading or reloading the extension.
+- The language of the Meet interface does not matter: caption scraping and meeting-end detection key off language-independent DOM handles, not translated labels. If captions are visibly on and the transcript stays empty in **any** locale, the selectors in `src/content/GoogleMeetAdapter.ts` have gone stale.
 
 **"Failed to start recording: Offscreen not ready" or similar.**
 
