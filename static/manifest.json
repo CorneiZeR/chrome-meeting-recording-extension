@@ -6,6 +6,7 @@
   "permissions": [
     "activeTab",
     "downloads",
+    "downloads.open",
     "tabCapture",
     "offscreen",
     "storage",

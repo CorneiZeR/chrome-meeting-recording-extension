@@ -21,6 +21,16 @@ test('static/manifest.json keeps the 0.0.0 placeholder (real version lives in pa
   );
 });
 
+test('static/manifest.json grants downloads.open for the history "open file" action', async () => {
+  const manifest = JSON.parse(
+    await fs.readFile(new URL('../../static/manifest.json', import.meta.url), 'utf8')
+  );
+  assert.ok(
+    manifest.permissions?.includes('downloads.open'),
+    'chrome.downloads.open() throws without the separate "downloads.open" permission, which silently breaks opening a saved recording from the popup'
+  );
+});
+
 test('package.json version coerces to a legal Chrome manifest version', () => {
   assert.doesNotThrow(
     () => toChromeManifestVersion(pkg.version),

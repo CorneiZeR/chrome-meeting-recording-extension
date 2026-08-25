@@ -63,7 +63,7 @@ Everything runs in your browser. Capture is **local-first**: recording data stre
 - **Node.js 18+** and **npm** to build the extension.
 - **FFmpeg and FFprobe** for performance E2E artifact analysis.
 
-The extension requests the following Chrome permissions: `activeTab`, `downloads`, `tabCapture`, `offscreen`, `storage`, `tabs`, `desktopCapture`, `alarms`. The one-shot alarm retries a queued anonymous diagnostics batch after a retryable network failure; it does not create a periodic heartbeat.
+The extension requests the following Chrome permissions: `activeTab`, `downloads`, `downloads.open`, `tabCapture`, `offscreen`, `storage`, `tabs`, `desktopCapture`, `alarms`. The one-shot alarm retries a queued anonymous diagnostics batch after a retryable network failure; it does not create a periodic heartbeat.
 
 Drive mode additionally requires: `identity` and host access to `https://www.googleapis.com/*`.
 
@@ -403,6 +403,7 @@ State persistence:  chrome.storage.session → RecordingSessionSnapshot + detach
 | `activeTab` | Query the active tab to target and label the recording |
 | `tabs` | Query tab metadata needed for stream acquisition and labeling |
 | `downloads` | Save transcript and recording files locally via Chrome's Downloads API |
+| `downloads.open` | Open a saved recording from the popup's history detail; `chrome.downloads.open` refuses to run without it |
 | `tabCapture` / `desktopCapture` | Capture video and audio from the current tab |
 | `offscreen` | Create a hidden offscreen document to run `MediaRecorder` (not available in MV3 service workers) |
 | `storage` | Persist ephemeral session state for UI sync and service worker recovery after suspension |
