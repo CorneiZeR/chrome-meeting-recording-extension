@@ -21,6 +21,8 @@ import {
   type UploadSummary,
 } from '../shared/recording';
 import type { CompletedRecordingArtifact } from './engine/RecorderEngineTypes';
+import { buildTranscriptVtt, type TranscriptCue } from '../shared/transcript';
+import { buildTranscriptArtifact } from './transcriptArtifact';
 import type { RuntimeSampler } from './RuntimeSampler';
 
 export type OffscreenStateMessage = { type: 'OFFSCREEN_STATE' } & OffscreenPhaseUpdate;
@@ -48,6 +50,12 @@ export type OffscreenControllerDeps = {
   onFinalizeFailed?: (error: unknown) => void;
   /** Monotonic clock; defaults to Date.now for tests. */
   now?: () => number;
+  /**
+   * Fetches the meeting transcript so it can be persisted alongside the media.
+   * Optional: without it (or when it rejects) the recording still finalizes, it
+   * just carries no transcript.
+   */
+  fetchTranscript?: () => Promise<{ cues: TranscriptCue[]; startedAt?: number }>;
 };
 
 export class OffscreenController {
@@ -138,6 +146,30 @@ export class OffscreenController {
   };
 
   /**
+   * Renders the meeting transcript as a WebVTT artifact so it travels the same
+   * path as the media — downloaded next to it locally, uploaded into the same
+   * Drive folder, and listed in the recording's history entry.
+   *
+   * Never throws: a missing transcript must not cost the user their recording,
+   * so every failure degrades to "no transcript file".
+   */
+  private async collectTranscriptArtifact(
+    sealed: CompletedRecordingArtifact[],
+  ): Promise<CompletedRecordingArtifact[]> {
+    if (!this.deps.fetchTranscript) return [];
+    try {
+      const { cues, startedAt } = await this.deps.fetchTranscript();
+      const vtt = buildTranscriptVtt(cues ?? [], startedAt);
+      if (!vtt) return [];
+      const artifact = buildTranscriptArtifact(vtt, sealed);
+      return artifact ? [artifact] : [];
+    } catch (e) {
+      this.deps.error('Transcript could not be saved with the recording', describeRuntimeError(e));
+      return [];
+    }
+  }
+
+  /**
    * Stops capture, uploads or saves the sealed artifacts, and returns the
    * session to idle. Concurrent calls share one in-flight run.
    */
@@ -150,7 +182,10 @@ export class OffscreenController {
     }
 
     this.finalizeRunPromise = (async () => {
-      const artifacts = await engine.stop();
+      const sealed = await engine.stop();
+      const artifacts = sealed.length > 0
+        ? [...sealed, ...await this.collectTranscriptArtifact(sealed)]
+        : sealed;
       if (artifacts.length > 0) {
         if (this.storageMode === 'drive') {
           // ADR-0004: capture is sealed — hand it to the background upload manager

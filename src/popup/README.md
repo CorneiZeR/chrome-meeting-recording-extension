@@ -52,6 +52,7 @@ The single most important rule: **the popup is not authoritative.** Two conseque
 ```
 popup → background : START_RECORDING · STOP_RECORDING · DISCARD_RECORDING · GET_RECORDING_STATUS · SET_MIC_MUTED · SET_CAMERA_MUTED · SET_PAUSED · RETRY_UPLOAD_JOB · CANCEL_UPLOAD_JOB · RENAME_RECORDING_HISTORY · SKIP_RECORDING_NAMING
 popup → content    : GET_TRANSCRIPT · RESET_TRANSCRIPT · GET_CAPTION_STATE
+background → content: GET_TRANSCRIPT_CUES (relayed to the offscreen at finalize)
 background → popup  : RECORDING_STATE · RECORDING_SAVED · RECORDING_SAVE_ERROR
 ```
 

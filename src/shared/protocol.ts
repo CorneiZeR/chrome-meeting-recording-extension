@@ -76,7 +76,15 @@ export type PopupSetRecordingHistoryNote = { type: 'SET_RECORDING_HISTORY_NOTE';
 export type PopupRemoveRecordingHistory = { type: 'REMOVE_RECORDING_HISTORY'; id: string };
 export type PopupOpenRecordingHistoryFile = { type: 'OPEN_RECORDING_HISTORY_FILE'; recordingId: string; fileId: string };
 
+/**
+ * Asks the background for the live meeting transcript. Sent by the offscreen
+ * document while finalizing, because that is the one point every stop path
+ * (popup button, shortcut, auto-stop, watchdog) funnels through.
+ */
+export type OffscreenGetMeetingTranscript = { type: 'GET_MEETING_TRANSCRIPT' };
+
 export type PopupToBg =
+  | OffscreenGetMeetingTranscript
   | PopupStartRecording
   | PopupStopRecording
   | PopupDiscardRecording
@@ -97,6 +105,7 @@ export type PopupToBg =
   | PopupOpenRecordingHistoryFile;
 
 export type PopupToBgResponse<T extends PopupToBg> =
+  T extends OffscreenGetMeetingTranscript ? { cues: import('./transcript').TranscriptCue[]; startedAt?: number } :
   T extends PopupStartRecording ? CommandResult :
   T extends PopupStopRecording ? CommandResult :
   T extends PopupDiscardRecording ? CommandResult :
@@ -121,8 +130,11 @@ export type PopupGetTranscript = { type: 'GET_TRANSCRIPT' };
 export type PopupResetTranscript = { type: 'RESET_TRANSCRIPT' };
 /** Asks the content script whether the Meet captions region is currently present. */
 export type PopupGetCaptionState = { type: 'GET_CAPTION_STATE' };
+/** Asks the content script for committed utterances with their epoch-ms timings. */
+export type ContentGetTranscriptCues = { type: 'GET_TRANSCRIPT_CUES' };
 
 export type PopupToContent =
+  | ContentGetTranscriptCues
   | PopupGetTranscript
   | PopupResetTranscript
   | PopupGetCaptionState;
@@ -131,6 +143,7 @@ export type PopupToContentResponse<T extends PopupToContent> =
   T extends PopupGetTranscript ? { transcript: string; provider: MeetingProviderInfo } :
   T extends PopupResetTranscript ? { ok: true } :
   T extends PopupGetCaptionState ? { captionsActive: boolean } :
+  T extends ContentGetTranscriptCues ? { cues: import('./transcript').TranscriptCue[] } :
   never;
 
 export type ContentMeetingEnded = {

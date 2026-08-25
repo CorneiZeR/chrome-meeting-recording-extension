@@ -73,7 +73,9 @@ sequenceDiagram
 | `upsertUploadJob(job)` | `uploadJobs` | persists a detached Drive job independently of the recording phase |
 | `flush()` | — | waits for queued `chrome.storage.session` writes before an upload-state acknowledgement |
 
-Every mutation goes through `commit()` → persist + notify the change listener. The pause-aware timer (`recordedMs`/`runningSince`) is banked/restarted by `nextTimer` and `setPaused` so the popup clock excludes paused spans.
+Every mutation goes through `commit()` → persist + notify the change listener. The pause-aware timer (`recordedMs`/`runningSince`) is banked/restarted by `nextTimer` and `setPaused` so the popup clock excludes paused spans. `nextTimer` also stamps `captureStartedAt` on a fresh recording and carries it through the stop freeze, since the transcript is timed against it after the clock stops.
+
+The worker also relays `GET_MEETING_TRANSCRIPT`: the offscreen document cannot address the Meet tab, so the background asks the content script for its committed cues and answers with them plus `captureStartedAt`. An unreachable tab answers with no cues — the recording still saves, without a transcript.
 
 ## Liveness: the phase watchdog
 

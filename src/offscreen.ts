@@ -153,6 +153,7 @@ const controller = new OffscreenController({
     const accumulator = activeTelemetryRunId ? telemetryRuns.get(activeTelemetryRunId) : undefined;
     accumulator?.incident({ kind: 'recording_finalize_failed', stage: 'offscreen_phase', error });
   },
+  fetchTranscript: () => sendToBackground({ type: 'GET_MEETING_TRANSCRIPT' }),
 });
 
 if (typeof PerformanceObserver !== 'undefined') {

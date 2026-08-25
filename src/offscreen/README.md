@@ -29,7 +29,8 @@ offscreen ──OFFSCREEN_STATE { phase, epoch } (status)───────�
 flowchart TD
     STOP["OFFSCREEN_STOP / autonomous protective stop"] --> CTRL["OffscreenController.finalize (de-dupes concurrent calls)"]
     CTRL --> ENG["engine.stop() → sealed artifacts"]
-    ENG --> MODE{"storageMode?"}
+    ENG --> TR["+ transcript artifact<br/>(GET_MEETING_TRANSCRIPT → WebVTT)"]
+    TR --> MODE{"storageMode?"}
     MODE -->|drive| QUEUE["UploadManager.enqueue<br/>initial job state → background"]
     MODE -->|local| SAVE["RecordingFinalizer → requestSave → background download"]
     QUEUE --> IDLE["pushState idle — capture is finished"]
@@ -39,6 +40,8 @@ flowchart TD
     UP --> TERM["terminal job state → durable outbox → background ACK"]
     FB --> TERM
 ```
+
+The meeting transcript joins the sealed artifacts *before* the storage-mode branch, so it needs no delivery route of its own: it is downloaded next to the media locally, uploaded into the same Drive folder in Drive mode, and listed in the recording's history entry either way. Fetching it is best-effort — a closed Meet tab or a call where nobody spoke simply yields no transcript file, never a failed recording.
 
 `finalize()` is **idempotent across concurrent calls** (one shared in-flight promise), so a user stop and an autonomous protective stop can't double-run it. Local mode saves inline. Drive mode hands sealed artifacts to `UploadManager` and immediately returns the recording to idle, so a new recording can start while the old upload runs. The manager uses one job at a time by default so it cannot starve live capture; its per-file finalizer still uses bounded Drive concurrency and **falls back to a local download** on failure or cancellation, so a Drive outage never loses a recording. A failure before the job can be queued → `pushState('failed')`.
 
@@ -66,6 +69,7 @@ flowchart TD
 | :--- | :--- |
 | `offscreen.ts` | the entrypoint: port lifecycle, `OFFSCREEN_READY` handshake, engine/finalizer/controller/upload composition, detached-state replay, per-run telemetry reducers/checkpoints, and production/development runtime sampling |
 | `OffscreenController.ts` | capture phase/warning state machine plus stop→local-save or stop→enqueue coordinator; owns discard cleanup |
+| `transcriptArtifact.ts` | wraps the rendered WebVTT transcript as a sealed artifact and derives its filename from the media's run stamp |
 | `RecordingFinalizer.ts` | sealed-artifact delivery primitive: local save or per-file Drive upload with bounded concurrency and local fallback; emits `finalizer.*` perf events |
 | `UploadManager.ts` | detached Drive queue, progress/terminal job state, cancellation, and bounded retry-artifact retention |
 | `rpcHandlers.ts` | background→offscreen command handlers, Drive metadata rename RPC, upload-state acknowledgement, and reconnect runtime listener |
