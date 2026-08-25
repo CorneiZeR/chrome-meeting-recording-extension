@@ -14,22 +14,85 @@ export function downloadFile(options: chrome.downloads.DownloadOptions): Promise
   });
 }
 
-/** Opens a downloaded file after confirming Chrome still knows it exists. */
-export function openDownloadedFile(downloadId: number): Promise<void> {
+/**
+ * How long to wait for Chrome to report the file as opened before revealing it
+ * in the file manager instead. Long enough for the OS to launch an application,
+ * short enough that a fallback still feels like a response to the click.
+ */
+const OPEN_CONFIRM_MS = 1_200;
+
+/** Reads the `opened` flag, which predates the bundled `chrome.downloads` types. */
+function wasOpened(item: chrome.downloads.DownloadItem | undefined): boolean {
+  return (item as (chrome.downloads.DownloadItem & { opened?: boolean }) | undefined)?.opened === true;
+}
+
+function searchDownload(downloadId: number): Promise<chrome.downloads.DownloadItem | undefined> {
   return new Promise((resolve, reject) => {
     chrome.downloads.search({ id: downloadId }, (items) => {
       const error = chrome.runtime.lastError?.message;
-      const item = items?.[0];
       if (error) return reject(new Error(error));
-      if (!item || item.exists === false) return reject(new Error('This local file is no longer available'));
-      try {
-        chrome.downloads.open(downloadId);
-        resolve();
-      } catch (cause) {
-        reject(cause instanceof Error ? cause : new Error(String(cause)));
-      }
+      resolve(items?.[0]);
     });
   });
+}
+
+/**
+ * Opens a downloaded file, falling back to revealing it in the file manager.
+ *
+ * `chrome.downloads.open()` is a **silent no-op** when the OS has no application
+ * registered for the file type — routine for `.webm` and `.vtt` — and it reports
+ * nothing back: no exception, no `runtime.lastError`. A click would then look
+ * broken while every layer claimed success. So the open is confirmed against the
+ * item's `opened` flag, and an unconfirmed one reveals the file in its folder,
+ * which needs no extra permission and always does something visible.
+ */
+export function openDownloadedFile(downloadId: number): Promise<void> {
+  return new Promise((resolve, reject) => {
+    void (async () => {
+      let item: chrome.downloads.DownloadItem | undefined;
+      try {
+        item = await searchDownload(downloadId);
+      } catch (cause) {
+        return reject(cause instanceof Error ? cause : new Error(String(cause)));
+      }
+      if (!item || item.exists === false) {
+        return reject(new Error('This local file is no longer available'));
+      }
+      if (wasOpened(item)) {
+        // Already opened once, so Chrome will not report it again; asking is enough.
+        try {
+          chrome.downloads.open(downloadId);
+        } catch { /* fall through to reveal */ }
+        return resolve();
+      }
+
+      try {
+        chrome.downloads.open(downloadId);
+      } catch {
+        revealDownloadedFile(downloadId);
+        return resolve();
+      }
+
+      setTimeout(() => {
+        void searchDownload(downloadId)
+          .then((confirmed) => {
+            if (!wasOpened(confirmed)) revealDownloadedFile(downloadId);
+            resolve();
+          })
+          .catch(() => {
+            revealDownloadedFile(downloadId);
+            resolve();
+          });
+      }, OPEN_CONFIRM_MS);
+    })();
+  });
+}
+
+/** Shows a downloaded file in its folder. Needs only the `downloads` permission. */
+export function revealDownloadedFile(downloadId: number): void {
+  try {
+    chrome.downloads.show(downloadId);
+  } catch { /* nothing else to try */ }
 }
 
 export type DownloadSettledResult = 'complete' | 'interrupted' | 'timeout';

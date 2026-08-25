@@ -100,6 +100,13 @@ Object.assign(global, {
     },
     downloads: {
       download: jest.fn(),
+      search: jest.fn(),
+      open: jest.fn(),
+      show: jest.fn(),
+      onChanged: {
+        addListener: jest.fn(),
+        removeListener: jest.fn(),
+      },
     },
     tabCapture: {
       getMediaStreamId: jest.fn(),

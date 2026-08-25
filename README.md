@@ -180,7 +180,7 @@ The popup renders one of three **capture** layouts depending on the current reco
 
 ### Recording history
 
-Use the history icon in the popup header to open the **Recordings** page. It is paginated; select **Load more** to append older entries. Each recording shows the tab, mic, and self-video artifacts with their current delivery state. Local files can be opened only after Chrome confirms their download; Drive files expose their Drive link after upload. **Delete history** hides the entry only — it never deletes the saved local or Drive files.
+Use the history icon in the popup header to open the **Recordings** page. It is paginated; select **Load more** to append older entries. Each recording shows the tab, mic, self-video, and transcript artifacts with their current delivery state. Local files can be opened only after Chrome confirms their download; Drive files expose their Drive link after upload. Opening a local file asks the OS to launch it and, when no application is registered for the type — routine for `.webm` and `.vtt` — reveals it in the file manager instead, so the action always does something visible. **Delete history** hides the entry only — it never deletes the saved local or Drive files.
 
 ---
 
@@ -404,7 +404,7 @@ State persistence:  chrome.storage.session → RecordingSessionSnapshot + detach
 | `activeTab` | Query the active tab to target and label the recording |
 | `tabs` | Query tab metadata needed for stream acquisition and labeling |
 | `downloads` | Save transcript and recording files locally via Chrome's Downloads API |
-| `downloads.open` | Open a saved recording from the popup's history detail; `chrome.downloads.open` refuses to run without it |
+| `downloads.open` | Open a saved recording from the popup's history detail; `chrome.downloads.open` refuses to run without it. Revealing a file in its folder needs no extra permission, which is why that is the fallback |
 | `tabCapture` / `desktopCapture` | Capture video and audio from the current tab |
 | `offscreen` | Create a hidden offscreen document to run `MediaRecorder` (not available in MV3 service workers) |
 | `storage` | Persist ephemeral session state for UI sync and service worker recovery after suspension |

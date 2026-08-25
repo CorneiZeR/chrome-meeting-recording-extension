@@ -4,7 +4,7 @@ import {
   getMediaStreamIdForTab,
   getTab,
 } from '../tabs';
-import { downloadFile } from '../downloads';
+import { downloadFile, openDownloadedFile } from '../downloads';
 import {
   getAllLocalStorageValues,
   getLocalStorageValues,
@@ -121,6 +121,67 @@ describe('platform/chrome/downloads', () => {
       setLastError(undefined);
     });
     await expect(downloadFile({ url: 'blob:1', filename: 'tab.webm' })).rejects.toThrow('Download blocked');
+  });
+});
+
+describe('platform/chrome/downloads openDownloadedFile', () => {
+  const item = (overrides: Record<string, unknown> = {}) => ({ id: 1, exists: true, opened: false, ...overrides });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.useFakeTimers();
+    setLastError(undefined);
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  function mockSearch(...results: unknown[]) {
+    let call = 0;
+    (chrome.downloads.search as jest.Mock).mockImplementation((_query: any, cb: (items: unknown[]) => void) => {
+      const next = results[Math.min(call, results.length - 1)];
+      call += 1;
+      cb(next === undefined ? [] : [next]);
+    });
+  }
+
+  it('does not reveal the file when the OS actually opened it', async () => {
+    mockSearch(item(), item({ opened: true }));
+
+    const pending = openDownloadedFile(1);
+    await jest.advanceTimersByTimeAsync(2_000);
+    await expect(pending).resolves.toBeUndefined();
+
+    expect(chrome.downloads.open).toHaveBeenCalledWith(1);
+    expect(chrome.downloads.show).not.toHaveBeenCalled();
+  });
+
+  it('reveals the file in its folder when open() turns out to be a silent no-op', async () => {
+    // No registered application for .webm/.vtt: open() throws nothing, sets no
+    // lastError, and never flips `opened` — the click would otherwise do nothing.
+    mockSearch(item(), item({ opened: false }));
+
+    const pending = openDownloadedFile(1);
+    await jest.advanceTimersByTimeAsync(2_000);
+    await expect(pending).resolves.toBeUndefined();
+
+    expect(chrome.downloads.show).toHaveBeenCalledWith(1);
+  });
+
+  it('reveals the file when open() throws outright', async () => {
+    mockSearch(item());
+    (chrome.downloads.open as jest.Mock).mockImplementation(() => { throw new Error('not permitted'); });
+
+    await expect(openDownloadedFile(1)).resolves.toBeUndefined();
+    expect(chrome.downloads.show).toHaveBeenCalledWith(1);
+  });
+
+  it('rejects instead of revealing when the file is gone', async () => {
+    mockSearch(item({ exists: false }));
+
+    await expect(openDownloadedFile(1)).rejects.toThrow('no longer available');
+    expect(chrome.downloads.show).not.toHaveBeenCalled();
   });
 });
 
