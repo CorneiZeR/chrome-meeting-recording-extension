@@ -64,7 +64,8 @@ test.describe('upload retry (integration)', () => {
 
       // The upload fails → the file falls back to a local download (the failsafe).
       const failed = await waitForJob(harness.controlPage, (j) => j.status === 'failed' || j.status === 'partial');
-      expect(await waitForCompletedDownloads(harness.controlPage, harness.downloadsDir, 1, 45_000)).toHaveLength(1);
+      // Two artifacts fall back: the recording and the transcript saved with it.
+      expect(await waitForCompletedDownloads(harness.controlPage, harness.downloadsDir, 2, 45_000)).toHaveLength(2);
 
       // Now let Drive accept the retry. A fresh simulator with the 'fast' profile.
       await harness.context.unroute('https://www.googleapis.com/**');
@@ -79,8 +80,8 @@ test.describe('upload retry (integration)', () => {
       expect(okStats.sessionsCreated).toBeGreaterThanOrEqual(1);
       expect(okStats.dataPuts).toBeGreaterThanOrEqual(1);
 
-      // A successful retry uploaded to Drive — no second local download.
-      expect(await completedDownloadCount(harness.controlPage)).toBe(1);
+      // A successful retry uploaded to Drive — no second local download of either artifact.
+      expect(await completedDownloadCount(harness.controlPage)).toBe(2);
     } finally {
       await closeHarness(harness);
     }
@@ -94,8 +95,8 @@ test.describe('upload retry (integration)', () => {
       await recordOneDriveFile(harness);
 
       const failed = await waitForJob(harness.controlPage, (j) => j.status === 'failed' || j.status === 'partial');
-      expect(await waitForCompletedDownloads(harness.controlPage, harness.downloadsDir, 1, 45_000)).toHaveLength(1);
-      expect(await completedDownloadCount(harness.controlPage)).toBe(1);
+      expect(await waitForCompletedDownloads(harness.controlPage, harness.downloadsDir, 2, 45_000)).toHaveLength(2);
+      expect(await completedDownloadCount(harness.controlPage)).toBe(2);
 
       const retry = await sendRuntimeMessage<{ ok: boolean }>(harness.controlPage, { type: 'RETRY_UPLOAD_JOB', jobId: failed.id });
       expect(retry.ok).toBe(true);
@@ -108,8 +109,8 @@ test.describe('upload retry (integration)', () => {
         45_000
       );
 
-      // skipLocalFallback on retry: still exactly one local copy, not two.
-      expect(await completedDownloadCount(harness.controlPage)).toBe(1);
+      // skipLocalFallback on retry: still exactly one local copy per artifact, not two.
+      expect(await completedDownloadCount(harness.controlPage)).toBe(2);
     } finally {
       await closeHarness(harness);
     }

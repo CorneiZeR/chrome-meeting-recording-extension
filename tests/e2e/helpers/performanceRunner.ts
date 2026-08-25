@@ -233,6 +233,15 @@ function assertArtifact(
   }
 }
 
+/** The transcript rides the same download path as the media but holds no streams to probe. */
+function isTranscriptArtifact(
+  download: chrome.downloads.DownloadItem,
+  analysis: MediaArtifactAnalysis
+): boolean {
+  if (download.mime === 'text/vtt') return true;
+  return analysis.streams.length === 0;
+}
+
 function inferRecordingStream(artifact: MediaArtifactAnalysis): RecordingStream {
   const hasVideo = artifact.streams.some((stream) => stream.codecType === 'video');
   const hasAudio = artifact.streams.some((stream) => stream.codecType === 'audio');
@@ -328,10 +337,14 @@ export async function runPerformanceCase(
     const workloadStats = await meetPage.evaluate(() => (window as any).mockMeet.getStats());
     await stopRecording(harness.controlPage);
 
-    const artifactCount = expectedStreams(
+    // The mocked Meet page always renders live captions, so every run also seals a
+    // transcript artifact: it is downloaded and uploaded like the media, and the
+    // counts below have to include it. Only the media is analyzed with ffprobe.
+    const mediaArtifactCount = expectedStreams(
       testCase.micMode,
       testCase.recordSelfVideo
     ).length;
+    const artifactCount = mediaArtifactCount + 1;
     const snapshot = await waitForPerfSnapshot(
       harness.controlPage,
       (candidate) =>
@@ -376,6 +389,9 @@ export async function runPerformanceCase(
       await assertMediaToolsAvailable();
       for (const download of downloads) {
         const analysis = await analyzeMediaArtifact(download.filename);
+        // Chrome saves these under opaque uuid names, so the transcript cannot be
+        // told apart by extension — it is the artifact ffprobe finds no streams in.
+        if (isTranscriptArtifact(download, analysis)) continue;
         analysis.recordingStream = inferRecordingStream(analysis);
         artifacts.push(analysis);
       }
