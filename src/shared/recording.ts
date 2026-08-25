@@ -69,4 +69,5 @@ export {
   toStatusView,
 } from './recordingFactories';
 
+export { RECORDING_STREAMS } from './recordingTypes';
 export { projectPhase } from './recordingProjection';

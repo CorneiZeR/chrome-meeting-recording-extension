@@ -18,6 +18,7 @@ import {
   VALID_STORAGE_MODES,
   VALID_TAB_CONTENT_TYPES,
 } from './recordingConstants';
+import { RECORDING_STREAMS } from './recordingTypes';
 import type {
   CapturedTabResolution,
   RecordingCaptureDevices,
@@ -147,7 +148,7 @@ export function normalizeUploadSummary(value: unknown): UploadSummary | undefine
 const VALID_UPLOAD_JOB_STATUSES: readonly UploadJobStatus[] = ['uploading', 'completed', 'failed', 'partial', 'canceled'];
 const VALID_NAMING_STATUSES = ['pending', 'named', 'skipped'] as const;
 const VALID_UPLOAD_JOB_FILE_STATUSES: readonly UploadJobFile['status'][] = ['uploading', 'uploaded', 'fallback', 'retry-pending', 'unavailable'];
-const VALID_RECORDING_STREAMS: readonly RecordingStream[] = ['tab', 'mic', 'self-video'];
+const VALID_RECORDING_STREAMS: readonly RecordingStream[] = RECORDING_STREAMS;
 
 function parseUploadJobFile(value: unknown): UploadJobFile | null {
   if (!isRecord(value)) return null;

@@ -31,6 +31,23 @@ describe('recording history durable-data boundaries', () => {
     });
   });
 
+  it('keeps a transcript file, which a stream allow-list would silently drop', () => {
+    const entry = normalizeRecordingHistoryEntry({
+      id: 'recording:1',
+      name: 'Standup',
+      createdAt: 1,
+      storageMode: 'drive',
+      files: [
+        { id: 'recording:1:tab', stream: 'tab', filename: 'standup-recording.webm', destination: 'drive', status: 'available' },
+        { id: 'recording:1:transcript', stream: 'transcript', filename: 'standup-transcript.vtt', destination: 'drive', status: 'available' },
+      ],
+    });
+
+    // Dropping it here would lose the transcript on the way out of IndexedDB —
+    // invisible to every type check, since the row itself stays valid.
+    expect(entry?.files.map((file) => file.stream)).toEqual(['tab', 'transcript']);
+  });
+
   it('rejects invalid rows and malformed page cursors before they reach IndexedDB', () => {
     expect(normalizeRecordingHistoryEntry({ id: 'x', files: [] })).toBeUndefined();
     expect(isRecordingHistoryMessage({ type: 'LIST_RECORDING_HISTORY', cursor: { createdAt: 'now', id: 'x' } })).toBe(false);

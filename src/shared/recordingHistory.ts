@@ -1,4 +1,4 @@
-import type { RecordingStream, StorageMode } from './recording';
+import { RECORDING_STREAMS, type RecordingStream, type StorageMode } from './recording';
 
 export type RecordingHistoryFile = {
   id: string;
@@ -106,7 +106,9 @@ function normalizeRecordingHistoryFile(value: unknown): RecordingHistoryFile | u
   const candidate = value as Record<string, unknown>;
   const id = typeof candidate.id === 'string' ? candidate.id.trim() : '';
   const filename = typeof candidate.filename === 'string' ? candidate.filename.trim() : '';
-  const stream = candidate.stream === 'mic' || candidate.stream === 'self-video' ? candidate.stream : candidate.stream === 'tab' ? 'tab' : undefined;
+  const stream = (RECORDING_STREAMS as readonly unknown[]).includes(candidate.stream)
+    ? candidate.stream as RecordingStream
+    : undefined;
   const destination = candidate.destination === 'drive' ? 'drive' : candidate.destination === 'local' ? 'local' : undefined;
   const status = candidate.status === 'available' || candidate.status === 'unavailable' || candidate.status === 'pending'
     ? candidate.status
