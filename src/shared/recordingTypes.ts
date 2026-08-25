@@ -24,7 +24,15 @@ export type DesiredState = 'idle' | 'recording';
  */
 export type ObservedState = 'none' | 'starting' | 'recording' | 'stopping' | 'idle';
 
-export type RecordingStream = 'tab' | 'mic' | 'self-video' | 'transcript';
+/**
+ * Every artifact stream a recording can produce. Runtime validators derive their
+ * allow-lists from this list rather than repeating it: a stream missing from one
+ * of them is dropped silently on the way through storage, which no type check
+ * would catch.
+ */
+export const RECORDING_STREAMS = ['tab', 'mic', 'self-video', 'transcript'] as const;
+
+export type RecordingStream = typeof RECORDING_STREAMS[number];
 export type StorageMode = 'local' | 'drive';
 export type MicMode = 'off' | 'mixed' | 'separate';
 /** Immutable ownership carried with sealed artifacts after capture has ended. */

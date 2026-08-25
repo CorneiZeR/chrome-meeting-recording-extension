@@ -70,6 +70,23 @@ describe('shared/recording helpers', () => {
     });
   });
 
+  it('keeps a transcript file when rehydrating a persisted upload job', () => {
+    const jobs = normalizeUploadJobs([{
+      id: 'job-1',
+      historyId: 'recording:1',
+      label: 'Quarterly Review',
+      status: 'completed',
+      progress: 1,
+      files: [
+        { stream: 'tab', filename: 'meeting-recording.webm', status: 'uploaded' },
+        { stream: 'transcript', filename: 'meeting-transcript.vtt', status: 'uploaded' },
+      ],
+      startedAt: 1,
+    }]);
+
+    expect(jobs?.[0].files.map((file) => file.stream)).toEqual(['tab', 'transcript']);
+  });
+
   it('normalizes persisted upload naming and folder metadata', () => {
     expect(normalizeUploadJobs([{
       id: 'job-1',
