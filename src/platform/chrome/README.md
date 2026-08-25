@@ -21,6 +21,7 @@ A boundary between our logic and the Chrome extension platform. Most wrappers ju
 - **Storage wrappers must not throw on a missing area.** `hasLocalStorageArea` / `hasSessionStorageArea` gate every call → empty read / no-op write. This is load-bearing for the recording pipeline, not defensive paranoia.
 - **`awaitDownloadSettled` is event-driven, not a timer.** It resolves on `chrome.downloads.onChanged` reaching a terminal state (plus an up-front `search` for the already-finished race, plus a timeout) — so a suspended MV3 worker reacts to the *actual* completion instead of dropping a blind timer. The background save handler depends on this to clean up OPFS only on confirmed `complete`.
 - **History opens only confirmed downloads.** `openDownloadedFile` searches Chrome's download record and rejects if it has disappeared before calling `chrome.downloads.open`; the history service must not promise a local file based on a stale numeric id.
+- **`chrome.downloads.open` can fail silently.** With no application registered for the type — routine for `.webm` and `.vtt` — it throws nothing, sets no `lastError`, and does nothing, so a click looks broken while every layer reports success. `openDownloadedFile` therefore confirms the item's `opened` flag afterwards and falls back to `revealDownloadedFile` (`chrome.downloads.show`, no extra permission), so the action always produces something visible.
 - **`getMediaStreamIdForTab` has an E2E seam** — it returns a `__E2E_MOCK_TAB_CAPTURE__:` id under the mock-capture build so the e2e suite runs without real `tabCapture`.
 - **Always check `chrome.runtime.lastError`** inside a callback before resolving — several APIs report failure only there.
 
@@ -30,7 +31,7 @@ A boundary between our logic and the Chrome extension platform. Most wrappers ju
 | :--- | :--- |
 | `storage.ts` | local + session get/set/remove + `onChanged`; the **no-op-on-missing-area** degradation |
 | `tabs.ts` | active-tab query, runtime/external-page tabs, tab messaging, `getMediaStreamIdForTab` (tabCapture), `getCapturedTabs` (conflict detection), `onRemoved`/`onUpdated` (the auto-stop triggers) |
-| `downloads.ts` | `downloadFile`, `awaitDownloadSettled` (event-driven terminal-state wait), and `openDownloadedFile` (history-safe local open) |
+| `downloads.ts` | `downloadFile`, `awaitDownloadSettled` (event-driven terminal-state wait), `openDownloadedFile` (history-safe local open, confirmed and falling back to reveal), and `revealDownloadedFile` |
 | `runtime.ts` | port connect, runtime messaging, `getManifest`/`getBuildId`, keep-alive poke |
 | `identity.ts` | `getRedirectURL` + `launchWebAuthFlow` (consumed by the auth seam) |
 | `offscreen.ts` | create / close / has-offscreen-document |
