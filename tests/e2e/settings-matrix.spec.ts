@@ -273,7 +273,10 @@ test.describe('Settings tab — every control changes recorder behaviour', () =>
       const downloads = await waitForCompletedDownloads(
         harness.controlPage,
         harness.downloadsDir,
-        3,
+        // Three media streams plus the transcript saved with them. Asking for
+        // three would return the newest three and could drop the tab recording
+        // this case is about.
+        4,
         90_000
       );
 

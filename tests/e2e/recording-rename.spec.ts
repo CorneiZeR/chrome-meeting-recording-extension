@@ -40,8 +40,9 @@ test.describe('post-upload recording rename (integration)', () => {
       const pending = (await uploadJobs(harness.controlPage)).find((job) => job.namingStatus === 'pending');
       expect(pending?.historyId).toBeTruthy();
       expect(pending?.driveFolderId).toBeTruthy();
-      expect(pending?.files).toHaveLength(1);
-      expect(pending?.files[0].driveFileId).toBeTruthy();
+      // Media plus the transcript saved with it; the media uploads first.
+      expect(pending?.files.map((file) => file.stream)).toEqual(['tab', 'transcript']);
+      expect(pending?.files.every((file) => Boolean(file.driveFileId))).toBe(true);
 
       const popup = await harness.context.newPage();
       await popup.goto(`chrome-extension://${harness.extensionId}/popup.html`, {
@@ -63,6 +64,7 @@ test.describe('post-upload recording rename (integration)', () => {
       expect(namedJob.label).toBe('Café – Product Review');
       expect(namedJob.driveFolderName).toBe('cafe-product-review');
       expect(namedJob.files[0].filename).toBe('cafe-product-review-recording.webm');
+      expect(namedJob.files[1].filename).toBe('cafe-product-review-transcript.vtt');
 
       const history = await sendRuntimeMessage<{
         ok: boolean;
@@ -79,11 +81,13 @@ test.describe('post-upload recording rename (integration)', () => {
       expect(entry.userNamed).toBe(true);
       expect(entry.driveFolderName).toBe('cafe-product-review');
       expect(entry.files[0].filename).toBe('cafe-product-review-recording.webm');
+      expect(entry.files[1].filename).toBe('cafe-product-review-transcript.vtt');
 
       expect(drive.resources[pending!.driveFolderId!]).toBe('cafe-product-review');
       expect(drive.resources[pending!.files[0].driveFileId!]).toBe('cafe-product-review-recording.webm');
       expect(drive.metadataReads).toBeGreaterThanOrEqual(2);
-      expect(drive.metadataUpdates).toBe(2);
+      // Recording, transcript, and the folder itself.
+      expect(drive.metadataUpdates).toBe(3);
       await popup.close();
     } finally {
       await closeHarness(harness);
