@@ -124,6 +124,31 @@ export function registerMessageHandlers({ L, session, perfDebugStore, controller
 
     if (!isPopupToBgMessage(msg)) return false;
 
+    if (msg.type === 'GET_MEETING_TRANSCRIPT') {
+      // Asked by the offscreen document during finalize. The transcript lives in
+      // the Meet tab's content script, which the offscreen page cannot address,
+      // so the background relays it and adds the capture origin the cue times are
+      // rendered against.
+      const snapshot = session.getSnapshot();
+      const targetTabId = snapshot.targetTabId;
+      const startedAt = snapshot.captureStartedAt;
+      if (typeof targetTabId !== 'number') {
+        sendResponse({ cues: [], ...(startedAt != null ? { startedAt } : {}) });
+        return true;
+      }
+      chrome.tabs.sendMessage(targetTabId, { type: 'GET_TRANSCRIPT_CUES' })
+        .then((response: { cues?: import('../shared/transcript').TranscriptCue[] } | undefined) => {
+          sendResponse({ cues: response?.cues ?? [], ...(startedAt != null ? { startedAt } : {}) });
+        })
+        .catch((e: unknown) => {
+          // A closed or reloaded Meet tab is normal: the recording still saves,
+          // it just has no transcript to go with it.
+          L.warn('Transcript unavailable from the meeting tab:', e instanceof Error ? e.message : String(e));
+          sendResponse({ cues: [], ...(startedAt != null ? { startedAt } : {}) });
+        });
+      return true;
+    }
+
     if (msg.type === 'GET_DRIVE_TOKEN') {
       fetchDriveTokenWithFallback({ refresh: msg.refresh === true })
         .then((res) => {

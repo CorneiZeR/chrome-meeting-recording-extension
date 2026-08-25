@@ -286,6 +286,10 @@ class TranscriptCollector {
         sendResponse({ ok: true });
         return true;
       }
+      if (msg.type === 'GET_TRANSCRIPT_CUES') {
+        sendResponse({ cues: this.buffer.getTranscriptCues() });
+        return true;
+      }
       if (msg.type === 'GET_CAPTION_STATE') {
         sendResponse({ captionsActive: this.areCaptionsActive() });
         return true;

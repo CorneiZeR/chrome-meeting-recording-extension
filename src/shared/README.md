@@ -95,6 +95,10 @@ type RecordingSessionSnapshot = {
   // paused/stopped). Live elapsed = recordedMs + (runningSince ? now - runningSince : 0).
   recordedMs?: number;
   runningSince?: number;
+  // Epoch ms capture began. Unlike runningSince it survives pauses and the stop
+  // transition, because the transcript's WebVTT cue times are rendered against it
+  // during finalize — after the timer has already been frozen.
+  captureStartedAt?: number;
   updatedAt: number;
 };
 ```

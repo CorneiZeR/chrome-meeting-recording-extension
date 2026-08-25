@@ -4,6 +4,7 @@ const STREAM_FILENAME_SUFFIX: Record<RecordingStream, string> = {
   tab: 'recording',
   mic: 'mic',
   'self-video': 'self-video',
+  transcript: 'transcript',
 };
 
 /** Turns a user-visible recording title into a lowercase, Unicode-safe Drive name. */

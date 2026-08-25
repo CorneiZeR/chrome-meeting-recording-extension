@@ -24,7 +24,7 @@ export type DesiredState = 'idle' | 'recording';
  */
 export type ObservedState = 'none' | 'starting' | 'recording' | 'stopping' | 'idle';
 
-export type RecordingStream = 'tab' | 'mic' | 'self-video';
+export type RecordingStream = 'tab' | 'mic' | 'self-video' | 'transcript';
 export type StorageMode = 'local' | 'drive';
 export type MicMode = 'off' | 'mixed' | 'separate';
 /** Immutable ownership carried with sealed artifacts after capture has ended. */
@@ -209,6 +209,13 @@ export type RecordingSessionSnapshot = {
    */
   recordedMs?: number;
   runningSince?: number;
+  /**
+   * Wall-clock epoch ms of the moment capture began, kept across pauses and
+   * through the stop transition (unlike `runningSince`, which the timer clears).
+   * The transcript track is rendered relative to it so its cue times line up
+   * with the recorded media.
+   */
+  captureStartedAt?: number;
   /**
    * Real delivered dimensions from the captured tab video track's getSettings().
    * Only meaningful while an active run exists; omitted when Chrome does not

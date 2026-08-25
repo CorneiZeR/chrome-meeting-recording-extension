@@ -6,6 +6,7 @@
  */
 
 import { TIMEOUTS } from '../shared/timeouts';
+import type { TranscriptCue } from '../shared/transcript';
 
 type Chunk = {
   startTime: number;
@@ -32,12 +33,26 @@ export function normalizeCaptionText(pre: string): string {
 export class CaptionBuffer {
   private readonly prior = new Map<string, OpenChunk>();
   private readonly lastSeen = new Map<string, string>();
-  private readonly transcript: string[] = [];
+  /**
+   * Committed utterances kept structurally rather than pre-rendered: the same
+   * data has to reach both the human-readable download and the WebVTT track
+   * saved next to the recording, and re-parsing formatted lines to recover the
+   * timestamps would be lossy.
+   */
+  private readonly cues: TranscriptCue[] = [];
 
   /** Returns a newline-joined transcript of all committed utterances. */
   getTranscriptText(): string {
     this.flushOpenChunks();
-    return this.transcript.join('\n');
+    return this.cues
+      .map((cue) => `[${new Date(cue.startTime).toISOString()}] [${new Date(cue.endTime).toISOString()}] ${cue.speakerName} : ${cue.text}`.trim())
+      .join('\n');
+  }
+
+  /** Returns committed utterances with their epoch-ms timings, for WebVTT rendering. */
+  getTranscriptCues(): TranscriptCue[] {
+    this.flushOpenChunks();
+    return this.cues.map((cue) => ({ ...cue }));
   }
 
   /** Clears all buffered and committed transcript state. */
@@ -45,7 +60,7 @@ export class CaptionBuffer {
     this.prior.forEach((v) => clearTimeout(v.timer));
     this.prior.clear();
     this.lastSeen.clear();
-    this.transcript.length = 0;
+    this.cues.length = 0;
   }
 
   /**
@@ -81,9 +96,12 @@ export class CaptionBuffer {
   private commit(key: string) {
     const entry = this.prior.get(key);
     if (!entry) return;
-    const startTS = new Date(entry.startTime).toISOString();
-    const endTS = new Date(entry.endTime).toISOString();
-    this.transcript.push(`[${startTS}] [${endTS}] ${entry.speaker} : ${entry.text}`.trim());
+    this.cues.push({
+      startTime: entry.startTime,
+      endTime: entry.endTime,
+      speakerName: entry.speaker,
+      text: entry.text,
+    });
     clearTimeout(entry.timer);
     this.prior.delete(key);
   }

@@ -6,13 +6,13 @@ No permission is granted to use, copy, modify, merge, publish, distribute, subli
 
 ---
 
-Scrape live captions from a Google Meet into a timestamped `.txt` transcript, or record the current Meet tab (video + system audio) — plus an optional microphone and camera — to WebM or MP4 video and WebM or M4A audio files. Save locally or straight to Google Drive, and browse the resulting local/Drive artifacts from a durable recording history.
+Scrape live captions from a Google Meet into a timestamped transcript — saved automatically as a WebVTT track next to every recording, or downloaded on demand as `.txt` — or record the current Meet tab (video + system audio) — plus an optional microphone and camera — to WebM or MP4 video and WebM or M4A audio files. Save locally or straight to Google Drive, and browse the resulting local/Drive artifacts from a durable recording history.
 
 Everything runs in your browser. Capture is **local-first**: recording data streams to the Origin Private File System (OPFS) during the call and is finalized to a download or Drive only after you stop. No audio or video leaves your device while you're recording.
 
 ## Why this extension
 
-- **Private by design** — media and captions never enter diagnostics. Optional anonymous diagnostics send only bounded aggregates and sanitized error fingerprints; transcripts remain in the page until you explicitly download them.
+- **Private by design** — media and captions never enter diagnostics. Optional anonymous diagnostics send only bounded aggregates and sanitized error fingerprints; a transcript leaves the page only with the recording it belongs to — saved beside it locally or uploaded into the same Drive folder — or when you download it yourself.
 - **Built for long meetings** — chunks stream to disk continuously, so memory stays flat on multi-hour recordings instead of growing until the tab crashes.
 - **Efficient encoding** — the camera bitrate adapts to the frame Chrome actually delivers (and defaults to 24 fps for a talking head), and the tab bitrate follows its content type — so files and CPU stay low with no visible quality loss.
 - **Flexible per run** — microphone off / mixed / separate, optional camera, screen-vs-video tab quality, and local-or-Drive, all chosen per recording.
@@ -23,7 +23,7 @@ Everything runs in your browser. Capture is **local-first**: recording data stre
 
 ## Features
 
-**Transcript saver** — parses Meet's live captions into a timestamped `.txt`. Turn captions on in Meet, then hit Download Transcript at any point during or after the call.
+**Transcript saver** — parses Meet's live captions into timestamped utterances. Stopping a recording writes them as a WebVTT track (`…-transcript.vtt`) alongside the media, wherever the media goes; **Download Transcript** still exports a `.txt` at any point during or after the call. Turn captions on in Meet first — nothing before that point exists to capture.
 
 **Tab recorder** — captures the Meet tab (video + system audio) to the selected `.webm` or `.mp4` container via `MediaRecorder`. The resolution preset is the capture *ceiling*; the file reflects what Chrome actually delivers. A **per-recording tab content type** (`Screen` vs `Video`) sets the bitrate target — `Screen` for slides/UI/whiteboards (sharp text, small files), `Video` for motion-heavy content.
 
@@ -218,9 +218,10 @@ All filenames include the Google Meet meeting ID suffix and a UTC timestamp.
 | Tab recording | `google-meet-recording-<meet-suffix>-<timestamp>.webm` (default) or `.mp4` |
 | Microphone (separate mode) | `google-meet-mic-<meet-suffix>-<timestamp>.webm` (default) or `.m4a` |
 | Self-video | `google-meet-self-video-<meet-suffix>-<timestamp>.webm` (default) or `.mp4` |
-| Transcript | `google-meet-transcript-<meet-suffix>-<timestamp>.txt` |
+| Transcript (saved with a recording) | `google-meet-<meet-suffix>-<timestamp>-transcript.vtt` |
+| Transcript (**Download Transcript** button) | `google-meet-transcript-<meet-suffix>-<timestamp>.txt` |
 
-In Drive mode, all artifacts for one recording session are uploaded to a per-recording folder: `Google Meet Records/<meeting-id>-<timestamp>/`. The detached upload tab and recording history expose the folder and per-file Drive links once Drive returns them. Naming a completed Drive recording slugifies the title for the folder and preserves each artifact extension while producing `<slug>-recording.<ext>`, `<slug>-mic.<ext>`, and `<slug>-self-video.<ext>` filenames. The metadata update is sequential and rollback-aware so history is not advanced to names Drive did not accept.
+In Drive mode, all artifacts for one recording session are uploaded to a per-recording folder: `Google Meet Records/<meeting-id>-<timestamp>/`. The detached upload tab and recording history expose the folder and per-file Drive links once Drive returns them. Naming a completed Drive recording slugifies the title for the folder and preserves each artifact extension while producing `<slug>-recording.<ext>`, `<slug>-mic.<ext>`, `<slug>-self-video.<ext>`, and `<slug>-transcript.vtt` filenames. The metadata update is sequential and rollback-aware so history is not advanced to names Drive did not accept.
 
 ---
 
@@ -364,7 +365,7 @@ State persistence:  chrome.storage.session → RecordingSessionSnapshot + detach
 1. **Content script** observes the Google Meet caption DOM, debounces speech fragments into committed transcript lines, and serves them on demand.
 2. **Popup** collects user intent (run config), checks permissions, and sends commands to the background worker.
 3. **Background service worker** owns session state, coordinates the offscreen document, acquires the tab capture stream ID, and handles local downloads.
-4. **Offscreen document** runs the recorder engine, streams chunks to OPFS, and drives the post-stop handoff (local save or detached Drive job). The background persists the job and its durable history transitions.
+4. **Offscreen document** runs the recorder engine, streams chunks to OPFS, renders the meeting transcript into a WebVTT artifact, and drives the post-stop handoff (local save or detached Drive job) for media and transcript alike. The background persists the job and its durable history transitions.
 
 ---
 
@@ -420,7 +421,8 @@ State persistence:  chrome.storage.session → RecordingSessionSnapshot + detach
 
 **I don't see any transcript text.**
 
-- Enable **Captions** in the Google Meet UI before or during the meeting.
+- Enable **Captions** in the Google Meet UI before or during the meeting. Meet only builds the caption DOM while they are on, and nothing before that point can be recovered.
+- A recording saves its transcript as `…-transcript.vtt` next to the media (or in the same Drive folder), and the history detail's **Transcript** button opens it. A call where nobody spoke produces no transcript file.
 - The extension only scrapes from `https://meet.google.com/*`.
 - Reload the Google Meet page after loading or reloading the extension.
 - The language of the Meet interface does not matter: caption scraping and meeting-end detection key off language-independent DOM handles, not translated labels. If captions are visibly on and the transcript stays empty in **any** locale, the selectors in `src/content/GoogleMeetAdapter.ts` have gone stale.

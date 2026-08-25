@@ -248,13 +248,26 @@ export class RecordingSession {
    * freeze the running span (bank it, stop the clock) for every other phase. Keyed
    * on the *derived* phase, compared against the current (pre-update) phase.
    */
-  private nextTimer(newPhase: RecordingSessionSnapshot['phase'], now: number): Pick<RecordingSessionSnapshot, 'recordedMs' | 'runningSince'> {
+  private nextTimer(
+    newPhase: RecordingSessionSnapshot['phase'],
+    now: number,
+  ): Pick<RecordingSessionSnapshot, 'recordedMs' | 'runningSince' | 'captureStartedAt'> {
     if (newPhase === 'recording') {
       return this.snapshot.phase === 'recording'
-        ? { recordedMs: this.snapshot.recordedMs, runningSince: this.snapshot.runningSince }
-        : { recordedMs: 0, runningSince: now };
+        ? {
+          recordedMs: this.snapshot.recordedMs,
+          runningSince: this.snapshot.runningSince,
+          captureStartedAt: this.snapshot.captureStartedAt,
+        }
+        : { recordedMs: 0, runningSince: now, captureStartedAt: now };
     }
-    return { recordedMs: this.elapsedRecordedMs(now), runningSince: undefined };
+    // The clock stops, but the capture's origin has to outlive it: the transcript
+    // is rendered against it during finalize, which runs after this freeze.
+    return {
+      recordedMs: this.elapsedRecordedMs(now),
+      runningSince: undefined,
+      captureStartedAt: this.snapshot.captureStartedAt,
+    };
   }
 
   /**

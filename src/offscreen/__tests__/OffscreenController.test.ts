@@ -1,14 +1,33 @@
 import { OffscreenController } from '../OffscreenController';
 
-function makeController(now = 1000) {
+async function toText(payload: unknown): Promise<string> {
+  const asAny = payload as any;
+  if (typeof asAny?.text === 'function') return asAny.text();
+  if (typeof asAny?.arrayBuffer === 'function') {
+    const ab = await asAny.arrayBuffer();
+    return new TextDecoder().decode(ab);
+  }
+  if (typeof FileReader !== 'undefined' && typeof asAny?.size === 'number' && typeof asAny?.slice === 'function') {
+    return new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(reader.error);
+      reader.onload = () => resolve(String(reader.result ?? ''));
+      reader.readAsText(asAny as Blob);
+    });
+  }
+  return String(payload ?? '');
+}
+
+function makeController(now = 1000, extra: Record<string, unknown> = {}) {
   const postMessage = jest.fn();
   const sampler = { markActivePhaseStart: jest.fn() };
   const error = jest.fn();
-  const controller = new OffscreenController({ postMessage, sampler, error, now: () => now });
+  const controller = new OffscreenController({ postMessage, sampler, error, now: () => now, ...extra });
   return { controller, postMessage, sampler, error };
 }
 
-const artifact = (stream: string) => ({ stream, artifact: { file: new Blob(['x']) } }) as any;
+const artifact = (stream: string, filename = 'meet-abc-20260618T143045-recording.webm') =>
+  ({ stream, artifact: { filename, file: new Blob(['x']) } }) as any;
 
 function lastState(postMessage: jest.Mock) {
   return postMessage.mock.calls[postMessage.mock.calls.length - 1][0];
@@ -169,6 +188,65 @@ describe('OffscreenController', () => {
 
       expect(enqueueUpload).not.toHaveBeenCalled();
       expect(finalize).toHaveBeenCalledWith({ artifacts: [expect.objectContaining({ stream: 'tab' })], storageMode: 'local', historyId: 'history-local-with-uploads' });
+    });
+
+    it('saves the meeting transcript alongside a local recording', async () => {
+      const cues = [{ startTime: 5_000, endTime: 6_000, speakerName: 'Иван', text: 'Привет' }];
+      const fetchTranscript = jest.fn().mockResolvedValue({ cues, startedAt: 4_000 });
+      const { controller } = makeController(1000, { fetchTranscript });
+      const { finalize } = attach(controller, { artifacts: [artifact('tab')] });
+      controller.onStartRequested({ storageMode: 'local', micMode: 'off', recordSelfVideo: false }, 'local', 1, 'history-transcript');
+
+      await controller.finalize();
+
+      const saved = finalize.mock.calls[0][0].artifacts;
+      expect(saved.map((a: any) => a.stream)).toEqual(['tab', 'transcript']);
+      const transcript = saved[1];
+      expect(transcript.artifact.filename).toBe('meet-abc-20260618T143045-transcript.vtt');
+      await expect(toText(transcript.artifact.file)).resolves.toContain('00:00:01.000 --> 00:00:02.000');
+    });
+
+    it('uploads the transcript with the recording in Drive mode', async () => {
+      const fetchTranscript = jest.fn().mockResolvedValue({
+        cues: [{ startTime: 5_000, endTime: 6_000, speakerName: 'Иван', text: 'Привет' }],
+        startedAt: 4_000,
+      });
+      const { controller } = makeController(1000, { fetchTranscript });
+      const stop = jest.fn().mockResolvedValue([artifact('tab')]);
+      const enqueueUpload = jest.fn();
+      controller.attachServices({ stop } as any, { finalize: jest.fn() } as any, enqueueUpload);
+      controller.onStartRequested({ storageMode: 'drive', micMode: 'off', recordSelfVideo: false }, 'drive', 1, 'history-drive-transcript');
+
+      await controller.finalize();
+
+      expect(enqueueUpload.mock.calls[0][0].map((a: any) => a.stream)).toEqual(['tab', 'transcript']);
+    });
+
+    it('writes no transcript file for a call where nobody spoke', async () => {
+      const fetchTranscript = jest.fn().mockResolvedValue({ cues: [], startedAt: 4_000 });
+      const { controller } = makeController(1000, { fetchTranscript });
+      const { finalize } = attach(controller, { artifacts: [artifact('tab')] });
+      controller.onStartRequested({ storageMode: 'local', micMode: 'off', recordSelfVideo: false }, 'local', 1, 'history-silent');
+
+      await controller.finalize();
+
+      expect(finalize.mock.calls[0][0].artifacts.map((a: any) => a.stream)).toEqual(['tab']);
+    });
+
+    it('still saves the recording when the transcript cannot be fetched', async () => {
+      const fetchTranscript = jest.fn().mockRejectedValue(new Error('meeting tab closed'));
+      const { controller, error } = makeController(1000, { fetchTranscript });
+      const { finalize } = attach(controller, { artifacts: [artifact('tab')] });
+      controller.onStartRequested({ storageMode: 'local', micMode: 'off', recordSelfVideo: false }, 'local', 1, 'history-no-tab');
+
+      await controller.finalize();
+
+      expect(finalize.mock.calls[0][0].artifacts.map((a: any) => a.stream)).toEqual(['tab']);
+      expect(error).toHaveBeenCalledWith(
+        'Transcript could not be saved with the recording',
+        expect.stringContaining('meeting tab closed'),
+      );
+      expect(controller.currentPhase()).toBe('idle');
     });
 
     it('shares one in-flight run across concurrent finalize calls', async () => {

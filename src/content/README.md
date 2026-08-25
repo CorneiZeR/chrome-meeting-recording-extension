@@ -119,7 +119,7 @@ All timing lives in `shared/timeouts.ts` (`TIMEOUTS`), so the latency/safety tra
 | `MeetingEndDetector.ts` | conservative auto-stop signal (observer + poll + grace + once) |
 | `captionBuffer.ts` | per-speaker dedup + grace-commit into timestamped transcript lines |
 
-Orchestrator: [`../scrapingScript.ts`](../scrapingScript.ts) — `TranscriptCollector` wires the observers and exposes this module's outside surfaces: `window.getTranscript()` / `window.resetTranscript()`; the runtime handlers `GET_TRANSCRIPT` / `RESET_TRANSCRIPT` / `GET_CAPTION_STATE` (popup → content); `TELEMETRY_RUN` / `TELEMETRY_GET_SNAPSHOT`; and the `MEETING_ENDED` message it emits to the background to drive auto-stop.
+Orchestrator: [`../scrapingScript.ts`](../scrapingScript.ts) — `TranscriptCollector` wires the observers and exposes this module's outside surfaces: `window.getTranscript()` / `window.resetTranscript()`; the runtime handlers `GET_TRANSCRIPT` / `GET_TRANSCRIPT_CUES` / `RESET_TRANSCRIPT` / `GET_CAPTION_STATE` (popup → content; `GET_TRANSCRIPT_CUES` serves the background relay that hands the transcript to the offscreen document at finalize, and is the only one that returns timings structurally rather than pre-formatted); `TELEMETRY_RUN` / `TELEMETRY_GET_SNAPSHOT`; and the `MEETING_ENDED` message it emits to the background to drive auto-stop.
 
 ## Testing notes
 
