@@ -97,6 +97,7 @@ export const DEFAULT_EXTENSION_SETTINGS: Readonly<ExtensionSettings> = Object.fr
     recordingMode: defaultRecordingMode,
     microphoneRecordingMode: defaultMicMode,
     separateCameraCapture: EXTENSION_DEFAULTS.configurable.separateCameraCapture,
+    autoEnableCaptions: true,
     tabRecordingFormat: 'webm' as VideoRecordingFormat,
     cameraRecordingFormat: 'webm' as VideoRecordingFormat,
     microphoneRecordingFormat: 'webm' as MicrophoneRecordingFormat,

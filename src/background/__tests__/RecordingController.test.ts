@@ -11,6 +11,7 @@ jest.mock('../../platform/chrome/tabs', () => ({
 }));
 jest.mock('../../shared/settings', () => ({
   loadRecorderRuntimeSettingsSnapshot: jest.fn().mockResolvedValue({ recorder: 'snapshot' }),
+  loadExtensionSettingsFromStorage: jest.fn().mockResolvedValue({ basic: { autoEnableCaptions: true } }),
 }));
 
 import {
@@ -19,7 +20,7 @@ import {
   getMediaStreamIdForTab,
   getTab,
 } from '../../platform/chrome/tabs';
-import { loadRecorderRuntimeSettingsSnapshot } from '../../shared/settings';
+import { loadExtensionSettingsFromStorage, loadRecorderRuntimeSettingsSnapshot } from '../../shared/settings';
 
 const RUN_CONFIG = { storageMode: 'local', micMode: 'off', recordSelfVideo: false, tabContentType: 'screen' } as const;
 const startMsg = (overrides: Record<string, unknown> = {}) => ({
@@ -79,6 +80,24 @@ describe('RecordingController', () => {
       }));
       expect(result).toEqual(expect.objectContaining({ ok: true }));
       expect(session.getSnapshot().phase).toBe('starting');
+    });
+
+    it('asks the meeting tab to turn Meet captions on', async () => {
+      await controller.start(startMsg());
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(42, { type: 'ENABLE_CAPTIONS' });
+    });
+
+    it('leaves the Meet UI alone when the user turned that setting off', async () => {
+      (loadExtensionSettingsFromStorage as jest.Mock).mockResolvedValueOnce({ basic: { autoEnableCaptions: false } });
+
+      await controller.start(startMsg());
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(chrome.tabs.sendMessage).not.toHaveBeenCalledWith(42, { type: 'ENABLE_CAPTIONS' });
     });
 
     it('overrides the snapshot tab content type with the per-recording popup choice', async () => {

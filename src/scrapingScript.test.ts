@@ -48,6 +48,14 @@ function mountLocalizedCaptionsRegion(...blocks: HTMLDivElement[]): HTMLElement 
   return region;
 }
 
+function mountCaptionsToggle(onClick?: () => void): HTMLButtonElement {
+  const button = document.createElement('button');
+  button.setAttribute('jsname', 'RrG0hf');
+  if (onClick) button.addEventListener('click', onClick);
+  document.body.appendChild(button);
+  return button;
+}
+
 function mountLeaveCallControl(): HTMLButtonElement {
   const button = document.createElement('button');
   button.setAttribute('aria-label', 'Leave call');
@@ -98,6 +106,43 @@ describe('scrapingScript', () => {
 
     expect(getCollector().areCaptionsActive()).toBe(true);
     expect((window as any).getTranscript()).toContain('Иван Петров : Привет всем');
+  });
+
+  it('turns captions on and starts collecting once Meet renders the region', async () => {
+    mountCaptionsToggle(() => {
+      mountCaptionsRegion(createCaptionBlock('user1', 'Иван Петров', 'Привет'));
+    });
+
+    const enabling = getCollector().ensureCaptionsEnabled();
+    await jest.advanceTimersByTimeAsync(TIMEOUTS.CAPTIONS_ENABLE_POLL_MS * 2);
+    await expect(enabling).resolves.toBe(true);
+    expect(getCollector().areCaptionsActive()).toBe(true);
+
+    jest.advanceTimersByTime(TIMEOUTS.CAPTION_GRACE_MS + 100);
+    expect((window as any).getTranscript()).toContain('Иван Петров : Привет');
+  });
+
+  it('does not click the toggle when captions are already on', async () => {
+    mountCaptionsRegion(createCaptionBlock('user1', 'John Doe', 'Hello'));
+    await flushMutations();
+    const clicked = jest.fn();
+    mountCaptionsToggle(clicked);
+
+    await expect(getCollector().ensureCaptionsEnabled()).resolves.toBe(true);
+    expect(clicked).not.toHaveBeenCalled();
+  });
+
+  it('reports failure instead of hanging when Meet never renders the region', async () => {
+    mountCaptionsToggle();
+
+    const enabling = getCollector().ensureCaptionsEnabled();
+    await jest.advanceTimersByTimeAsync(TIMEOUTS.CAPTIONS_ENABLE_TIMEOUT_MS + 500);
+
+    await expect(enabling).resolves.toBe(false);
+  });
+
+  it('reports failure when Meet exposes no captions control at all', async () => {
+    await expect(getCollector().ensureCaptionsEnabled()).resolves.toBe(false);
   });
 
   it('re-arms region discovery when captions are toggled off and back on', async () => {

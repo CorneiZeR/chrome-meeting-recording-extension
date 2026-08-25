@@ -20,6 +20,7 @@ const el: SettingsElements = {
   recordingMode: document.getElementById('recording-mode') as HTMLSelectElement | null,
   micMode: document.getElementById('mic-mode') as HTMLSelectElement | null,
   separateCamera: document.getElementById('separate-camera') as HTMLInputElement | null,
+  autoEnableCaptions: document.getElementById('auto-enable-captions') as HTMLInputElement | null,
   tabRecordingFormat: document.getElementById('tab-recording-format') as HTMLSelectElement | null,
   cameraRecordingFormat: document.getElementById('camera-recording-format') as HTMLSelectElement | null,
   microphoneRecordingFormat: document.getElementById('microphone-recording-format') as HTMLSelectElement | null,

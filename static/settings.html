@@ -87,6 +87,14 @@
         </div>
 
         <div class="setting-row">
+          <label for="auto-enable-captions" title="Meet only produces caption text while its own captions are on, so the extension turns them on when a recording starts. Turn this off to leave the Meet UI untouched.">Turn on Meet captions when recording starts</label>
+          <div class="segment-control" data-checkbox="auto-enable-captions" role="group" aria-label="Turn on Meet captions when recording starts">
+            <button type="button" data-value="false">OFF</button><button type="button" data-value="true">ON</button>
+          </div>
+          <input id="auto-enable-captions" class="sr-only" type="checkbox" tabindex="-1" aria-hidden="true" />
+        </div>
+
+        <div class="setting-row">
           <label for="separate-camera" title="When enabled, the extension asks for your camera and writes it as its own recording file by default.">Record camera separately</label>
           <div class="segment-control" data-checkbox="separate-camera" role="group" aria-label="Record camera separately">
             <button type="button" data-value="false">OFF</button><button type="button" data-value="true">ON</button>

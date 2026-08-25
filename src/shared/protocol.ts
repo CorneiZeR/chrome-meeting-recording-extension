@@ -130,10 +130,13 @@ export type PopupGetTranscript = { type: 'GET_TRANSCRIPT' };
 export type PopupResetTranscript = { type: 'RESET_TRANSCRIPT' };
 /** Asks the content script whether the Meet captions region is currently present. */
 export type PopupGetCaptionState = { type: 'GET_CAPTION_STATE' };
+/** Asks the content script to switch Meet's captions on when they are off. */
+export type ContentEnableCaptions = { type: 'ENABLE_CAPTIONS' };
 /** Asks the content script for committed utterances with their epoch-ms timings. */
 export type ContentGetTranscriptCues = { type: 'GET_TRANSCRIPT_CUES' };
 
 export type PopupToContent =
+  | ContentEnableCaptions
   | ContentGetTranscriptCues
   | PopupGetTranscript
   | PopupResetTranscript
@@ -144,6 +147,7 @@ export type PopupToContentResponse<T extends PopupToContent> =
   T extends PopupResetTranscript ? { ok: true } :
   T extends PopupGetCaptionState ? { captionsActive: boolean } :
   T extends ContentGetTranscriptCues ? { cues: import('./transcript').TranscriptCue[] } :
+  T extends ContentEnableCaptions ? { enabled: boolean } :
   never;
 
 export type ContentMeetingEnded = {

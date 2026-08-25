@@ -52,9 +52,19 @@ const MEET_SELECTORS = {
    * locale.
    */
   materialIcon: 'i.google-symbols, i.google-material-icons, span.google-symbols, span.material-icons',
+  /** Language-independent handle for the captions on/off control. */
+  captionsToggle: '[jsname="RrG0hf"]',
+  /** Any clickable ancestor an icon may sit inside. */
+  clickable: 'button, [role="button"]',
 } as const;
 
 const LEAVE_CALL_ICON_LIGATURE = 'call_end';
+
+/**
+ * Both faces of the captions control. Meet swaps the ligature with the state
+ * rather than the element, so either one identifies the same button.
+ */
+const CAPTIONS_ICON_LIGATURES = ['closed_caption', 'closed_caption_off', 'closed_caption_disabled'];
 
 /**
  * English-only, and deliberately so: these merely refine an already-detected end
@@ -70,6 +80,17 @@ const ENDED_TEXT_PATTERNS = [
   /\brejoin\b/i,
   /\bre-join\b/i,
 ];
+
+/** Finds the clickable element whose icon carries one of `ligatures`. */
+function findByIconLigature(root: ParentNode, ligatures: readonly string[]): HTMLElement | null {
+  for (const icon of Array.from(root.querySelectorAll<HTMLElement>(MEET_SELECTORS.materialIcon))) {
+    const text = icon.textContent?.trim();
+    if (!text || !ligatures.includes(text)) continue;
+    const clickable = icon.closest<HTMLElement>(MEET_SELECTORS.clickable);
+    if (clickable) return clickable;
+  }
+  return null;
+}
 
 /** True when a leave-call button is on screen, identified by its icon ligature. */
 function hasLeaveCallIcon(root: ParentNode): boolean {
@@ -105,6 +126,20 @@ export class GoogleMeetAdapter implements MeetingProviderAdapter {
 
     const regions = Array.from(root.querySelectorAll<HTMLElement>(MEET_SELECTORS.region));
     return regions.find((region) => region.querySelector(MEET_SELECTORS.captionBlock)) ?? null;
+  }
+
+  /**
+   * Locates the captions on/off control so captions can be turned on without the
+   * user doing it by hand.
+   *
+   * Language-independent by the same rule as everything else here: the
+   * obfuscated `jsname` first, then the Material Symbols ligature, which Meet
+   * swaps between the on and off faces of the same button.
+   */
+  findCaptionsToggle(root: ParentNode): HTMLElement | null {
+    const byHandle = root.querySelector<HTMLElement>(MEET_SELECTORS.captionsToggle);
+    if (byHandle) return byHandle;
+    return findByIconLigature(root, CAPTIONS_ICON_LIGATURES);
   }
 
   collectCaptionBlocks(node: Node): HTMLElement[] {

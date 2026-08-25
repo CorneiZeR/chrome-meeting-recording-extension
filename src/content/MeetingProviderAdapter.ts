@@ -18,6 +18,8 @@ export type MeetingLifecycleState = 'active' | 'ended' | 'unknown';
 export interface MeetingProviderAdapter {
   getProviderInfo(location: Location, root: ParentNode): MeetingProviderInfo;
   findCaptionsRegion(root: ParentNode): HTMLElement | null;
+  /** The captions on/off control, so captions can be enabled without the user. */
+  findCaptionsToggle(root: ParentNode): HTMLElement | null;
   collectCaptionBlocks(node: Node): HTMLElement[];
   getCaptionBlockData(block: HTMLElement): CaptionBlockData | null;
   getMeetingLifecycleState(root: ParentNode): MeetingLifecycleState;

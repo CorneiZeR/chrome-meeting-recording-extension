@@ -19,7 +19,7 @@ import {
   getTab,
 } from '../platform/chrome/tabs';
 import { isE2ERealCaptureTabBuild } from '../shared/build';
-import { loadRecorderRuntimeSettingsSnapshot } from '../shared/settings';
+import { loadExtensionSettingsFromStorage, loadRecorderRuntimeSettingsSnapshot } from '../shared/settings';
 import type { RecorderRuntimeSettingsSnapshot } from '../shared/settings';
 import { getPerfSettingsSnapshot } from '../shared/perf';
 import { type CommandResult } from '../shared/protocol';
@@ -111,6 +111,10 @@ export class RecordingController {
     this.telemetry?.configureRun(telemetryRunId, runConfig, recorderSettings, started.epoch);
     this.telemetry?.context('capture_requested');
     void chrome.tabs.sendMessage(msg.tabId, { type: 'TELEMETRY_RUN', runId: telemetryRunId, enabled: this.telemetry?.isEnabled() ?? false }).catch(() => {});
+    // Deliberately not awaited: Meet can take a moment to bring its captions up,
+    // and capture must not wait on it. A few seconds of speech may precede the
+    // first cue, which beats delaying the recording the user just asked for.
+    void this.enableCaptionsIfConfigured(msg.tabId);
     this.L.log('Popup requested START_RECORDING for tabId', msg.tabId);
 
     const useLiveRecorderTab = isE2ERealCaptureTabBuild();
@@ -171,6 +175,28 @@ export class RecordingController {
    * stopping, and fires the OFFSCREEN_STOP RPC. Shared by the popup stop button,
    * the auto-stop tab listeners, and the meeting-ended signal.
    */
+  /**
+   * Turns Meet's captions on for the tab being recorded, when the user has left
+   * that setting enabled.
+   *
+   * Meet generates caption text only while its own control is on, so a recording
+   * started with captions off would otherwise be silently transcript-less. Every
+   * failure is logged and swallowed: this is a convenience, and it must never
+   * take a recording down with it.
+   */
+  private async enableCaptionsIfConfigured(tabId: number): Promise<void> {
+    try {
+      const settings = await loadExtensionSettingsFromStorage();
+      if (!settings.basic.autoEnableCaptions) return;
+
+      const response = await chrome.tabs.sendMessage(tabId, { type: 'ENABLE_CAPTIONS' }) as { enabled?: boolean } | undefined;
+      if (response?.enabled === true) return;
+      this.L.warn('Captions could not be turned on automatically; this recording will have no transcript');
+    } catch (e: any) {
+      this.L.warn('Captions could not be turned on automatically:', e?.message || e);
+    }
+  }
+
   async stop(reason = 'user requested stop'): Promise<CommandResult> {
     if (!isStoppablePhase(this.session.getSnapshot().phase)) {
       return this.fail('Stop requested but no recording session is active');
