@@ -52,6 +52,25 @@ describe('RecordingFinalizer', () => {
     expect(deps.requestSave).toHaveBeenNthCalledWith(2, expect.objectContaining({ stream: 'mic', filename: 'mic.webm', blobUrl: 'blob:4', opfsFilename: 'mic.webm' }));
   });
 
+  it('orders the transcript behind every media stream', async () => {
+    const transcript = makeArtifact('transcript.vtt');
+    const tab = makeArtifact('tab.webm');
+    const mic = makeArtifact('mic.webm');
+
+    await finalizer.finalize({
+      storageMode: 'local',
+      artifacts: [
+        { stream: 'transcript', artifact: transcript },
+        { stream: 'mic', artifact: mic },
+        { stream: 'tab', artifact: tab },
+      ],
+    });
+
+    // The media is the artifact a user cannot reproduce, so it must not queue
+    // behind the transcript — an unlisted stream would sort ahead of everything.
+    expect(deps.requestSave.mock.calls.map((call: any[]) => call[0].stream)).toEqual(['tab', 'mic', 'transcript']);
+  });
+
   it('keeps the recording identity with a local fallback after another recording starts', async () => {
     const tab = makeArtifact('tab.webm');
 

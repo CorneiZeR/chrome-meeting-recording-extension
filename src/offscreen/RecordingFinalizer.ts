@@ -18,7 +18,10 @@ import { describeRuntimeError } from './errors';
 import type { CompletedRecordingArtifact, SealedStorageFile } from './RecorderEngine';
 import { PERF_FLAGS, logPerf, nowMs, roundMs } from '../shared/perf';
 
-const STREAM_UPLOAD_ORDER: RecordingStream[] = ['tab', 'mic', 'self-video'];
+// The transcript goes last on purpose: the media is what the user cannot
+// reproduce, so it claims the upload window first. A stream missing from this
+// list would sort *ahead* of everything (indexOf → -1).
+const STREAM_UPLOAD_ORDER: RecordingStream[] = ['tab', 'mic', 'self-video', 'transcript'];
 
 type UploadOutcome = {
   stream: RecordingStream;
