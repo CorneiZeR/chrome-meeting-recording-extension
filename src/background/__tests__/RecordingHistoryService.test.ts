@@ -97,6 +97,41 @@ describe('RecordingHistoryService', () => {
     expect(await repo.get('r1')).toEqual(expect.objectContaining({ deletedAt: 10 }));
   });
 
+  it('adopts an artifact sealed after the row was created, such as the transcript', async () => {
+    const repo = new MemoryRepository();
+    const service = new RecordingHistoryService(repo, jest.fn(), () => 10);
+    // The row exists before finalize, so it knows only the media streams.
+    await service.createPending('r1', [{ id: 'r1:tab', stream: 'tab', filename: 'demo-recording.webm' }], 'drive');
+
+    await service.applyUploadJob({
+      id: 'job-1',
+      historyId: 'r1',
+      label: 'Demo',
+      status: 'completed',
+      progress: 1,
+      files: [
+        { stream: 'tab', filename: 'demo-recording.webm', status: 'uploaded', driveFileId: 'drive-1' },
+        { stream: 'transcript', filename: 'demo-transcript.vtt', status: 'uploaded', driveFileId: 'drive-2' },
+      ],
+      startedAt: 10,
+      finishedAt: 11,
+    });
+
+    const entry = await repo.get('r1');
+    expect(entry?.files).toEqual([
+      expect.objectContaining({ stream: 'tab', filename: 'demo-recording.webm', status: 'available' }),
+      expect.objectContaining({
+        id: 'r1:transcript',
+        stream: 'transcript',
+        filename: 'demo-transcript.vtt',
+        destination: 'drive',
+        status: 'available',
+        driveFileId: 'drive-2',
+      }),
+    ]);
+    expect(entry?.status).toBe('complete');
+  });
+
   it('keeps a recovered retry pending on Drive instead of claiming a nonexistent local fallback', async () => {
     const repo = new MemoryRepository();
     const service = new RecordingHistoryService(repo, jest.fn(), () => 10);

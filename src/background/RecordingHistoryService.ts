@@ -183,11 +183,20 @@ export class RecordingHistoryService {
         if (file.destination === 'local' && file.status === 'available') return file;
         return { ...file, destination: 'local' as const, status: 'pending' as const };
       });
+      // The job is the authority on what the recording consists of: artifacts
+      // sealed after the row was created (the transcript) exist only there, and
+      // without adopting them here they would never reach the history — nor be
+      // renamed with the recording.
+      const knownStreams = new Set(files.map((file) => file.stream));
+      const adopted = job.files
+        .filter((file) => !knownStreams.has(file.stream))
+        .map((file) => historyFileFromUploadJob(historyId, job, file));
+      const nextFiles = adopted.length ? [...files, ...adopted] : files;
       return {
         ...current,
         storageMode: 'drive',
-        files,
-        status: summarize(files),
+        files: nextFiles,
+        status: summarize(nextFiles),
         ...(job.driveFolderId ? { driveFolderId: job.driveFolderId } : {}),
         ...(job.driveFolderName ? { driveFolderName: job.driveFolderName } : {}),
         ...(job.folderWebViewLink ? { folderWebViewLink: job.folderWebViewLink } : {}),
@@ -242,9 +251,9 @@ function createEntry(historyId: string, files: PendingFile[], storageMode: Stora
   };
 }
 
-function createEntryFromUploadJob(job: UploadJob): RecordingHistoryEntry {
-  const historyId = job.historyId!;
-  const files = job.files.map((file) => ({
+/** Projects one upload-job file onto its recording-history row. */
+function historyFileFromUploadJob(historyId: string, job: UploadJob, file: UploadJob['files'][number]): RecordingHistoryFile {
+  return {
     id: `${historyId}:${file.stream}`,
     stream: file.stream,
     filename: file.filename,
@@ -254,7 +263,12 @@ function createEntryFromUploadJob(job: UploadJob): RecordingHistoryEntry {
     driveFileId: file.driveFileId,
     webViewLink: file.webViewLink,
     error: file.error,
-  }));
+  };
+}
+
+function createEntryFromUploadJob(job: UploadJob): RecordingHistoryEntry {
+  const historyId = job.historyId!;
+  const files = job.files.map((file) => historyFileFromUploadJob(historyId, job, file));
   return {
     id: historyId,
     name: job.label,
