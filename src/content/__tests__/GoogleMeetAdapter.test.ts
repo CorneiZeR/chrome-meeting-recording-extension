@@ -27,6 +27,27 @@ describe('GoogleMeetAdapter', () => {
     expect(adapter.getMeetingLifecycleState(document)).toBe('active');
   });
 
+  it('recognizes an active meeting in a non-English Meet via the leave-call handle', () => {
+    const leaveButton = document.createElement('button');
+    leaveButton.setAttribute('jsname', 'CQylAd');
+    leaveButton.setAttribute('aria-label', 'Покинуть видеовстречу');
+    document.body.appendChild(leaveButton);
+
+    expect(adapter.getMeetingLifecycleState(document)).toBe('active');
+  });
+
+  it('recognizes an active meeting from the call_end icon ligature alone', () => {
+    const leaveButton = document.createElement('button');
+    leaveButton.setAttribute('aria-label', 'Videoanruf verlassen');
+    const icon = document.createElement('i');
+    icon.className = 'quRWN-Bz112c google-symbols notranslate';
+    icon.textContent = 'call_end';
+    leaveButton.appendChild(icon);
+    document.body.appendChild(leaveButton);
+
+    expect(adapter.getMeetingLifecycleState(document)).toBe('active');
+  });
+
   it('recognizes a post-call state from ended meeting text', () => {
     document.body.textContent = 'You left the meeting Rejoin';
 
@@ -70,6 +91,26 @@ describe('GoogleMeetAdapter', () => {
       region.setAttribute('role', 'region');
       region.setAttribute('aria-label', 'Captions');
       document.body.appendChild(region);
+      expect(adapter.findCaptionsRegion(document)).toBe(region);
+    });
+
+    it('finds the captions region in a non-English Meet, where aria-label is localized', () => {
+      const region = document.createElement('div');
+      region.setAttribute('role', 'region');
+      region.setAttribute('aria-label', 'Субтитры');
+      region.setAttribute('jscontroller', 'KPn5nb');
+      document.body.appendChild(region);
+
+      expect(adapter.findCaptionsRegion(document)).toBe(region);
+    });
+
+    it('falls back to the region holding caption blocks when both handles miss', () => {
+      const region = document.createElement('div');
+      region.setAttribute('role', 'region');
+      region.setAttribute('aria-label', 'Untertitel');
+      region.appendChild(makeBlock({ id: 'u1' }));
+      document.body.appendChild(region);
+
       expect(adapter.findCaptionsRegion(document)).toBe(region);
     });
 

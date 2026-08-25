@@ -38,6 +38,16 @@ function mountCaptionsRegionInWrapper(...blocks: HTMLDivElement[]): { wrapper: H
   return { wrapper, region };
 }
 
+function mountLocalizedCaptionsRegion(...blocks: HTMLDivElement[]): HTMLElement {
+  const region = document.createElement('div');
+  region.setAttribute('role', 'region');
+  region.setAttribute('aria-label', 'Субтитры');
+  region.setAttribute('jscontroller', 'KPn5nb');
+  blocks.forEach((block) => region.appendChild(block));
+  document.body.appendChild(region);
+  return region;
+}
+
 function mountLeaveCallControl(): HTMLButtonElement {
   const button = document.createElement('button');
   button.setAttribute('aria-label', 'Leave call');
@@ -78,6 +88,16 @@ describe('scrapingScript', () => {
     jest.advanceTimersByTime(TIMEOUTS.CAPTION_GRACE_MS + 100);
 
     expect((window as any).getTranscript()).toContain('John Doe : Hello world');
+  });
+
+  it('collects transcripts when Meet runs in a non-English locale', async () => {
+    mountLocalizedCaptionsRegion(createCaptionBlock('user1', 'Иван Петров', 'Привет всем'));
+
+    await flushMutations();
+    jest.advanceTimersByTime(TIMEOUTS.CAPTION_GRACE_MS + 100);
+
+    expect(getCollector().areCaptionsActive()).toBe(true);
+    expect((window as any).getTranscript()).toContain('Иван Петров : Привет всем');
   });
 
   it('re-arms region discovery when captions are toggled off and back on', async () => {
