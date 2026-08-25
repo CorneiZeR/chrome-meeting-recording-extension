@@ -178,6 +178,9 @@ export function normalizeExtensionSettings(value: unknown): ExtensionSettings {
     separateCameraCapture: typeof basicCandidate.separateCameraCapture === 'boolean'
       ? basicCandidate.separateCameraCapture
       : DEFAULT_EXTENSION_SETTINGS.basic.separateCameraCapture,
+    autoEnableCaptions: typeof basicCandidate.autoEnableCaptions === 'boolean'
+      ? basicCandidate.autoEnableCaptions
+      : DEFAULT_EXTENSION_SETTINGS.basic.autoEnableCaptions,
     tabRecordingFormat: hasAllowedString(basicCandidate.tabRecordingFormat, VIDEO_RECORDING_FORMAT_OPTIONS)
       ? basicCandidate.tabRecordingFormat
       : DEFAULT_EXTENSION_SETTINGS.basic.tabRecordingFormat,

@@ -46,6 +46,17 @@ export const TIMEOUTS = {
   CAPTION_GRACE_MS: 2_000,
 
   /**
+   * How long to wait for Meet's captions region to appear after the extension
+   * clicks the captions control. Meet has to reach its speech service before it
+   * renders the region, so this allows for a slow round trip; giving up merely
+   * means the recording proceeds without a transcript.
+   */
+  CAPTIONS_ENABLE_TIMEOUT_MS: 6_000,
+
+  /** How often the captions region is re-checked while waiting for it to appear. */
+  CAPTIONS_ENABLE_POLL_MS: 150,
+
+  /**
    * How long Meet must look ended before the content script asks background
    * to stop. This intentionally favors late stops over false auto-stops.
    */

@@ -114,6 +114,33 @@ describe('GoogleMeetAdapter', () => {
       expect(adapter.findCaptionsRegion(document)).toBe(region);
     });
 
+    it('finds the captions toggle by its language-independent handle', () => {
+      const button = document.createElement('button');
+      button.setAttribute('jsname', 'RrG0hf');
+      button.setAttribute('aria-label', 'Отключить субтитры');
+      document.body.appendChild(button);
+
+      expect(adapter.findCaptionsToggle(document)).toBe(button);
+    });
+
+    it.each(['closed_caption', 'closed_caption_off', 'closed_caption_disabled'])(
+      'finds the captions toggle by its %s icon when the handle rotates',
+      (ligature) => {
+        const button = document.createElement('button');
+        const icon = document.createElement('i');
+        icon.className = 'google-symbols notranslate';
+        icon.textContent = ligature;
+        button.appendChild(icon);
+        document.body.appendChild(button);
+
+        expect(adapter.findCaptionsToggle(document)).toBe(button);
+      },
+    );
+
+    it('returns null when no captions control is on screen', () => {
+      expect(adapter.findCaptionsToggle(document)).toBeNull();
+    });
+
     it('collects caption blocks within a container', () => {
       const container = document.createElement('div');
       container.appendChild(makeBlock({ id: 'u1' }));

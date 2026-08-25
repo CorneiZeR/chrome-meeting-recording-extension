@@ -23,6 +23,7 @@ export type SettingsElements = {
   recordingMode: HTMLSelectElement | null;
   micMode: HTMLSelectElement | null;
   separateCamera: HTMLInputElement | null;
+  autoEnableCaptions: HTMLInputElement | null;
   tabRecordingFormat?: HTMLSelectElement | null;
   cameraRecordingFormat?: HTMLSelectElement | null;
   microphoneRecordingFormat?: HTMLSelectElement | null;
@@ -113,6 +114,7 @@ export class SettingsController {
     if (el.recordingMode) el.recordingMode.value = settings.basic.recordingMode;
     if (el.micMode) el.micMode.value = settings.basic.microphoneRecordingMode;
     if (el.separateCamera) el.separateCamera.checked = settings.basic.separateCameraCapture;
+    if (el.autoEnableCaptions) el.autoEnableCaptions.checked = settings.basic.autoEnableCaptions;
     if (el.tabRecordingFormat) el.tabRecordingFormat.value = settings.basic.tabRecordingFormat;
     if (el.cameraRecordingFormat) el.cameraRecordingFormat.value = settings.basic.cameraRecordingFormat;
     if (el.microphoneRecordingFormat) el.microphoneRecordingFormat.value = settings.basic.microphoneRecordingFormat;
@@ -150,6 +152,7 @@ export class SettingsController {
         recordingMode: el.recordingMode?.value,
         microphoneRecordingMode: el.micMode?.value,
         separateCameraCapture: el.separateCamera?.checked,
+        autoEnableCaptions: el.autoEnableCaptions?.checked,
         tabRecordingFormat: el.tabRecordingFormat?.value,
         cameraRecordingFormat: el.cameraRecordingFormat?.value,
         microphoneRecordingFormat: el.microphoneRecordingFormat?.value,

@@ -31,6 +31,8 @@ export type ExtensionSettings = {
     recordingMode: RecordingModeDefault;
     microphoneRecordingMode: MicMode;
     separateCameraCapture: boolean;
+    /** Switch Meet's captions on when a recording starts, so it is never silently transcript-less. */
+    autoEnableCaptions: boolean;
     tabRecordingFormat: VideoRecordingFormat;
     cameraRecordingFormat: VideoRecordingFormat;
     microphoneRecordingFormat: MicrophoneRecordingFormat;

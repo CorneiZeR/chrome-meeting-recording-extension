@@ -23,7 +23,7 @@ Everything runs in your browser. Capture is **local-first**: recording data stre
 
 ## Features
 
-**Transcript saver** — parses Meet's live captions into timestamped utterances. Stopping a recording writes them as a WebVTT track (`…-transcript.vtt`) alongside the media, wherever the media goes; **Download Transcript** still exports a `.txt` at any point during or after the call. Turn captions on in Meet first — nothing before that point exists to capture.
+**Transcript saver** — parses Meet's live captions into timestamped utterances. Stopping a recording writes them as a WebVTT track (`…-transcript.vtt`) alongside the media, wherever the media goes; **Download Transcript** still exports a `.txt` at any point during or after the call. Captions are turned on automatically when a recording starts (a setting, default on); turn them on yourself earlier if you want the part of the call before recording — nothing from before they were on exists to capture.
 
 **Tab recorder** — captures the Meet tab (video + system audio) to the selected `.webm` or `.mp4` container via `MediaRecorder`. The resolution preset is the capture *ceiling*; the file reflects what Chrome actually delivers. A **per-recording tab content type** (`Screen` vs `Video`) sets the bitrate target — `Screen` for slides/UI/whiteboards (sharp text, small files), `Video` for motion-heavy content.
 
@@ -128,7 +128,7 @@ All three commands compile TypeScript via `ts-loader`, copy HTML shells, styles,
 ## Using the extension
 
 1. Open a Google Meet at `https://meet.google.com/...`
-2. (For transcripts) turn on **Captions** in the Google Meet UI.
+2. (For transcripts) captions are switched on for you when a recording starts. Turn on **Captions** in the Google Meet UI yourself if you want the transcript to cover the part of the call before you hit record, or if you disabled that setting.
 3. Click the extension icon in the Chrome toolbar (pin it from the puzzle-piece menu for quick access).
 
 ### Transcript
@@ -191,6 +191,7 @@ Open the settings page by clicking the gear icon in the popup. Settings persist 
 | Setting | Description |
 | :--- | :--- |
 | Anonymous diagnostics | Default on; sends bounded recording/upload summaries and sanitized failure evidence. Turning it off deletes queued batches and active checkpoints immediately. |
+| Turn on Meet captions when recording starts | Default on. Meet only produces caption text while its own captions are on, so starting a recording switches them on for you; turn this off to leave the Meet UI untouched |
 | Tab capture preset | Output resolution for the tab recording: `640×360`, `854×480`, `1280×720`, or `1920×1080` |
 | Tab video bitrate | Encoder bitrate at the `1920×1080`@30 reference; the recorder scales it down automatically for smaller tab presets / frame rates |
 | Tab recording format | `WebM` (default) or `MP4`; controls the main tab artifact, including mixed microphone audio |
@@ -421,7 +422,7 @@ State persistence:  chrome.storage.session → RecordingSessionSnapshot + detach
 
 **I don't see any transcript text.**
 
-- Enable **Captions** in the Google Meet UI before or during the meeting. Meet only builds the caption DOM while they are on, and nothing before that point can be recovered.
+- Enable **Captions** in the Google Meet UI before or during the meeting. Meet only builds the caption DOM while they are on, and nothing before that point can be recovered — starting a recording turns them on automatically, but speech from before that moment is gone.
 - A recording saves its transcript as `…-transcript.vtt` next to the media (or in the same Drive folder), and the history detail's **Transcript** button opens it. A call where nobody spoke produces no transcript file.
 - The extension only scrapes from `https://meet.google.com/*`.
 - Reload the Google Meet page after loading or reloading the extension.

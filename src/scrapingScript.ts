@@ -38,6 +38,7 @@ import { MeetingEndDetector, type MeetingEndedPayload } from './content/MeetingE
 import { TelemetryAccumulator, type TelemetrySink, type TelemetrySnapshot } from './shared/telemetry';
 import { addStorageChangedListener } from './platform/chrome/storage';
 import { normalizeExtensionSettings } from './shared/settings';
+import { TIMEOUTS } from './shared/timeouts';
 
 let captionTelemetry: TelemetryAccumulator | null = null;
 let perfDebugEnabled = false;
@@ -125,6 +126,54 @@ class TranscriptCollector {
 
   /** True when the Meet captions region is currently attached to the live DOM. */
   areCaptionsActive(): boolean { return this.activeRegion?.isConnected === true; }
+
+  /**
+   * Turns Meet's captions on when they are off, so a recording is not silently
+   * transcript-less just because the user forgot to enable them.
+   *
+   * Meet only generates caption text while its own control is on — there is no
+   * hidden source to read — so enabling it is the only way to have anything to
+   * scrape. Resolves to whether captions ended up live; a failure is reported,
+   * never thrown, because a recording must not depend on it.
+   */
+  async ensureCaptionsEnabled(
+    timeoutMs = TIMEOUTS.CAPTIONS_ENABLE_TIMEOUT_MS
+  ): Promise<boolean> {
+    if (this.areCaptionsActive()) return true;
+
+    const toggle = this.provider.findCaptionsToggle(document);
+    if (!toggle) return false;
+
+    try {
+      toggle.click();
+    } catch {
+      return false;
+    }
+    return this.waitForCaptionsRegion(timeoutMs);
+  }
+
+  /** Polls until the captions region attaches, or the budget runs out. */
+  private waitForCaptionsRegion(timeoutMs: number): Promise<boolean> {
+    return new Promise((resolve) => {
+      const deadline = Date.now() + timeoutMs;
+      const check = () => {
+        const region = this.provider.findCaptionsRegion(document);
+        if (region) {
+          // Attach immediately rather than waiting for the body observer to fire,
+          // so the first utterance after enabling is not missed.
+          this.attachRegion(region);
+          resolve(true);
+          return;
+        }
+        if (Date.now() >= deadline) {
+          resolve(false);
+          return;
+        }
+        setTimeout(check, TIMEOUTS.CAPTIONS_ENABLE_POLL_MS);
+      };
+      check();
+    });
+  }
 
   reset() {
     this.buffer.reset();
@@ -284,6 +333,10 @@ class TranscriptCollector {
       if (msg.type === 'RESET_TRANSCRIPT') {
         this.reset();
         sendResponse({ ok: true });
+        return true;
+      }
+      if (msg.type === 'ENABLE_CAPTIONS') {
+        void this.ensureCaptionsEnabled().then((enabled) => sendResponse({ enabled }));
         return true;
       }
       if (msg.type === 'GET_TRANSCRIPT_CUES') {

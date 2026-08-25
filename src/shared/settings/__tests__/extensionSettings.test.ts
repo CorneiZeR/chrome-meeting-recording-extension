@@ -17,6 +17,15 @@ describe('settings', () => {
     expect(normalizeExtensionSettings({ privacy: { anonymousDiagnostics: false } }).privacy.anonymousDiagnostics).toBe(false);
   });
 
+  it('turns Meet captions on by default while preserving an explicit opt-out', () => {
+    // Without captions Meet produces no text at all, so the useful default is on;
+    // a user who does not want their Meet UI touched must be able to say so.
+    expect(DEFAULT_EXTENSION_SETTINGS.basic.autoEnableCaptions).toBe(true);
+    expect(normalizeExtensionSettings({}).basic.autoEnableCaptions).toBe(true);
+    expect(normalizeExtensionSettings({ basic: { autoEnableCaptions: false } }).basic.autoEnableCaptions).toBe(false);
+    expect(normalizeExtensionSettings({ basic: { autoEnableCaptions: 'yes' } }).basic.autoEnableCaptions).toBe(true);
+  });
+
   it('defaults to the system theme and accepts only supported preferences', () => {
     expect(DEFAULT_EXTENSION_SETTINGS.appearance.theme).toBe('system');
     expect(normalizeExtensionSettings({}).appearance.theme).toBe('system');
