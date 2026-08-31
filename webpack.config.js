@@ -13,6 +13,7 @@ const {
   applyTargetToManifest,
 } = require('./scripts/lib/manifestTargets.cjs')
 const { telemetryHostPermission } = require('./scripts/lib/telemetryEndpoint.cjs')
+const { distDirForTarget } = require('./scripts/lib/releaseArtifacts.cjs')
 
 const GOOGLE_OAUTH_CLIENT_ID_ENV_KEY = 'GOOGLE_OAUTH_CLIENT_ID'
 const GOOGLE_WEB_OAUTH_CLIENT_ID_ENV_KEY = 'GOOGLE_WEB_OAUTH_CLIENT_ID'
@@ -121,7 +122,7 @@ module.exports = (_env, argv) => {
   const browserTarget = resolveBrowserTarget(env.target)
   const outputDir = typeof env.outputPath === 'string' && env.outputPath.trim()
     ? env.outputPath.trim()
-    : (browserTarget === DEFAULT_BROWSER_TARGET ? 'dist' : `dist-${browserTarget}`)
+    : distDirForTarget(browserTarget)
   const targetProfile = getTargetProfile(browserTarget)
   const isWebAuthFlowTarget = usesWebAuthFlow(browserTarget)
   const configuredGoogleOauthClientId = resolveGoogleOauthClientId(__dirname)
