@@ -37,6 +37,10 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
+      # The performance specs measure the recorded artifacts with ffprobe, so
+      # the media toolchain is part of the E2E environment, not an extra.
+      - name: Install FFmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - run: npx playwright install --with-deps chromium
       # Some specs launch a headed browser (extension capture paths need a real
       # window), so the run happens under a virtual display.
