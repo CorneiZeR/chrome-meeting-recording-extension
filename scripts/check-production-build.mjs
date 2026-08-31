@@ -7,7 +7,12 @@ const { toChromeManifestVersion } = require('./lib/manifestVersion.cjs');
 const pkg = require('../package.json');
 const telemetryEndpoint = process.env.TELEMETRY_ENDPOINT?.trim() ?? '';
 
-const distDir = path.resolve(process.cwd(), 'dist');
+// Every browser target is guarded, not just the default `dist/` one: the
+// per-target release zips ship the same code and must be equally free of E2E
+// markers. `--dist=<dir>` selects the build output to validate.
+const distArg = process.argv.slice(2).find((arg) => arg.startsWith('--dist='));
+const distName = distArg ? distArg.slice('--dist='.length).trim() : 'dist';
+const distDir = path.resolve(process.cwd(), distName);
 const forbiddenMarkers = [
   'e2e-mock-drive-token',
   '__E2E_MOCK_TAB_CAPTURE__',
@@ -55,25 +60,25 @@ const expectedVersion = toChromeManifestVersion(pkg.version);
 try {
   const manifest = JSON.parse(await fs.readFile(path.join(distDir, 'manifest.json'), 'utf8'));
   if (manifest.version === '0.0.0') {
-    violations.push('dist/manifest.json version is the 0.0.0 placeholder — the build did not derive it from package.json');
+    violations.push(`${distName}/manifest.json version is the 0.0.0 placeholder — the build did not derive it from package.json`);
   } else if (manifest.version !== expectedVersion) {
-    violations.push(`dist/manifest.json version "${manifest.version}" != package.json-derived "${expectedVersion}"`);
+    violations.push(`${distName}/manifest.json version "${manifest.version}" != package.json-derived "${expectedVersion}"`);
   }
   if (telemetryOrigin && !manifest.host_permissions?.includes(`${telemetryOrigin}/*`)) {
-    violations.push(`dist/manifest.json is missing the exact telemetry host permission ${telemetryOrigin}/*`);
+    violations.push(`${distName}/manifest.json is missing the exact telemetry host permission ${telemetryOrigin}/*`);
   }
   if (!manifest.permissions?.includes('alarms')) {
-    violations.push('dist/manifest.json is missing the alarms permission required for bounded one-shot telemetry retries');
+    violations.push(`${distName}/manifest.json is missing the alarms permission required for bounded one-shot telemetry retries`);
   }
 } catch (error) {
-  violations.push(`cannot validate dist/manifest.json version: ${error.message}`);
+  violations.push(`cannot validate ${distName}/manifest.json version: ${error.message}`);
 }
 
 if (violations.length) {
-  console.error(`Production build failed guards:\n${violations.join('\n')}`);
+  console.error(`Production build (${distName}) failed guards:\n${violations.join('\n')}`);
   process.exitCode = 1;
 } else {
   console.log(
-    `Production build clean: version ${expectedVersion}, telemetry endpoint permission, and retry alarm are present; no synthetic capture, fake OAuth, Drive fetch bridge, or live-E2E recorder-tab markers.`
+    `Production build (${distName}) clean: version ${expectedVersion}, telemetry endpoint permission, and retry alarm are present; no synthetic capture, fake OAuth, Drive fetch bridge, or live-E2E recorder-tab markers.`
   );
 }

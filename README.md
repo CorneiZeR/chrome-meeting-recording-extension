@@ -60,7 +60,7 @@ Everything runs in your browser. Capture is **local-first**: recording data stre
 ## Requirements
 
 - **Google Chrome** (or the supported Chromium-based browsers: Edge, Brave, Opera, Vivaldi, and Arc) with Manifest V3, `tabCapture`, and the Offscreen API. Chrome 116+ is sufficient. Firefox is not currently supported because its capture/media-host adapters have not been implemented.
-- **Node.js 18+** and **npm** to build the extension.
+- **Node.js 20+** and **npm** — only to build from source; the [prebuilt release zips](#install-a-prebuilt-release-no-node-required) need no toolchain.
 - **FFmpeg and FFprobe** for performance E2E artifact analysis.
 
 The extension requests the following Chrome permissions: `activeTab`, `downloads`, `downloads.open`, `tabCapture`, `offscreen`, `storage`, `tabs`, `desktopCapture`, `alarms`. The one-shot alarm retries a queued anonymous diagnostics batch after a retryable network failure; it does not create a periodic heartbeat.
@@ -70,6 +70,17 @@ Drive mode additionally requires: `identity` and host access to `https://www.goo
 ---
 
 ## Quick start
+
+### Install a prebuilt release (no Node required)
+
+1. Open the [**Releases**](https://github.com/kstroevsky/chrome-meeting-recording-extension/releases/latest) page and download the zip for your browser: `…-chrome.zip`, or the matching `edge` / `brave` / `opera` / `vivaldi` / `arc` build.
+2. Unpack it into a folder you intend to keep — the browser loads the extension from that folder, so deleting it uninstalls the extension.
+3. Open `chrome://extensions` (`edge://extensions`, `brave://extensions`, …), turn on **Developer mode**, click **Load unpacked** and select the unpacked folder.
+4. Open a Google Meet call and click the extension icon.
+
+Every asset is listed in `SHA256SUMS.txt` on the release; verify with `shasum -a 256 -c SHA256SUMS.txt`. Releases are built by the [`Release` workflow](.github/workflows/release.yml), not uploaded by hand.
+
+### Build it yourself
 
 ```bash
 # 1. Clone and install
@@ -248,7 +259,7 @@ Drive mode requires a **Chrome Extension** OAuth 2.0 client. A Desktop or Web cl
 
 ### Other Chromium browsers (Edge, Brave, Opera, …)
 
-`chrome.identity.getAuthToken` is Chrome-only, so the other supported Chromium browsers sign in via `chrome.identity.launchWebAuthFlow` against a **Web application** OAuth client (ADR-0002). Build per target — `npm run build:brave`, `build:edge`, `build:opera`, or `npm exec -- webpack --mode=production --env target=<vivaldi|arc>` — which emit to `dist-<target>/`. All supported Chromium targets keep the **same `key`**, so they share one extension ID and therefore **one redirect URI**. Firefox has no build target yet because the recording runtime also depends on Chromium capture and offscreen-media APIs.
+`chrome.identity.getAuthToken` is Chrome-only, so the other supported Chromium browsers sign in via `chrome.identity.launchWebAuthFlow` against a **Web application** OAuth client (ADR-0002). Build per target — `npm run build:brave`, `build:edge`, `build:opera`, `build:vivaldi`, or `build:arc` — which emit to `dist-<target>/`. All supported Chromium targets keep the **same `key`**, so they share one extension ID and therefore **one redirect URI**. Firefox has no build target yet because the recording runtime also depends on Chromium capture and offscreen-media APIs.
 
 1. Create an **OAuth 2.0 client** with **Application type: Web application**, enable the Drive API, and add the `drive.file` scope on the consent screen (add yourself as a test user while the app is unverified).
 2. Get the redirect URI to register: `npm run redirect-uri` prints `https://<id>.chromiumapp.org/`. Add that exact value (trailing `/` included) to the client's **Authorized redirect URIs**.
@@ -269,8 +280,7 @@ Each **store-published** build (Chrome Web Store, Edge Add-ons) gets its own sto
 | Command | Description |
 | :--- | :--- |
 | `npm run build` | Production build to `dist/` (minified, Chrome target) |
-| `npm run build:edge` / `build:brave` / `build:opera` | Per-browser production build to `dist-<target>/` (drops Chrome-only `oauth2`, **keeps** the stable `key`, and authenticates via `launchWebAuthFlow`) |
-| `npm exec -- webpack --mode=production --env target=vivaldi` / `target=arc` | Build either additional supported Chromium profile to `dist-<target>/` |
+| `npm run build:edge` / `build:brave` / `build:opera` / `build:vivaldi` / `build:arc` | Per-browser production build to `dist-<target>/` (drops Chrome-only `oauth2`, **keeps** the stable `key`, and authenticates via `launchWebAuthFlow`) |
 | `npm run dev` | Development build to `dist/` (unminified, source maps) |
 | `npm run watch` | Rebuild on every file save (development) |
 | `npm run typecheck` | Strict TypeScript check across `src/` without emitting |
@@ -279,12 +289,13 @@ Each **store-published** build (Chrome Web Store, Edge Add-ons) gets its own sto
 | `npm test` / `npm run test:unit` | Unit test suite (skips E2E) |
 | `npm version patch\|minor\|major` | Bump the release version (single source of truth) and tag the commit |
 | `npm run release:build` | Production build to `dist/` then the production guards (version + no E2E markers) |
+| `npm run release:artifacts` | Build **every** browser target, guard each one, and zip them into `release/` with `SHA256SUMS.txt` — exactly what the release workflow publishes |
 | `npm run test:e2e` / `npm run test:e2e:mock` | Functional mocked-Meet E2E plus performance smoke |
 | `npm run test:e2e:perf:smoke` | Three critical browser/extension performance cases |
 | `npm run test:e2e:perf:full` / `npm run test:e2e:perf` | Complete pairwise matrix and repeated benchmarks |
 | `npm run test:e2e:perf:endurance` | Ten-minute local and two-minute throttled-Drive runs |
 | `npm run test:e2e:perf:hardware` | Headed physical microphone/camera tier |
-| `npm run test:production-guards` | Proves E2E capture, fake OAuth, and Drive bridge markers are absent from `dist/` |
+| `npm run test:production-guards` | Proves E2E capture, fake OAuth, and Drive bridge markers are absent from `dist/` (`-- --dist=dist-edge` guards another target) |
 | `npm run test:e2e:real:profile` | Prepare or verify the persistent signed-in Chrome profile |
 | `npm run test:e2e:real -- <meet-url>` | One-admission real Google Meet scenario matrix |
 | `npm run test:e2e:live -- <meet-url>` / `npm run test:real-meet -- <meet-url>` | Compatibility aliases for the real-Meet suite |
@@ -296,14 +307,22 @@ There are two independent version identifiers; do not conflate them:
 - **Build ID** (`globalThis.__BUILD_ID__`) is a content hash stamped into every bundle by webpack. It changes on every code change and drives the service-worker ↔ offscreen skew handshake and the on-update reload. It is fully automatic — never set it by hand.
 - **Release version** (semver) lives in **`package.json` only — the single source of truth.** `dist/manifest.json`'s `version` is *derived* from it at build time (`transformManifest` in `webpack.config.js`), so the two cannot drift. The `version` in `static/manifest.json` is an ignored `0.0.0` placeholder.
 
-To cut a release:
+To cut a release, press the button: **Actions → Release → Run workflow**, pick the bump (`none` when `package.json` is already at the target version) and whether it is a pre-release or a draft. The workflow bumps and tags if asked, runs the typecheck and unit suite, builds and guards every browser target, and publishes a GitHub Release whose body carries the install instructions and links to one zip per browser plus `SHA256SUMS.txt`.
+
+A `v*` tag pushed from a machine does the same thing:
 
 ```bash
-npm version patch   # or minor / major — bumps package.json and creates the git tag
-npm run release:build   # production build + guards (asserts the derived version)
-git push --follow-tags  # publish the tag when you are ready
-# then zip ./dist and upload to the Chrome Web Store
+npm version patch       # or minor / major — bumps package.json and creates the git tag
+git push --follow-tags  # the tag triggers the Release workflow
 ```
+
+To reproduce the published artifacts locally (or to upload to the Chrome Web Store by hand):
+
+```bash
+npm run release:artifacts   # every target: build + guards + release/<name>-v<version>-<target>.zip
+```
+
+The release workflow needs four repository secrets (**Settings → Secrets and variables → Actions**): `TELEMETRY_ENDPOINT` (a production build refuses to run without it), `GOOGLE_OAUTH_CLIENT_ID` for the Chrome target, and `GOOGLE_WEB_OAUTH_CLIENT_ID` / `GOOGLE_WEB_OAUTH_CLIENT_SECRET` for the `launchWebAuthFlow` targets. Missing OAuth secrets do not fail the build — those bundles simply ship without a working Drive sign-in.
 
 `npm version` requires a clean working tree (commit or stash first) and runs the `preversion` gate — `typecheck` plus the unit suite — before it bumps and tags, so a release can't be cut over failing checks. It also keeps `package-lock.json` in sync automatically.
 
@@ -313,6 +332,8 @@ Two end-to-end testing scenarios exist:
 
 - **Scenario A** — the deterministic mocked-Meet Playwright suite and CI gate: functional tests, the performance matrix, mocked Drive, media analysis, and the physical camera/microphone tier. See the [Scenario A guide](docs/testing-scenario-a.md).
 - **Scenario B** — manual real Google Meet calibration in stable Chrome with a signed-in account, real `chrome.tabCapture`, and real devices. See the [Scenario B guide](docs/testing-scenario-b.md).
+
+Scenario A runs on every push and pull request in the [`CI` workflow](.github/workflows/ci.yml) alongside the typecheck and unit suite, and a third job packs every browser target so a release can never be the first time the artifacts are built. Scenario B stays manual — it needs a real signed-in Google account.
 
 ### Real Google Meet (Scenario B)
 
@@ -1152,6 +1173,7 @@ flowchart LR
 
 ```
 .
+├─ .github/workflows/  # CI gates and the release-publishing workflow
 ├─ static/       # source HTML shells and manifest (webpack copies to dist/)
 ├─ public/       # shared static assets copied to dist/ (e.g. gear.png)
 ├─ src/
@@ -1164,8 +1186,10 @@ flowchart LR
 │  ├─ debug.ts / debug/              # diagnostics dashboard
 │  ├─ platform/chrome/               # thin Chrome API wrappers
 │  └─ shared/                        # domain model, protocol, settings, perf types
+├─ scripts/      # build, release-packaging and real-Meet helpers
 ├─ tests/        # unit and E2E test suite
-└─ dist/         # build output (generated, not committed)
+├─ dist/         # build output (generated, not committed)
+└─ release/      # packaged per-browser zips (generated, not committed)
 ```
 
 > Source HTML shells and the manifest live under `static/`. The `dist/` layout is flat (`popup.html`, `offscreen.html`, `manifest.json`, etc.) because Chrome expects extension entrypoints at the extension root.
