@@ -44,11 +44,38 @@ jobs:
       - run: npx playwright install --with-deps chromium
       # Some specs launch a headed browser (extension capture paths need a real
       # window), so the run happens under a virtual display.
-      - run: xvfb-run -a npm run test:e2e:mock
+      - run: xvfb-run -a npm run test:e2e:functional
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: playwright-report
+          path: output/playwright
+          retention-days: 7
+
+  perf-smoke:
+    name: E2E performance smoke (informational)
+    runs-on: ubuntu-latest
+    # The performance budgets (A/V marker drift, freeze and silence windows) are
+    # calibrated against real hardware; a shared 2-vCPU runner encoding 1080p30 in
+    # software misses them intermittently. The tier still runs so a regression is
+    # visible in the log, but a runner-bound miss does not block a merge — a real
+    # performance verdict comes from `npm run test:e2e:perf` on a calibrated machine.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Install FFmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - run: npx playwright install --with-deps chromium
+      - run: xvfb-run -a npm run test:e2e:perf:smoke
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report-perf
           path: output/playwright
           retention-days: 7
 

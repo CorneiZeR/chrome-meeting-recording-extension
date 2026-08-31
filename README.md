@@ -291,6 +291,7 @@ Each **store-published** build (Chrome Web Store, Edge Add-ons) gets its own sto
 | `npm run release:build` | Production build to `dist/` then the production guards (version + no E2E markers) |
 | `npm run release:artifacts` | Build **every** browser target, guard each one, and zip them into `release/` with `SHA256SUMS.txt` — exactly what the release workflow publishes |
 | `npm run test:e2e` / `npm run test:e2e:mock` | Functional mocked-Meet E2E plus performance smoke |
+| `npm run test:e2e:functional` | Functional mocked-Meet E2E only, no performance tier — the blocking CI gate |
 | `npm run test:e2e:perf:smoke` | Three critical browser/extension performance cases |
 | `npm run test:e2e:perf:full` / `npm run test:e2e:perf` | Complete pairwise matrix and repeated benchmarks |
 | `npm run test:e2e:perf:endurance` | Ten-minute local and two-minute throttled-Drive runs |
@@ -333,7 +334,7 @@ Two end-to-end testing scenarios exist:
 - **Scenario A** — the deterministic mocked-Meet Playwright suite and CI gate: functional tests, the performance matrix, mocked Drive, media analysis, and the physical camera/microphone tier. See the [Scenario A guide](docs/testing-scenario-a.md).
 - **Scenario B** — manual real Google Meet calibration in stable Chrome with a signed-in account, real `chrome.tabCapture`, and real devices. See the [Scenario B guide](docs/testing-scenario-b.md).
 
-Scenario A runs on every push and pull request in the [`CI` workflow](.github/workflows/ci.yml) alongside the typecheck and unit suite, and a third job packs every browser target so a release can never be the first time the artifacts are built. Scenario B stays manual — it needs a real signed-in Google account.
+Scenario A runs on every push and pull request in the [`CI` workflow](.github/workflows/ci.yml) alongside the typecheck and unit suite, and a further job packs every browser target so a release can never be the first time the artifacts are built. The functional tier blocks a merge; the performance smoke tier runs as an informational job, because its budgets are calibrated against real hardware and a shared runner encoding 1080p30 in software misses them intermittently — judge performance with `npm run test:e2e:perf` on a calibrated machine. Scenario B stays manual — it needs a real signed-in Google account.
 
 ### Real Google Meet (Scenario B)
 

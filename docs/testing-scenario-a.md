@@ -55,6 +55,7 @@ sudo apt-get update && sudo apt-get install -y ffmpeg
 | Command | Coverage |
 | :--- | :--- |
 | `npm run test:e2e:mock` | Functional mocked-Meet tests plus performance smoke |
+| `npm run test:e2e:functional` | Functional mocked-Meet tests only — what CI blocks on |
 | `npm run test:e2e:perf:smoke` | Critical 360p local, 1080p three-stream local, and three-stream Drive cases |
 | `npm run test:e2e:perf:full` | Smoke, profiles, streams, cameras, workloads, flags, Drive, pairwise interactions, and reliability |
 | `npm run test:e2e:perf` | Alias for the full tier |
@@ -190,7 +191,7 @@ test('@perf-full workload custom', async ({}, testInfo) => {
 
 Choose the tag based on execution cost:
 
-- `@perf-smoke`: required on every PR;
+- `@perf-smoke`: required on every PR, on calibrated hardware — in GitHub Actions it runs as an informational job whose budgets a shared 2-vCPU runner cannot honour;
 - `@perf-full`: daily matrix and manually dispatched full runs;
 - `@perf-endurance`: weekly or manual long runs;
 - `@perf-hardware`: manually dispatched self-hosted hardware only;
