@@ -1,0 +1,142 @@
+# Release: one button in the Actions tab builds every supported browser target
+# and publishes the installable zips on a GitHub Release, so users without Node
+# can download, unpack and "Load unpacked" without ever running a build.
+#
+# Triggers:
+#   - workflow_dispatch — the button; optionally bumps the version first.
+#   - push of a `v*` tag — e.g. after a local `npm version patch && git push --follow-tags`.
+#
+# Required repository secrets (Settings → Secrets and variables → Actions):
+#   TELEMETRY_ENDPOINT              exact https://…/api/telemetry/batches URL (production builds refuse to run without it)
+#   GOOGLE_OAUTH_CLIENT_ID          Chrome-extension OAuth client id (Chrome target, chrome.identity.getAuthToken)
+#   GOOGLE_WEB_OAUTH_CLIENT_ID      Web OAuth client id (Edge/Brave/Opera/Vivaldi/Arc, launchWebAuthFlow)
+#   GOOGLE_WEB_OAUTH_CLIENT_SECRET  its secret — embedded in those bundles, as the launchWebAuthFlow path requires
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: 'Version bump before releasing (package.json is the single source of truth)'
+        type: choice
+        default: none
+        options: [none, patch, minor, major]
+      prerelease:
+        description: 'Mark the release as a pre-release'
+        type: boolean
+        default: false
+      draft:
+        description: 'Create the release as a draft (publish it by hand)'
+        type: boolean
+        default: false
+  push:
+    tags: ['v*']
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build & publish release artifacts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history: the version-monotonicity guard compares package.json
+          # against the highest existing release tag.
+          fetch-depth: 0
+          ref: ${{ github.ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+
+      - name: Require the telemetry endpoint
+        env:
+          TELEMETRY_ENDPOINT: ${{ secrets.TELEMETRY_ENDPOINT }}
+        run: |
+          if [ -z "$TELEMETRY_ENDPOINT" ]; then
+            echo "::error::TELEMETRY_ENDPOINT is not configured; a production build cannot be made." >&2
+            exit 1
+          fi
+
+      - name: Bump the version
+        if: github.event_name == 'workflow_dispatch' && inputs.bump != 'none'
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # `npm version` runs the preversion gate (typecheck + unit tests), bumps
+          # package.json + the lockfile, commits and tags in one step.
+          npm version "${{ inputs.bump }}"
+          git push --follow-tags origin "HEAD:${{ github.ref_name }}"
+
+      - name: Resolve the release version
+        id: version
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+
+      - name: Verify the tag matches package.json
+        if: github.event_name == 'push'
+        run: |
+          if [ "${{ github.ref_name }}" != "${{ steps.version.outputs.tag }}" ]; then
+            echo "::error::Tag ${{ github.ref_name }} does not match package.json version ${{ steps.version.outputs.version }}." >&2
+            exit 1
+          fi
+
+      - name: Verify the release is not already published
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "${{ steps.version.outputs.tag }}" >/dev/null 2>&1; then
+            echo "::error::Release ${{ steps.version.outputs.tag }} already exists — bump the version first." >&2
+            exit 1
+          fi
+
+      - name: Typecheck & unit tests
+        run: |
+          npm run typecheck
+          npm run test:unit
+
+      - name: Pack every browser target
+        env:
+          TELEMETRY_ENDPOINT: ${{ secrets.TELEMETRY_ENDPOINT }}
+          GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+          GOOGLE_WEB_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_WEB_OAUTH_CLIENT_ID }}
+          GOOGLE_WEB_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_WEB_OAUTH_CLIENT_SECRET }}
+        run: npm run release:artifacts
+
+      - name: Compose the release notes header
+        run: |
+          {
+            echo "## Install (no Node required)"
+            echo
+            echo "1. Download the zip for your browser below — \`chrome\` for Google Chrome, or the matching \`edge\` / \`brave\` / \`opera\` / \`vivaldi\` / \`arc\` build."
+            echo "2. Unpack it into a folder you keep (the browser loads the extension from that folder — deleting it uninstalls the extension)."
+            echo "3. Open \`chrome://extensions\` (\`edge://extensions\`, \`brave://extensions\`, …), turn on **Developer mode**, click **Load unpacked** and select the unpacked folder."
+            echo "4. Open a Google Meet call and click the extension icon."
+            echo
+            echo "Checksums for every asset are in \`SHA256SUMS.txt\`; verify with \`shasum -a 256 -c SHA256SUMS.txt\`."
+            echo
+            echo "> All targets share one extension id. Chrome signs in to Drive via \`chrome.identity.getAuthToken\`; the other Chromium builds use \`launchWebAuthFlow\` (ADR-0002)."
+            echo
+          } > release-notes.md
+
+      - name: Publish the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ steps.version.outputs.tag }}" \
+            release/*.zip release/SHA256SUMS.txt \
+            --target "$(git rev-parse HEAD)" \
+            --title "${{ steps.version.outputs.tag }}" \
+            --notes-file release-notes.md \
+            --generate-notes \
+            ${{ inputs.prerelease && '--prerelease' || '' }} \
+            ${{ inputs.draft && '--draft' || '' }}

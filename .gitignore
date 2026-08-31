@@ -3,6 +3,7 @@ dist/
 dist-e2e/
 dist-*/
 output/
+release/
 coverage/
 .DS_Store
 .env
