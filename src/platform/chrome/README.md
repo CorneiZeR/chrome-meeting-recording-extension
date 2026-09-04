@@ -33,7 +33,7 @@ A boundary between our logic and the Chrome extension platform. Most wrappers ju
 | `tabs.ts` | active-tab query, runtime/external-page tabs, tab messaging, `getMediaStreamIdForTab` (tabCapture), `getCapturedTabs` (conflict detection), `onRemoved`/`onUpdated` (the auto-stop triggers) |
 | `downloads.ts` | `downloadFile`, `awaitDownloadSettled` (event-driven terminal-state wait), `openDownloadedFile` (history-safe local open, confirmed and falling back to reveal), and `revealDownloadedFile` |
 | `runtime.ts` | port connect, runtime messaging, `getManifest`/`getBuildId`, keep-alive poke |
-| `identity.ts` | `getRedirectURL` + `launchWebAuthFlow` (consumed by the auth seam) |
+| `identity.ts` | `getAuthToken` / `removeCachedAuthToken` / `clearAllCachedAuthTokens` / `getProfileEmail` for Chrome's native sign-in, plus `getRedirectURL` + `launchWebAuthFlow` for the cross-browser flow (both consumed by the auth seam) |
 | `offscreen.ts` | create / close / has-offscreen-document |
 | `action.ts` | toolbar badge / action state |
 
@@ -43,8 +43,8 @@ A boundary between our logic and the Chrome extension platform. Most wrappers ju
 
 ## Related
 
-- [ADR-0002](../../../docs/adr/0002-cross-browser-support-strategy.md) — most of this seam ports cross-browser unchanged; the exception is OAuth.
-- [`platform/capabilities`](../capabilities/README.md) — the auth seam (the one real cross-browser divergence); consumes `identity.ts`.
+- [ADR-0002](../../../docs/adr/0002-cross-browser-support-strategy.md) — most of this seam ports cross-browser unchanged; the exception is OAuth, behind the capability seam.
+- [`platform/capabilities`](../capabilities/README.md) — the auth seam (the Google grant); consumes `identity.ts` and `storage.ts`.
 - [`background`](../../background/README.md) / [`offscreen`](../../offscreen/README.md) — the main callers (downloads, tabs, storage, offscreen lifecycle).
 
 ## External references

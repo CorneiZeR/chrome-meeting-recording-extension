@@ -5,14 +5,17 @@
  *
  * Per-browser-target manifest profiles (ADR-0002). Cross-browser manifest
  * decisions are modeled by browser *family* + auth *capability* rather than by
- * "is it chrome", because two independent concerns were previously conflated:
+ * "is it chrome", because two independent concerns are at play:
  *
  *   - `oauth2` is configuration for chrome.identity.getAuthToken (Chrome-only),
- *     so it is kept only for the `chrome-identity` auth capability.
- *   - `key` pins a stable extension id. Every Chromium browser authenticates via
- *     launchWebAuthFlow against a `https://<id>.chromiumapp.org/` redirect that
- *     must match a registered URI, so the whole Chromium family must keep `key`.
- *     Dropping it (the old "non-chrome" branch) made the id unstable and caused
+ *     so it is kept only for the `chrome-identity` auth capability. Its client id
+ *     is public and lives in source control, which is what lets a Chrome build
+ *     connect Drive with no configuration at all.
+ *   - `key` pins a stable extension id. Every other Chromium browser
+ *     authenticates via launchWebAuthFlow against a
+ *     `https://<id>.chromiumapp.org/` redirect that must match a registered URI,
+ *     so the whole Chromium family must keep `key`. Dropping it (the old
+ *     "non-chrome" branch) made the id unstable and caused
  *     `redirect_uri_mismatch`.
  *
  * Adding Firefox/Safari later is a new profile with a different `family`; the
@@ -30,6 +33,11 @@ const TARGET_PROFILES = {
 
 const DEFAULT_TARGET = 'chrome';
 
+/** True for targets that authenticate via launchWebAuthFlow (need the web OAuth client). */
+function usesWebAuthFlow(target) {
+  return getTargetProfile(target).auth === 'web-auth-flow';
+}
+
 function getTargetProfile(target) {
   const profile = TARGET_PROFILES[target];
   if (!profile) {
@@ -40,17 +48,12 @@ function getTargetProfile(target) {
   return profile;
 }
 
-/** True for targets that authenticate via launchWebAuthFlow (need the web OAuth client). */
-function usesWebAuthFlow(target) {
-  return getTargetProfile(target).auth === 'web-auth-flow';
-}
-
 /**
  * Apply a target's profile to a parsed manifest object (mutates and returns it).
  *
  * @param {object} manifest parsed manifest.json
  * @param {string} target build-target key
- * @param {{ oauthClientId?: string }} [opts]
+ * @param {{ oauthClientId?: string }} [opts] optional client-id override
  * @returns {object} the same manifest, mutated
  */
 function applyTargetToManifest(manifest, target, opts = {}) {
@@ -61,7 +64,9 @@ function applyTargetToManifest(manifest, target, opts = {}) {
     if (!manifest.oauth2 || typeof manifest.oauth2 !== 'object') {
       throw new Error('manifest.json is missing oauth2 configuration for a chrome-identity target');
     }
-    manifest.oauth2.client_id = opts.oauthClientId;
+    // The committed client id is the default; an env override exists only for
+    // builds that need a different one, so an empty value must not blank it.
+    if (opts.oauthClientId) manifest.oauth2.client_id = opts.oauthClientId;
   } else {
     delete manifest.oauth2;
   }
@@ -77,8 +82,8 @@ function applyTargetToManifest(manifest, target, opts = {}) {
 
 module.exports = {
   TARGET_PROFILES,
+  usesWebAuthFlow,
   DEFAULT_TARGET,
   getTargetProfile,
-  usesWebAuthFlow,
   applyTargetToManifest,
 };

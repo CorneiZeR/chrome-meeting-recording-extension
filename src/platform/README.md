@@ -7,7 +7,7 @@
 | Seam | What it abstracts | README |
 | :--- | :--- | :--- |
 | **`chrome/`** | the broad extension-API surface (storage, tabs, downloads, runtime, identity, offscreen, action) — thin wrappers, one per area | [`chrome/README.md`](./chrome/README.md) |
-| **`capabilities/`** | the *divergence-prone* capabilities that need a strategy chosen per browser — today just **auth** (OAuth token acquisition) | [`capabilities/README.md`](./capabilities/README.md) |
+| **`capabilities/`** | the *divergence-prone* capabilities that need a strategy chosen per browser — today just **auth** (the Google grant behind Drive) | [`capabilities/README.md`](./capabilities/README.md) |
 
 ## How they relate
 
@@ -17,15 +17,15 @@ flowchart TD
     APP --> CAP["platform/capabilities (auth seam)"]
     CH --> API["chrome.* APIs"]
     CAP -->|"chrome target"| CI["chrome.identity.getAuthToken"]
-    CAP -->|"other browsers"| WF["launchWebAuthFlow"]
+    CAP -->|"other browsers"| WF["launchWebAuthFlow OAuth2 + PKCE"]
     WF --> CH
 ```
 
-`chrome/` is the **broad, mostly Chromium-common** seam — most of it ports across the supported Chromium browsers unchanged. `capabilities/` is the **narrow, divergence-isolating** seam: where a capability genuinely differs by browser, the strategy selection lives there, not scattered through the app. The two meet at auth — `capabilities`'s `WebAuthFlow` strategy is *built on* `chrome/identity` (`launchWebAuthFlow` / `getRedirectURL`).
+`chrome/` is the **broad, mostly Chromium-common** seam — most of it ports across the supported Chromium browsers unchanged. `capabilities/` is the **narrow, divergence-isolating** seam: where a capability genuinely differs by browser, the strategy selection lives there, not scattered through the app. The two meet at auth — `capabilities`'s `WebAuthFlow` strategy is *built on* `chrome/identity` (`launchWebAuthFlow` / `getRedirectURL`) and `chrome/storage` (where the grant is kept).
 
 ## The cross-browser stance (ADR-0002)
 
-This split is the shape of the [cross-browser strategy](../../docs/adr/0002-cross-browser-support-strategy.md): keep the broad `chrome/` seam portable inside the supported Chromium family, and concentrate the capability that currently differs there (auth) behind `capabilities/`. The supported profiles are Chrome, Edge, Brave, Opera, Vivaldi, and Arc. Firefox is intentionally **not** a build target: its capture-source and media-host APIs need adapters, not merely a different OAuth selection.
+This split is the shape of the [cross-browser strategy](../../docs/adr/0002-cross-browser-support-strategy.md): keep the broad `chrome/` seam portable inside the supported Chromium family, and concentrate the capability that could differ there (auth) behind `capabilities/`. The supported profiles are Chrome, Edge, Brave, Opera, Vivaldi, and Arc: Chrome signs in natively, the rest through launchWebAuthFlow. Firefox is intentionally **not** a build target: its capture-source and media-host APIs need adapters, not merely a different OAuth selection.
 
 ## Why this container has a README (and most don't)
 

@@ -61,8 +61,8 @@ sequenceDiagram
     TP-->>CU: refreshed token, retry once
 ```
 
-- **`createCachedTokenProvider`** holds one token in memory for the whole upload so we don't call the identity API per chunk; a `refresh` bumps a generation counter (so a stale in-flight load can't overwrite the new token) and forces one re-fetch.
-- A `401/403` triggers exactly **one** refreshed retry (both in `uploadChunk` for PUTs and `fetchWithAuthRetry` for folder ops). Token **acquisition** (silent→interactive fallback, bad-client-id diagnosis) is `background/driveAuth.ts` behind the [`AuthProvider`](../../platform/capabilities/README.md) seam (ADR-0002) — this folder treats it as a black box that returns a string.
+- **`createCachedTokenProvider`** holds one token in memory for the whole upload so we don't ask the background per chunk; a `refresh` bumps a generation counter (so a stale in-flight load can't overwrite the new token) and forces one re-fetch.
+- A `401/403` triggers exactly **one** refreshed retry (both in `uploadChunk` for PUTs and `fetchWithAuthRetry` for folder ops). Token **acquisition** (silent refresh → interactive fallback, misconfigured-client diagnosis) is `background/driveAuth.ts` behind the [`AuthProvider`](../../platform/capabilities/README.md) seam (ADR-0002) — this folder treats it as a black box that returns a string.
 
 ## Failure modes & retry/backoff
 
@@ -77,7 +77,7 @@ The status-code contract `uploadChunk` enforces (`DRIVE_MAX_RETRIES = 5`, expone
 | transient fetch (`AbortError`/`TypeError`, including the 180 s `DRIVE_REQUEST_TIMEOUT_MS` abort) | recover committed offset → backoff → retry (≤5), unless the job was canceled |
 | other `4xx` | throw `formatDriveError` — status + detail **+ an actionable hint** (missing scope, Drive API not enabled, unverified consent screen, …) |
 
-`formatDriveError` is deliberately user-actionable: a `403 insufficient scope` becomes "confirm `manifest oauth2.scopes` includes `drive.file` and re-consent", not a raw payload dump.
+`formatDriveError` is deliberately user-actionable: a `403 insufficient scope` becomes "reconnect Google Drive in the settings page so the `drive.file` scope is granted", not a raw payload dump.
 
 Every Drive HTTP operation — folder lookup/create, resumable-session creation, chunk upload, and committed-offset probe — goes through `fetchWithTimeout`. A job `AbortSignal` aborts the active request and retry backoff. Folder resolution is shared through an abort-aware flight: canceling one caller releases that caller immediately, but the underlying lookup is aborted only after its **last** cancelable consumer leaves. A remaining upload therefore keeps setup alive; an abandoned setup does not keep running until its 180 s timeout or create folders after every job has been canceled.
 
@@ -156,7 +156,7 @@ After capture seals, `UploadManager` owns a detached job and drives `RecordingFi
 
 ## Related
 
-- [`platform/capabilities`](../../platform/capabilities/README.md) — token **acquisition** (the `AuthProvider` seam, silent→interactive fallback, ADR-0002 cross-browser).
+- [`platform/capabilities`](../../platform/capabilities/README.md) — the grant itself (the `AuthProvider` seam: connect, silent refresh, disconnect; ADR-0002).
 - [ADR-0004](../../../docs/adr/0004-decouple-uploads-from-the-recording-session.md) — the detached upload-job lifecycle that drives this protocol.
 - [Perf roadmap](../../../docs/plans/perf-optimization-roadmap.md) — `parallelUploadConcurrency` and `dynamicDriveChunkSizing` (both shipped, default-on).
 - [`offscreen/storage`](../storage/README.md) — orphan recovery reads the same OPFS files these markers point at.

@@ -8,9 +8,9 @@
 #
 # Required repository secrets (Settings → Secrets and variables → Actions):
 #   TELEMETRY_ENDPOINT              exact https://…/api/telemetry/batches URL (production builds refuse to run without it)
-#   GOOGLE_OAUTH_CLIENT_ID          Chrome-extension OAuth client id (Chrome target, chrome.identity.getAuthToken)
-#   GOOGLE_WEB_OAUTH_CLIENT_ID      Web OAuth client id (Edge/Brave/Opera/Vivaldi/Arc, launchWebAuthFlow)
+#   GOOGLE_WEB_OAUTH_CLIENT_ID      Web OAuth client id for the non-Chrome targets (launchWebAuthFlow, ADR-0002)
 #   GOOGLE_WEB_OAUTH_CLIENT_SECRET  its secret — embedded in those bundles, as the launchWebAuthFlow path requires
+#   (Chrome needs no secret: its client id is public and committed in static/manifest.json)
 name: Release
 
 on:
@@ -107,7 +107,6 @@ jobs:
       - name: Pack every browser target
         env:
           TELEMETRY_ENDPOINT: ${{ secrets.TELEMETRY_ENDPOINT }}
-          GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
           GOOGLE_WEB_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_WEB_OAUTH_CLIENT_ID }}
           GOOGLE_WEB_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_WEB_OAUTH_CLIENT_SECRET }}
         run: npm run release:artifacts
@@ -124,7 +123,7 @@ jobs:
             echo
             echo "Checksums for every asset are in \`SHA256SUMS.txt\`; verify with \`shasum -a 256 -c SHA256SUMS.txt\`."
             echo
-            echo "> All targets share one extension id. Chrome signs in to Drive via \`chrome.identity.getAuthToken\`; the other Chromium builds use \`launchWebAuthFlow\` (ADR-0002)."
+            echo "> All targets share one extension id. Chrome signs in to Drive natively with the browser profile's account; the other builds open a Google account picker (\`launchWebAuthFlow\`). Connect it in the extension's settings page (ADR-0002)."
             echo
           } > release-notes.md
 

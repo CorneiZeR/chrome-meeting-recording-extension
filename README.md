@@ -96,7 +96,7 @@ TELEMETRY_ENDPOINT=https://recording-extension-telemetry.kstroevsky.workers.dev/
 #    chrome://extensions → Developer mode ON → Load unpacked → select ./dist
 ```
 
-> If you plan to use Drive mode, create `.env` from `.env.example` and set `GOOGLE_OAUTH_CLIENT_ID` before building. See [Google Drive setup](#google-drive-setup).
+> For Drive mode on Chrome nothing needs configuring at build time — connect the account in the extension's settings page. The non-Chrome targets need a web OAuth client in `.env`. See [Google Drive setup](#google-drive-setup).
 
 Open a Google Meet, click the extension icon, and you're ready to record or download transcripts.
 
@@ -156,7 +156,7 @@ All three commands compile TypeScript via `ts-loader`, copy HTML shells, styles,
 - `Mix into tab recording` — your mic is blended into the main tab recording via an audio graph. No separate mic file is created.
 - `Save separately` — a second `.webm` or `.m4a` artifact is created for the mic stream only, according to the separate microphone format setting.
 
-**Storage Mode** — `Local Disk` or `Google Drive`. Drive uploads happen after capture stops, not during capture. In Drive mode the recording returns to idle once its sealed artifacts are queued; upload progress, retry, and cancellation live in a separate session tab.
+**Storage Mode** — `Local Disk` or `Google Drive`. Drive needs an account connected once in **Settings → Google Drive**; the selector's **Connect Google Drive…** entry opens that section. Drive uploads happen after capture stops, not during capture. In Drive mode the recording returns to idle once its sealed artifacts are queued; upload progress, retry, and cancellation live in a separate session tab.
 
 **Record my camera separately** — if checked, starts an additional camera-only recorder. If camera permission is missing when you click Start, a `camsetup.html` tab opens so you can grant access. Camera quality is controlled by the extension settings page, not Google Meet's own video setting.
 
@@ -199,19 +199,50 @@ Use the history icon in the popup header to open the **Recordings** page. It is 
 
 ## Settings page
 
-Open the settings page by clicking the gear icon in the popup. Settings persist across sessions via `chrome.storage.local`. The four defaults the popup's configuration screen also exposes — default recording mode, default microphone mode, record camera separately, and default tab content type — are shared with it in both directions: a choice made in the popup is saved here as well.
+Open the settings page by clicking the gear icon in the popup. It has **no Save button**: every edit is written to `chrome.storage.local` at once, and a change made anywhere else (the popup's pre-start form) is mirrored back into the open page. **Reset to defaults** asks for confirmation, because it drops every section including the theme and the diagnostics choice.
+
+The page is grouped by who edits what:
+
+**Quick settings** — the popup's pre-start controls. A change in either place is saved to the other, so a setup entered once is what the next recording starts from.
+
+| Setting | Description |
+| :--- | :--- |
+| Default recording mode | `Google Drive` or `Local downloads` — where a finished recording goes |
+| Default microphone mode | `Don't record microphone`, `Mix into tab audio`, or `Save microphone separately` |
+| Record camera separately | Starts an additional camera-only recorder. Default on |
+| Default tab content type | `Text / Detail` or `Video / Animation` — the tab bitrate's quality factor (there is no bitrate knob) |
+
+**Google Drive** — the connected Google account: **Connect** / **Disconnect**, and the email it is connected as. Connecting here is what keeps a sign-in prompt from appearing after a call, when the upload starts; picking Drive as the default recording mode without a connected account is called out right in this section. On Chrome the account is the browser profile's and the section says so; on the other Chromium targets a **Switch account** button re-runs the Google account picker. See [Google Drive setup](#google-drive-setup).
+
+**Recording**
+
+| Setting | Description |
+| :--- | :--- |
+| Turn on Meet captions when recording starts | Default on. Meet only produces caption text while its own captions are on, so starting a recording switches them on for you; turn this off to leave the Meet UI untouched |
+| Tab recording format | `WebM` (default) or `MP4`; controls the main tab artifact, including mixed microphone audio |
+| Separate microphone format | `WebM/Opus` (default) or `M4A/AAC`; applies only to a separately saved microphone, never to mixed microphone audio |
+| Camera recording format | `WebM` (default) or `MP4`; controls the separate self-video artifact |
+| Camera resolution | Output resolution for the self-video recording: `640×360`, `854×480`, `1280×720`, or `1920×1080` |
+| Prefer auto-selected resolution | When on, the camera is recorded at whatever resolution Chrome/Meet already selected instead of re-encoding it to the camera preset above — skips the per-frame resize work. On by default |
+
+**Professional** (collapsible)
+
+| Setting | Description |
+| :--- | :--- |
+| Camera frame rate | Requested camera fps (default 24 — a talking head is low-motion). The camera bitrate is fully automatic |
+| Tab resolution | Requested maximum tab capture size, same preset options |
+| Tab capture max frame rate | Caps the requested tab fps; Chrome tab capture is hard-limited to 30 |
+| Echo cancellation / Noise suppression / Auto gain control | Microphone `getUserMedia` DSP constraints |
+| Microphone chunk timeslice | How often the microphone recorder flushes audio to storage |
+| Tab & camera chunk timeslice | How often the tab and camera recorders flush video to storage |
+
+**Privacy**
 
 | Setting | Description |
 | :--- | :--- |
 | Anonymous diagnostics | Default on; sends bounded recording/upload summaries and sanitized failure evidence. Turning it off deletes queued batches and active checkpoints immediately. |
-| Turn on Meet captions when recording starts | Default on. Meet only produces caption text while its own captions are on, so starting a recording switches them on for you; turn this off to leave the Meet UI untouched |
-| Tab capture preset | Output resolution for the tab recording: `640×360`, `854×480`, `1280×720`, or `1920×1080` |
-| Tab video bitrate | Encoder bitrate at the `1920×1080`@30 reference; the recorder scales it down automatically for smaller tab presets / frame rates |
-| Tab recording format | `WebM` (default) or `MP4`; controls the main tab artifact, including mixed microphone audio |
-| Camera capture preset | Output resolution for the self-video recording, same preset options |
-| Camera recording format | `WebM` (default) or `MP4`; controls the separate self-video artifact |
-| Separate microphone format | `WebM/Opus` (default) or `M4A/AAC`; applies only to a separately saved microphone, never to mixed microphone audio |
-| Prefer the automatically selected resolution | When on, the camera is recorded at whatever resolution Chrome/Meet already selected instead of re-encoding it to the camera preset above — skips the per-frame resize work. Off by default |
+
+The theme control (system / light / dark) sits in the page's title bar and names the theme it will cycle to next.
 
 The tab and camera capture presets control what size the final file targets, not what resolution Chrome delivers from the source. Actual resolution depends on Chrome, camera hardware, and sharing limits. During recording, the popup labels the tab source with the reported delivered height when Chrome exposes it; the diagnostics data records requested-versus-delivered profiles. Separately, selecting separate camera capture with a sub-1080p **configured** preset shows a non-blocking setup nudge to raise that setting. That nudge is profile guidance, not a guarantee of the camera's delivered resolution.
 
@@ -241,34 +272,62 @@ In Drive mode, all artifacts for one recording session are uploaded to a per-rec
 
 ## Google Drive setup
 
-Drive mode requires a **Chrome Extension** OAuth 2.0 client. A Desktop or Web client type will not work with `chrome.identity.getAuthToken`.
+**On Chrome there is nothing to configure per build.** Chrome signs in natively
+through `chrome.identity.getAuthToken` (ADR-0002): no client secret, no redirect
+URI, no `.env` — just the public client id in `manifest.oauth2`, which is
+committed to this repository. Sign-in opens no window; Chrome mints a token for
+the Google account already signed into the browser profile. The flip side is that
+the account **is** that profile's account: to upload to a different one, use a
+Chrome profile signed into it. Connect it once in **Settings → Google Drive**.
 
-1. In the [Google Cloud Console](https://console.cloud.google.com/), enable the **Google Drive API** for your project.
-2. Configure an **OAuth consent screen** and add the scope `https://www.googleapis.com/auth/drive.file`.
-3. Load the extension into Chrome (`chrome://extensions` → Load unpacked → `dist/`) and note your extension ID.
-4. Create an **OAuth 2.0 client** with **Application type: Chrome Extension** and enter the exact extension ID.
-5. Create a `.env` file at the repo root (copy from `.env.example`) and set:
+The OAuth client itself has to exist once, though — Google will not talk to an
+unregistered app:
 
-   ```
-   GOOGLE_OAUTH_CLIENT_ID=<your-chrome-extension-oauth-client-id>
-   ```
+1. In the [Google Cloud Console](https://console.cloud.google.com/), pick or
+   create a project, then enable the **Google Drive API** for it.
+2. Configure the **OAuth consent screen** (User type: External, app name, your
+   email). While the app is in Testing mode, add the accounts that will use it as
+   **Test users** — otherwise sign-in is refused.
+3. Create an **OAuth 2.0 client** with **Application type: Chrome Extension** and
+   enter the extension's id (`npm run redirect-uri` prints it; it is pinned by
+   `manifest.key`). This client type has **no secret**.
+4. Put the resulting client id into `oauth2.client_id` in `static/manifest.json`.
+   It is public, so it belongs in source control — the repository already carries
+   one, and `npm run build` therefore needs no configuration at all. Replace it
+   only if you want the extension registered under your own Google Cloud project.
+   (A build can also override it with `GOOGLE_OAUTH_CLIENT_ID` in `.env`, which is
+   useful when you need a *different* client without editing the manifest.)
+5. Rebuild and reload the extension.
 
-   If the variable is missing, the build succeeds with a placeholder client ID, but Drive auth will fail at runtime.
-6. Rebuild: `npm run build` or `npm run watch`. Webpack injects the client ID into `dist/manifest.json`.
-7. Reload the extension in Chrome after rebuilding.
+**Keep a stable extension id** — the `key` field in `static/manifest.json` is
+checked into this repo and pins the id the OAuth client is registered for. If the
+key changes, the id changes and the client has to be updated. A store-published
+build gets its own permanent id; add that id to the same client.
 
-**Keep a stable extension ID** — the `key` field in `static/manifest.json` is checked into this repo and pins the extension ID. If the key changes, the extension ID changes and the OAuth client must be recreated for the new ID. The webpack build emits the runtime manifest to `dist/manifest.json`.
+### Other Chromium browsers (Edge, Brave, Opera, Vivaldi, Arc)
 
-### Other Chromium browsers (Edge, Brave, Opera, …)
+`getAuthToken` is Chrome-only, so these targets sign in with
+`chrome.identity.launchWebAuthFlow`: a real Google window where **the account can
+be chosen**, an authorization-code + PKCE exchange, and a refresh token stored so
+later uploads never prompt. That path needs a configured OAuth client:
 
-`chrome.identity.getAuthToken` is Chrome-only, so the other supported Chromium browsers sign in via `chrome.identity.launchWebAuthFlow` against a **Web application** OAuth client (ADR-0002). Build per target — `npm run build:brave`, `build:edge`, `build:opera`, `build:vivaldi`, or `build:arc` — which emit to `dist-<target>/`. All supported Chromium targets keep the **same `key`**, so they share one extension ID and therefore **one redirect URI**. Firefox has no build target yet because the recording runtime also depends on Chromium capture and offscreen-media APIs.
+1. Create an **OAuth 2.0 client** with **Application type: Web application**, on
+   the same project and consent screen (add the scopes
+   `https://www.googleapis.com/auth/drive.file`, `openid`, `email`).
+2. Get the redirect URI to register: `npm run redirect-uri` prints
+   `https://<id>.chromiumapp.org/`. Add that exact value (trailing `/` included)
+   to the client's **Authorized redirect URIs**. All the Chromium targets share
+   one `key`, so one URI covers them all.
+3. In `.env`, set `GOOGLE_WEB_OAUTH_CLIENT_ID` and
+   `GOOGLE_WEB_OAUTH_CLIENT_SECRET`. The secret ships inside those bundles —
+   acceptable for a local or privately distributed build, but **move the exchange
+   behind a server before publishing one publicly** (see ADR-0002).
+4. Build the target (`npm run build:edge` and friends, emitting to
+   `dist-<target>/`), load it unpacked, and connect the account in the settings
+   page.
 
-1. Create an **OAuth 2.0 client** with **Application type: Web application**, enable the Drive API, and add the `drive.file` scope on the consent screen (add yourself as a test user while the app is unverified).
-2. Get the redirect URI to register: `npm run redirect-uri` prints `https://<id>.chromiumapp.org/`. Add that exact value (trailing `/` included) to the client's **Authorized redirect URIs**.
-3. In `.env`, set `GOOGLE_WEB_OAUTH_CLIENT_ID` and `GOOGLE_WEB_OAUTH_CLIENT_SECRET` (for a Desktop/Web client the secret is shipped in the non-Chrome bundle and never in the Chrome bundle).
-4. Build the target, load `dist-<target>/` unpacked, and sign in.
-
-Each **store-published** build (Chrome Web Store, Edge Add-ons) gets its own store-assigned ID; add that build's `https://<id>.chromiumapp.org/` to the same OAuth client. The `redirect-uri` script covers the stable unpacked/dev ID.
+Firefox has no build target yet because the recording runtime also depends on
+Chromium capture and offscreen-media APIs.
 
 **Drive folder structure** — Drive mode auto-creates:
 
@@ -282,7 +341,7 @@ Each **store-published** build (Chrome Web Store, Edge Add-ons) gets its own sto
 | Command | Description |
 | :--- | :--- |
 | `npm run build` | Production build to `dist/` (minified, Chrome target) |
-| `npm run build:edge` / `build:brave` / `build:opera` / `build:vivaldi` / `build:arc` | Per-browser production build to `dist-<target>/` (drops Chrome-only `oauth2`, **keeps** the stable `key`, and authenticates via `launchWebAuthFlow`) |
+| `npm run build:edge` / `build:brave` / `build:opera` / `build:vivaldi` / `build:arc` | Per-browser production build to `dist-<target>/` (drops Chrome-only `oauth2`, **keeps** the stable `key` that pins the OAuth redirect URI, and signs in via `launchWebAuthFlow`) |
 | `npm run dev` | Development build to `dist/` (unminified, source maps) |
 | `npm run watch` | Rebuild on every file save (development) |
 | `npm run typecheck` | Strict TypeScript check across `src/` without emitting |
@@ -325,7 +384,7 @@ To reproduce the published artifacts locally (or to upload to the Chrome Web Sto
 npm run release:artifacts   # every target: build + guards + release/<name>-v<version>-<target>.zip
 ```
 
-The release workflow needs four repository secrets (**Settings → Secrets and variables → Actions**): `TELEMETRY_ENDPOINT` (a production build refuses to run without it), `GOOGLE_OAUTH_CLIENT_ID` for the Chrome target, and `GOOGLE_WEB_OAUTH_CLIENT_ID` / `GOOGLE_WEB_OAUTH_CLIENT_SECRET` for the `launchWebAuthFlow` targets. Missing OAuth secrets do not fail the build — those bundles simply ship without a working Drive sign-in.
+The release workflow needs three repository secrets (**Settings → Secrets and variables → Actions**): `TELEMETRY_ENDPOINT` (a production build refuses to run without it) and the `GOOGLE_WEB_OAUTH_CLIENT_ID` / `GOOGLE_WEB_OAUTH_CLIENT_SECRET` pair the non-Chrome targets sign in with. Chrome needs no secret — its client id is committed. Missing OAuth secrets do not fail the build; those bundles simply ship without a working Drive sign-in.
 
 `npm version` requires a clean working tree (commit or stash first) and runs the `preversion` gate — `typecheck` plus the unit suite — before it bumps and tags, so a release can't be cut over failing checks. It also keeps `package-lock.json` in sync automatically.
 
@@ -478,13 +537,15 @@ State persistence:  chrome.storage.session → RecordingSessionSnapshot + detach
 
 - The popup reflects state broadcast from the background worker. If it falls out of sync, stop any active recording, then click **Reload** on the extension in `chrome://extensions`.
 
-**`Token fetch failed ... bad client id` when saving to Drive.**
+**`Google OAuth is misconfigured` when connecting Drive.**
 
-- Google rejected the `manifest.oauth2.client_id`.
-- Verify the OAuth credential type is **Chrome Extension** (not Web, Desktop, or Installed).
-- Verify the client was created for the exact extension ID shown in `chrome://extensions`.
-- Verify the consent screen includes the scope `https://www.googleapis.com/auth/drive.file` and your account is listed as a test user if the app is in Testing mode.
-- Rebuild (`npm run build`) after editing `.env`, reload the extension, and retry.
+- On **Chrome**: `oauth2.client_id` in the manifest is still the placeholder, or Google rejected it (`bad client id`). Verify the client type is **Chrome Extension** and that it was created for the extension id `npm run redirect-uri` prints, then rebuild and reload.
+- On the **other targets**: the build has no usable web OAuth client, or Google rejected it (`invalid_client`, `redirect_uri_mismatch`). Verify `GOOGLE_WEB_OAUTH_CLIENT_ID` / `GOOGLE_WEB_OAUTH_CLIENT_SECRET` are set and that the client's **Authorized redirect URIs** contains exactly what `npm run redirect-uri` prints, trailing `/` included.
+- In both cases: verify the consent screen includes `https://www.googleapis.com/auth/drive.file` and your account is listed as a test user while the app is in Testing mode.
+
+**Drive uploads started asking for a sign-in again.**
+
+- The stored grant was revoked or expired (revoking access in your Google account does this). Settings → Google Drive shows **Not connected**; click **Connect** to restore it.
 
 **`Drive session init failed: 403`.**
 
@@ -503,7 +564,7 @@ State persistence:  chrome.storage.session → RecordingSessionSnapshot + detach
 - **Content script logs**: open DevTools in the Google Meet tab → **Console**.
 - **Diagnostics dashboard**: in a dev build, the popup shows a link to the debug dashboard, which renders the aggregated perf snapshot for the current session (recorder start latency, chunk sizes, Drive upload timings, event-loop lag, long tasks).
 - **Google Meet DOM selectors** live in `src/content/GoogleMeetAdapter.ts`. If transcripts stop working after a Meet UI update, start there.
-- **Drive mode without a real OAuth client**: set `GOOGLE_OAUTH_CLIENT_ID` to any non-empty string before building to suppress the build warning. Drive auth will still fail at runtime, but the build and all non-Drive features work normally.
+- **Drive mode without a real OAuth client**: nothing needs setting — the build only warns. Connecting Drive will fail, but the build and all non-Drive features work normally.
 
 ---
 ---
@@ -1207,9 +1268,9 @@ flowchart LR
 
 File: `static/manifest.json`
 
-- `oauth2.client_id` in source control is a placeholder.
-- Webpack injects the real value from `.env` / shell env key `GOOGLE_OAUTH_CLIENT_ID` into `dist/manifest.json` at build time.
-- If the env var is missing, build keeps the placeholder and logs a warning; Drive auth will fail until configured.
+- `oauth2.client_id` is Chrome's native sign-in configuration and is **public**: the real value belongs in source control, and the build keeps whatever the source manifest carries. `GOOGLE_OAUTH_CLIENT_ID` overrides it only when a build needs a different client.
+- The non-Chrome targets get no `oauth2` block at all; their OAuth client reaches the bundle as build-time defines from `.env` / shell env keys `GOOGLE_WEB_OAUTH_CLIENT_ID` and `GOOGLE_WEB_OAUTH_CLIENT_SECRET`.
+- If the values a target needs are missing, the build logs a warning and Drive cannot be connected until they are configured.
 - The extension icon is declared by the top-level `icons` block and `action.default_icon` (sizes 16/32/48/128). The `icon16/32/48/128.png` set lives in `public/`; without it Chrome falls back to a generic grey placeholder for the toolbar button and the extensions menu.
 - Source HTML shells and the source manifest live under `static/`, shared static assets (the `icon*.png` set and the settings-page `gear.png`) live under `public/`, and both are copied to `dist/` at build time. The emitted extension layout in `dist/` is flat because Chrome requires entrypoints at the extension root.
 

@@ -8,7 +8,6 @@ const { toChromeManifestVersion } = require('./scripts/lib/manifestVersion.cjs')
 const {
   TARGET_PROFILES,
   DEFAULT_TARGET,
-  getTargetProfile,
   usesWebAuthFlow,
   applyTargetToManifest,
 } = require('./scripts/lib/manifestTargets.cjs')
@@ -19,6 +18,8 @@ const GOOGLE_OAUTH_CLIENT_ID_ENV_KEY = 'GOOGLE_OAUTH_CLIENT_ID'
 const GOOGLE_WEB_OAUTH_CLIENT_ID_ENV_KEY = 'GOOGLE_WEB_OAUTH_CLIENT_ID'
 const GOOGLE_WEB_OAUTH_CLIENT_SECRET_ENV_KEY = 'GOOGLE_WEB_OAUTH_CLIENT_SECRET'
 const TELEMETRY_ENDPOINT_ENV_KEY = 'TELEMETRY_ENDPOINT'
+// The value the source manifest ships when no real Chrome-extension client id
+// has been committed yet; a build warns instead of silently shipping it.
 const OAUTH_CLIENT_ID_PLACEHOLDER = '__GOOGLE_OAUTH_CLIENT_ID__'
 const STATIC_DIR = 'static'
 const PUBLIC_DIR = 'public'
@@ -123,15 +124,17 @@ module.exports = (_env, argv) => {
   const outputDir = typeof env.outputPath === 'string' && env.outputPath.trim()
     ? env.outputPath.trim()
     : distDirForTarget(browserTarget)
-  const targetProfile = getTargetProfile(browserTarget)
   const isWebAuthFlowTarget = usesWebAuthFlow(browserTarget)
+  // Chrome signs in natively with the public client id committed in the source
+  // manifest, so this override exists only for a build that needs a different
+  // client. The web OAuth client id/secret are used by the launchWebAuthFlow
+  // targets and stay empty for Chrome, so the secret never enters that bundle.
   const configuredGoogleOauthClientId = resolveGoogleOauthClientId(__dirname)
-  const googleOauthClientId = configuredGoogleOauthClientId || OAUTH_CLIENT_ID_PLACEHOLDER
-  // The web OAuth client id/secret are only used by the launchWebAuthFlow path;
-  // they are left empty for chrome-identity targets so the secret never embeds
-  // in a Chrome bundle that uses getAuthToken.
   const webOauthClientId = isWebAuthFlowTarget ? resolveWebOauthClientId(__dirname) : ''
   const webOauthClientSecret = isWebAuthFlowTarget ? resolveWebOauthClientSecret(__dirname) : ''
+  const sourceManifestClientId = JSON.parse(
+    fs.readFileSync(path.resolve(__dirname, 'static/manifest.json'), 'utf8')
+  ).oauth2?.client_id
   const fileEnv = loadProjectDotEnv(__dirname)
   const telemetryEndpoint = String(process.env[TELEMETRY_ENDPOINT_ENV_KEY] || fileEnv[TELEMETRY_ENDPOINT_ENV_KEY] || '').trim()
   if (!isDevBuild && !telemetryEndpoint) {
@@ -139,14 +142,18 @@ module.exports = (_env, argv) => {
   }
   telemetryHostPermission(telemetryEndpoint)
 
-  if (targetProfile.auth === 'chrome-identity' && !configuredGoogleOauthClientId) {
+  if (
+    !isWebAuthFlowTarget
+    && !configuredGoogleOauthClientId
+    && sourceManifestClientId === OAUTH_CLIENT_ID_PLACEHOLDER
+  ) {
     console.warn(
-      `[build] ${GOOGLE_OAUTH_CLIENT_ID_ENV_KEY} is not set; keeping placeholder in dist/manifest.json. Drive OAuth will fail until you configure it.`
+      `[build] static/manifest.json still carries the ${OAUTH_CLIENT_ID_PLACEHOLDER} placeholder and ${GOOGLE_OAUTH_CLIENT_ID_ENV_KEY} is not set; connecting Google Drive will fail until a Chrome-extension OAuth client id is configured.`
     )
   }
   if (isWebAuthFlowTarget && !webOauthClientId) {
     console.warn(
-      `[build] ${GOOGLE_WEB_OAUTH_CLIENT_ID_ENV_KEY} is not set for target "${browserTarget}"; Drive OAuth via launchWebAuthFlow will fail until you configure it.`
+      `[build] ${GOOGLE_WEB_OAUTH_CLIENT_ID_ENV_KEY} is not set for target "${browserTarget}"; connecting Google Drive will fail until you configure it.`
     )
   }
 
@@ -211,7 +218,7 @@ module.exports = (_env, argv) => {
           {
             from: path.join(STATIC_DIR, 'manifest.json'),
             to: 'manifest.json',
-            transform: (content) => transformManifest(content, googleOauthClientId, isDevBuild, browserTarget, telemetryEndpoint),
+            transform: (content) => transformManifest(content, configuredGoogleOauthClientId, isDevBuild, browserTarget, telemetryEndpoint),
           },
           { from: path.join(STATIC_DIR, 'popup.html'),     to: 'popup.html' },
           ...(isDevBuild ? [{ from: path.join(STATIC_DIR, 'popup-gallery.html'), to: 'popup-gallery.html' }] : []),

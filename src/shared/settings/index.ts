@@ -48,7 +48,7 @@ export {
   normalizeRecorderRuntimeSettingsSnapshot,
 } from './normalize';
 
-export { DEFAULT_EXTENSION_SETTINGS } from './defaults';
+export { DEFAULT_EXTENSION_SETTINGS, EXTENSION_SETTINGS_STORAGE_KEY } from './defaults';
 
 export type {
   ExtensionSettings,

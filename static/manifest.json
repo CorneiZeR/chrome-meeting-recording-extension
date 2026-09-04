@@ -13,10 +13,11 @@
     "tabs",
     "desktopCapture",
     "identity",
+    "identity.email",
     "alarms"
   ],
   "oauth2": {
-    "client_id": "__GOOGLE_OAUTH_CLIENT_ID__",
+    "client_id": "333031384006-k6etca3d3uk251luc6chide1o3rlep27.apps.googleusercontent.com",
     "scopes": [
       "https://www.googleapis.com/auth/drive.file"
     ]

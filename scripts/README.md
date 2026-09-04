@@ -21,7 +21,7 @@
 
 The manifest target model in `lib/manifestTargets.cjs` supports `chrome`, `edge`, `brave`, `opera`, `vivaldi`, and `arc`. Each has an `npm run build:<target>` alias, and `distDirForTarget` in `lib/releaseArtifacts.cjs` is the single source of truth for where a target builds (`dist/` for Chrome, `dist-<target>/` otherwise) — webpack and the packer both read it.
 
-Chrome uses the `chrome.identity.getAuthToken` manifest configuration. The other supported Chromium profiles use `launchWebAuthFlow`: their emitted manifest drops `oauth2` but **retains the stable `key`**, because the resulting extension id is part of the registered Chromium OAuth redirect URI. Firefox deliberately has no profile: it needs real capture-source and media-host adapters before the manifest can advertise support.
+Chrome signs in through `chrome.identity.getAuthToken`, whose only configuration is the public `oauth2.client_id` committed in the source manifest. The other profiles use `launchWebAuthFlow`: their emitted manifest drops `oauth2` but **retains the stable `key`**, because the extension id it pins is part of the registered OAuth redirect URI (ADR-0002). Firefox deliberately has no profile: it needs real capture-source and media-host adapters before the manifest can advertise support.
 
 ## Related
 

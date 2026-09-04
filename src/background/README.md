@@ -125,7 +125,7 @@ Production telemetry is a separate bounded path owned by `TelemetryRuntime`. It 
 | `recordingCommands.ts` | keyboard-shortcut start path (preserves `activeTab`) |
 | `messageHandlers.ts` | registers the `chrome.runtime.onMessage` listener and dispatches popup commands to their handlers |
 | `legacySession.ts` | rehydrates pre-refactor persisted state (the old separate `phase` / `activeRunConfig` keys) into a snapshot |
-| `driveAuth.ts` | Drive OAuth token acquisition (silent→interactive, bad-client-id diagnosis) — token *use* is [`offscreen/drive`](../offscreen/drive/README.md) |
+| `driveAuth.ts` | the Google grant: token acquisition (silent refresh → interactive fallback), the settings page's connect/disconnect/status commands, and misconfigured-client diagnosis — token *use* is [`offscreen/drive`](../offscreen/drive/README.md), the grant itself is [`platform/capabilities`](../platform/capabilities/README.md) |
 | `PerfDebugStore.ts` + `perf/` | the persisted perf snapshot + reducers (`PerfDebugReducers`, `PerfDebugState`) + `CpuSampler` (dev-only); see the [instrumentation doc](../../docs/plans/storage-and-instrumentation-architecture.md) |
 
 Wiring entry: `src/background.ts` (the SW entrypoint) routes messages/commands to `RecordingController` (including the content script's `MEETING_ENDED` → `controller.stop()`), serializes upload-state persistence into the session and history service, drives the session change-listener (persist → broadcast → keep-alive → `watchdog.observe` → reset diagnostics on a fresh-run start), and rehydrates on startup.

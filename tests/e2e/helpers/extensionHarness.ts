@@ -319,7 +319,8 @@ export async function saveRecordingSettings(
       String(settings.chunkExtendedTimesliceMs)
     );
   }
-  await controlPage.click('#save-settings');
+  // The settings page autosaves every edit, so the last one above is already
+  // written by the time the status line says so.
   await expect(controlPage.locator('#status')).toHaveText('Saved');
 }
 

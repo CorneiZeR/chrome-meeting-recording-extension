@@ -41,7 +41,7 @@ async function openExtensionPage(context, controlUrl) {
       waitUntil: 'domcontentloaded',
       timeout: 5_000,
     });
-    await page.waitForSelector('#save-settings', { timeout: 5_000 });
+    await page.waitForSelector('#reset-settings', { timeout: 5_000 });
     return page;
   } catch {
     await page.close().catch(() => {});
@@ -227,7 +227,7 @@ async function main() {
     }
 
     await extensionPage.reload({ waitUntil: 'domcontentloaded' });
-    await extensionPage.waitForSelector('#save-settings', { timeout: 15_000 });
+    await extensionPage.waitForSelector('#reset-settings', { timeout: 15_000 });
     await fs.writeFile(
       path.join(options.profilePath, '.real-meet-profile.json'),
       JSON.stringify(

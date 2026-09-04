@@ -1,6 +1,7 @@
 /**
  * @context Extension settings page.
- * @role    Configure default run behavior and advanced recorder parameters.
+ * @role    Configure default run behavior, the Google Drive connection, and
+ *          advanced recorder parameters.
  *
  * This file is intentionally thin: it reads DOM elements and hands them to
  * SettingsController, which owns all interaction logic (load/apply, save/reset,
@@ -36,10 +37,14 @@ const el: SettingsElements = {
   chunkDefaultTimeslice: document.getElementById('chunk-default-timeslice') as HTMLInputElement | null,
   chunkExtendedTimeslice: document.getElementById('chunk-extended-timeslice') as HTMLInputElement | null,
   themeCycle: document.getElementById('theme-cycle') as HTMLButtonElement | null,
+  themeCycleValue: document.getElementById('theme-cycle-value'),
+  driveStatus: document.getElementById('drive-status'),
+  driveConnectBtn: document.getElementById('drive-connect') as HTMLButtonElement | null,
+  driveDisconnectBtn: document.getElementById('drive-disconnect') as HTMLButtonElement | null,
+  driveNotice: document.getElementById('drive-notice'),
   professionalToggle: document.getElementById('professional-toggle') as HTMLButtonElement | null,
   professionalFields: document.getElementById('professional-fields'),
   professionalSummary: document.getElementById('professional-summary'),
-  saveBtn: document.getElementById('save-settings') as HTMLButtonElement | null,
   resetBtn: document.getElementById('reset-settings') as HTMLButtonElement | null,
   status: document.getElementById('status') as HTMLElement | null,
 };

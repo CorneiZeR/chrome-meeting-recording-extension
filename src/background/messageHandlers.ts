@@ -5,7 +5,7 @@
  * popup commands to their dedicated handlers.
  */
 
-import { fetchDriveTokenWithFallback } from './driveAuth';
+import { connectDrive, disconnectDrive, fetchDriveTokenWithFallback, getDriveConnection } from './driveAuth';
 import { isE2EMockDriveBuild } from '../shared/build';
 import { handleMeetingEndedMessage } from './recordingAutoStop';
 import {
@@ -38,7 +38,8 @@ export type MessageHandlersDeps = {
 
 /**
  * Registers the chrome.runtime.onMessage listener that dispatches popup
- * commands to PERF_EVENT, GET_DRIVE_TOKEN, START_RECORDING, STOP_RECORDING,
+ * commands to PERF_EVENT, GET_DRIVE_TOKEN, the Drive connect/disconnect pair,
+ * START_RECORDING, STOP_RECORDING,
  * and GET_RECORDING_STATUS handlers.
  */
 export function registerMessageHandlers({ L, session, perfDebugStore, controller, cpuSampler, history, telemetry }: MessageHandlersDeps) {
@@ -158,6 +159,44 @@ export function registerMessageHandlers({ L, session, perfDebugStore, controller
         .catch((e: any) => {
           const error = e?.message || String(e);
           L.error('GET_DRIVE_TOKEN unexpected failure:', error);
+          sendResponse({ ok: false, error });
+        });
+      return true;
+    }
+
+    if (msg.type === 'GET_DRIVE_CONNECTION') {
+      getDriveConnection()
+        .then((connection) => sendResponse({ connection }))
+        .catch((e: unknown) => {
+          L.warn('GET_DRIVE_CONNECTION failed:', e instanceof Error ? e.message : String(e));
+          sendResponse({ connection: { connected: false, email: null } });
+        });
+      return true;
+    }
+
+    if (msg.type === 'CONNECT_DRIVE') {
+      connectDrive()
+        .then((res) => {
+          if (!res.ok) L.warn('CONNECT_DRIVE failed:', res.error);
+          sendResponse(res);
+        })
+        .catch((e: unknown) => {
+          const error = e instanceof Error ? e.message : String(e);
+          L.error('CONNECT_DRIVE unexpected failure:', error);
+          sendResponse({ ok: false, error });
+        });
+      return true;
+    }
+
+    if (msg.type === 'DISCONNECT_DRIVE') {
+      disconnectDrive()
+        .then((res) => {
+          if (!res.ok) L.warn('DISCONNECT_DRIVE failed:', res.error);
+          sendResponse(res);
+        })
+        .catch((e: unknown) => {
+          const error = e instanceof Error ? e.message : String(e);
+          L.error('DISCONNECT_DRIVE unexpected failure:', error);
           sendResponse({ ok: false, error });
         });
       return true;

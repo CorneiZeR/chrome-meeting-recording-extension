@@ -121,6 +121,8 @@ Separate from recording: the header **Save** button (`wireTranscriptDownload`) p
 | `popupRunConfig.ts`, `popupStatus.ts`, `popupMessages.ts` | config-view run-config reads, status/label text, message/toast string builders |
 | `MicPermissionService.ts`, `CameraPermissionService.ts` | permission query + inline-prime + setup-tab ladder |
 
+The storage selector's **Connect Google Drive…** entry is a link, not a picker: the Google account a Drive upload needs is connected on the settings page, so it opens `settings.html#drive-heading`.
+
 Entry: `../popup.ts` (DOM wiring only). The Settings *page* is a separate surface — a thin `../settings.ts` shell over [`settings/SettingsController.ts`](../settings/SettingsController.ts) (same shell→controller pattern as here), reached via the settings link; its schema lives in [`shared/settings`](../shared/settings/README.md).
 
 ## Testing notes

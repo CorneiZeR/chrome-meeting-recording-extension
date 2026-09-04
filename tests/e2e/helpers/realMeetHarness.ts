@@ -221,7 +221,7 @@ async function openExtensionControlPage(
   let controlPage = await context.newPage();
   try {
     await controlPage.goto(controlUrl, { waitUntil: 'domcontentloaded' });
-    await controlPage.waitForSelector('#save-settings', { timeout: 15_000 });
+    await controlPage.waitForSelector('#reset-settings', { timeout: 15_000 });
     return controlPage;
   } catch (error) {
     if (browserChannel !== 'chrome') throw error;
@@ -258,7 +258,7 @@ async function openExtensionControlPage(
           waitUntil: 'domcontentloaded',
           timeout: 5_000,
         });
-        await candidate.waitForSelector('#save-settings', { timeout: 5_000 });
+        await candidate.waitForSelector('#reset-settings', { timeout: 5_000 });
         await controlPage.close().catch(() => {});
         return candidate;
       } catch {
@@ -285,7 +285,7 @@ async function reloadExtensionControlPage(
   await reloadedPage.goto(`chrome-extension://${extensionId}/settings.html`, {
     waitUntil: 'domcontentloaded',
   });
-  await reloadedPage.waitForSelector('#save-settings', { timeout: 15_000 });
+  await reloadedPage.waitForSelector('#reset-settings', { timeout: 15_000 });
   return reloadedPage;
 }
 
