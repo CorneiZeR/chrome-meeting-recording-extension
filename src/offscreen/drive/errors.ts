@@ -30,7 +30,7 @@ function buildDriveHint(status: number, detail: string): string {
   const d = detail.toLowerCase();
 
   if (status === 403 && (d.includes('insufficient') || d.includes('scope'))) {
-    return 'Hint: OAuth scope is missing. Confirm manifest oauth2.scopes includes https://www.googleapis.com/auth/drive.file and re-consent.';
+    return 'Hint: OAuth scope is missing. Reconnect Google Drive in the settings page so the https://www.googleapis.com/auth/drive.file scope is granted.';
   }
   if ((status === 400 || status === 403) && (d.includes('accessnotconfigured') || d.includes('api has not been used') || d.includes('drive api'))) {
     return 'Hint: Enable Google Drive API in the same Google Cloud project as this OAuth client.';

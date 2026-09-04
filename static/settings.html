@@ -13,7 +13,7 @@
         <span class="ready-dot" title="Ready to record" aria-hidden="true"></span>
         <span>Meet Recorder</span>
       </div>
-      <button id="theme-cycle" class="theme-cycle" type="button" title="Theme" aria-label="Theme: system. Click to cycle theme.">SETTINGS</button>
+      <button id="theme-cycle" class="theme-cycle" type="button"><span class="theme-cycle-prefix">THEME</span> <span id="theme-cycle-value" class="theme-cycle-value"></span></button>
       <select id="theme" class="sr-only" tabindex="-1" aria-hidden="true">
         <option value="system">System</option>
         <option value="light">Light</option>
@@ -23,11 +23,11 @@
 
     <div class="settings-body">
       <h1 id="settings-title">Recorder Settings</h1>
-      <p class="intro">Defaults used when you start a recording. Hover any label for what it does; changes apply after Save.</p>
+      <p class="intro">Defaults used when you start a recording. Hover any label for what it does; every change is saved as you make it.</p>
 
-      <section class="settings-section" aria-labelledby="basic-heading">
-        <h2 id="basic-heading" class="section-eyebrow">BASIC</h2>
-
+      <section class="settings-section" aria-labelledby="quick-heading">
+        <h2 id="quick-heading" class="section-eyebrow">QUICK SETTINGS</h2>
+        <p class="intro">The popup's pre-start controls. Change one in either place and the other follows — the popup starts every recording from exactly these values.</p>
         <div class="setting-row">
           <label for="recording-mode" title="Where recordings are saved when you start capturing.">Default recording mode</label>
           <div class="settings-select">
@@ -59,6 +59,50 @@
             <option value="separate">Save microphone separately</option>
           </select>
         </div>
+
+        <div class="setting-row">
+          <label for="separate-camera" title="When enabled, the extension asks for your camera and writes it as its own recording file by default.">Record camera separately</label>
+          <div class="segment-control" data-checkbox="separate-camera" role="group" aria-label="Record camera separately">
+            <button type="button" data-value="false">OFF</button><button type="button" data-value="true">ON</button>
+          </div>
+          <input id="separate-camera" class="sr-only" type="checkbox" tabindex="-1" aria-hidden="true" />
+        </div>
+
+        <div class="setting-row">
+          <label for="tab-content-type" title="The default quality preset for the tab encoder.">Default tab content type</label>
+          <div class="settings-select">
+            <button id="tab-content-type-trigger" class="value-cycle" type="button" data-select="tab-content-type" aria-label="Default tab content type" aria-haspopup="listbox" aria-expanded="false" aria-controls="tab-content-type-options"><span class="value-cycle-label"></span><svg class="value-chevron" viewBox="0 0 10 6" aria-hidden="true"><path d="M0 0l5 6 5-6z"></path></svg></button>
+            <div id="tab-content-type-options" class="settings-select-options" role="listbox" aria-label="Default tab content type" hidden>
+              <button type="button" role="option" data-value="screen" aria-selected="false">Text / Detail <svg class="select-check" width="12" height="10" viewBox="0 0 14 11" fill="none" aria-hidden="true"><path d="M1.5 6l3.5 3.5L12.5 1.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+              <button type="button" role="option" data-value="video" aria-selected="false">Video / Animation <svg class="select-check" width="12" height="10" viewBox="0 0 14 11" fill="none" aria-hidden="true"><path d="M1.5 6l3.5 3.5L12.5 1.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+            </div>
+          </div>
+          <select id="tab-content-type" class="sr-only" tabindex="-1" aria-hidden="true">
+            <option value="screen">Text / Detail</option>
+            <option value="video">Video / Animation</option>
+          </select>
+        </div>
+      </section>
+
+      <section class="settings-section" aria-labelledby="drive-heading">
+        <h2 id="drive-heading" class="section-eyebrow">GOOGLE DRIVE</h2>
+        <p class="intro">The Google account recordings are uploaded to. Connecting here is what keeps a sign-in prompt from appearing after a call, when the upload starts.</p>
+
+        <div class="setting-row">
+          <label for="drive-connect" title="Sign in to the Google account that Drive uploads are written to. The extension only ever sees the files it creates itself (the drive.file scope).">Google account</label>
+          <span id="drive-status" class="drive-status" role="status" aria-live="polite">Checking…</span>
+          <span class="drive-actions">
+            <button id="drive-connect" type="button">Connect</button>
+            <button id="drive-disconnect" type="button" hidden>Disconnect</button>
+          </span>
+        </div>
+        <p id="drive-notice" class="settings-note" hidden></p>
+      </section>
+
+      <section class="settings-section" aria-labelledby="recording-heading">
+        <h2 id="recording-heading" class="section-eyebrow">RECORDING</h2>
+
+
 
         <div class="setting-row">
           <label for="tab-recording-format" title="Selects the container used for the meeting tab's audio and video file.">Tab format</label>
@@ -94,13 +138,6 @@
           <input id="auto-enable-captions" class="sr-only" type="checkbox" tabindex="-1" aria-hidden="true" />
         </div>
 
-        <div class="setting-row">
-          <label for="separate-camera" title="When enabled, the extension asks for your camera and writes it as its own recording file by default.">Record camera separately</label>
-          <div class="segment-control" data-checkbox="separate-camera" role="group" aria-label="Record camera separately">
-            <button type="button" data-value="false">OFF</button><button type="button" data-value="true">ON</button>
-          </div>
-          <input id="separate-camera" class="sr-only" type="checkbox" tabindex="-1" aria-hidden="true" />
-        </div>
 
         <div class="setting-row">
           <label for="camera-recording-format" title="Selects the container used for the separately recorded camera file.">Camera format</label>
@@ -156,20 +193,6 @@
             <span class="number-control"><input id="self-video-frame-rate" type="number" min="1" max="120" /><small>FPS</small></span>
           </div>
 
-          <div class="setting-row">
-            <label for="tab-content-type" title="The default quality preset for the tab encoder. You can override it per recording from the popup.">Default tab content type</label>
-            <div class="settings-select">
-              <button id="tab-content-type-trigger" class="value-cycle" type="button" data-select="tab-content-type" aria-label="Default tab content type" aria-haspopup="listbox" aria-expanded="false" aria-controls="tab-content-type-options"><span class="value-cycle-label"></span><svg class="value-chevron" viewBox="0 0 10 6" aria-hidden="true"><path d="M0 0l5 6 5-6z"></path></svg></button>
-              <div id="tab-content-type-options" class="settings-select-options" role="listbox" aria-label="Default tab content type" hidden>
-                <button type="button" role="option" data-value="screen" aria-selected="false">Text / Detail <svg class="select-check" width="12" height="10" viewBox="0 0 14 11" fill="none" aria-hidden="true"><path d="M1.5 6l3.5 3.5L12.5 1.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
-                <button type="button" role="option" data-value="video" aria-selected="false">Video / Animation <svg class="select-check" width="12" height="10" viewBox="0 0 14 11" fill="none" aria-hidden="true"><path d="M1.5 6l3.5 3.5L12.5 1.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
-              </div>
-            </div>
-            <select id="tab-content-type" class="sr-only" tabindex="-1" aria-hidden="true">
-              <option value="screen">Text / Detail</option>
-              <option value="video">Video / Animation</option>
-            </select>
-          </div>
 
           <div class="setting-row">
             <label for="tab-resolution-preset" title="Sets the requested maximum tab capture size. Chrome may still deliver a different size.">Tab resolution</label>
@@ -236,7 +259,6 @@
     </div>
 
     <footer class="settings-footer">
-      <button id="save-settings" type="button"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>Save changes</button>
       <button id="reset-settings" type="button">Reset to defaults</button>
       <span id="status" role="status" aria-live="polite"></span>
     </footer>

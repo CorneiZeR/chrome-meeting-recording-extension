@@ -37,9 +37,52 @@ export function removeCachedAuthToken(token: string): Promise<void> {
 }
 
 /**
+ * Drops every token Chrome cached for this extension, so the next acquisition
+ * asks Google again. Needed on disconnect: revoking at Google is not enough
+ * while Chrome would still hand out a cached token.
+ */
+export function clearAllCachedAuthTokens(): Promise<void> {
+  return new Promise((resolve) => {
+    const clear = chrome.identity.clearAllCachedAuthTokens as ((callback?: () => void) => void) | undefined;
+    if (!clear) {
+      resolve();
+      return;
+    }
+    try {
+      clear(() => resolve());
+    } catch {
+      resolve();
+    }
+  });
+}
+
+/**
+ * The email of the account signed into this browser profile, or null when it is
+ * unknown. Requires the `identity.email` manifest permission; with
+ * `getAuthToken` this is by definition the account the token belongs to.
+ */
+export function getProfileEmail(): Promise<string | null> {
+  return new Promise((resolve) => {
+    const read = chrome.identity.getProfileUserInfo as
+      | ((callback: (info: { email?: string }) => void) => void)
+      | undefined;
+    if (!read) {
+      resolve(null);
+      return;
+    }
+    try {
+      read((info) => resolve(info?.email ? info.email : null));
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+/**
  * Runs an OAuth2 flow in a browser window and resolves with the final redirect
- * URL. The cross-browser path (Edge/Brave/Opera/Firefox) where getAuthToken is
- * Chrome-only; the caller parses the access token out of the redirect.
+ * URL. The sign-in path for every target except Chrome, which uses
+ * `getAuthToken` above (ADR-0002); the caller parses the authorization code out
+ * of the redirect.
  */
 export function launchWebAuthFlow(url: string, interactive: boolean): Promise<string> {
   return new Promise((resolve, reject) => {

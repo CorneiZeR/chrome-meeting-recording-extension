@@ -13,8 +13,8 @@
  *   node scripts/pack-release-artifacts.mjs [--targets=chrome,edge] [--out-dir=release]
  *
  * TELEMETRY_ENDPOINT is required (production builds refuse to run without it);
- * GOOGLE_OAUTH_CLIENT_ID and the GOOGLE_WEB_OAUTH_CLIENT_ID/SECRET pair are read
- * by webpack from the environment or `.env` as usual.
+ * The GOOGLE_WEB_OAUTH_CLIENT_ID/SECRET pair is read by webpack from the
+ * environment or `.env` as usual.
  */
 
 import { createHash } from 'node:crypto';

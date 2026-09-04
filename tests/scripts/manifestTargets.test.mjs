@@ -8,15 +8,23 @@ const { TARGET_PROFILES, getTargetProfile, usesWebAuthFlow, applyTargetToManifes
 function baseManifest() {
   return {
     key: 'BASE64-KEY-DATA',
-    oauth2: { client_id: '__GOOGLE_OAUTH_CLIENT_ID__', scopes: ['https://www.googleapis.com/auth/drive.file'] },
+    oauth2: { client_id: 'committed-id.apps.googleusercontent.com', scopes: ['https://www.googleapis.com/auth/drive.file'] },
     permissions: ['identity'],
   };
 }
 
-test('chrome keeps oauth2 (with the injected client id) and keeps key', () => {
+test('chrome keeps oauth2 and key; an override replaces the committed client id', () => {
   const m = applyTargetToManifest(baseManifest(), 'chrome', { oauthClientId: 'cid.apps.googleusercontent.com' });
   assert.equal(m.oauth2.client_id, 'cid.apps.googleusercontent.com');
   assert.ok(m.key, 'chrome keeps key');
+});
+
+test('no override keeps the client id committed in the source manifest', () => {
+  // The Chrome client id is public and lives in source control, which is what
+  // makes a Chrome build work with no configuration; an absent env override
+  // must not blank it.
+  const m = applyTargetToManifest(baseManifest(), 'chrome', {});
+  assert.equal(m.oauth2.client_id, 'committed-id.apps.googleusercontent.com');
 });
 
 test('non-Chrome Chromium targets strip oauth2 but KEEP key (the redirect_uri fix)', () => {
@@ -34,6 +42,13 @@ test('usesWebAuthFlow: false for chrome, true for the rest of the Chromium famil
   }
 });
 
+test('a chrome-identity target missing oauth2 throws', () => {
+  assert.throws(
+    () => applyTargetToManifest({ permissions: [] }, 'chrome', { oauthClientId: 'x' }),
+    /missing oauth2/
+  );
+});
+
 test('every known target is the chromium family this round', () => {
   for (const [target, profile] of Object.entries(TARGET_PROFILES)) {
     assert.equal(profile.family, 'chromium', target);
@@ -42,11 +57,4 @@ test('every known target is the chromium family this round', () => {
 
 test('an unknown target throws', () => {
   assert.throws(() => getTargetProfile('netscape'), /No manifest profile/);
-});
-
-test('a chrome-identity target missing oauth2 throws', () => {
-  assert.throws(
-    () => applyTargetToManifest({ permissions: [] }, 'chrome', { oauthClientId: 'x' }),
-    /missing oauth2/
-  );
 });

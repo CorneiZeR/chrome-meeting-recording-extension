@@ -107,17 +107,28 @@ export async function configurePerfRuntime(options: ConfigurePerfRuntimeOptions)
   perfSink = options.sink ?? null;
   telemetrySink = options.telemetrySink ?? null;
 
-  const settings = applyPerfSettings(await readStoredPerfSettings());
-  options.onSettingsChanged?.(settings);
-
+  // The watch goes in **before** the first read, and a change that lands during
+  // that read wins over it. Installed afterwards, a write arriving mid-read was
+  // lost from the in-memory flags until the next restart — and a service worker
+  // reads these flags once per recording start (RecordingController ships them
+  // in OFFSCREEN_START), so one lost event mis-configured a whole run. It cost a
+  // red e2e leg: a perf flag written by the harness never reached the recorder.
+  let appliedFromEvent = false;
   if (!storageWatchInstalled) {
     storageWatchInstalled = addStorageChangedListener((changes, areaName) => {
       if (areaName !== 'local') return;
       if (!changes?.[PERF_SETTINGS_STORAGE_KEY]) return;
+      appliedFromEvent = true;
       const next = applyPerfSettings(changes[PERF_SETTINGS_STORAGE_KEY].newValue);
       options.onSettingsChanged?.(next);
     });
   }
+
+  const stored = await readStoredPerfSettings();
+  // A newer value already applied by the watch must not be overwritten by the
+  // value this read started before it.
+  const settings = appliedFromEvent ? getPerfSettingsSnapshot() : applyPerfSettings(stored);
+  options.onSettingsChanged?.(settings);
 
   return settings;
 }

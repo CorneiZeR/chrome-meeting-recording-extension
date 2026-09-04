@@ -864,6 +864,11 @@ export class PopupController {
   }
 
   private wireSettingsLink() {
+    // The storage selector's "Add destination" entry is a settings link: the
+    // Google account a Drive upload needs is connected there, not here.
+    document.querySelector<HTMLButtonElement>('.select-add')?.addEventListener('click', () => {
+      void createRuntimeTab('settings.html#drive-heading');
+    });
     if (!this.el.openSettingsBtn) return;
     this.el.openSettingsBtn.addEventListener('click', async () => {
       await createRuntimeTab('settings.html');

@@ -79,7 +79,7 @@ export async function fetchWithTimeout(url: string, init: RequestInit, cancelSig
 /**
  * Wraps a token provider with in-memory per-upload caching.
  *
- * This avoids calling chrome.identity.getAuthToken for every single upload
+ * This avoids asking the background for a token for every single upload
  * chunk while still allowing one forced refresh when Google responds with
  * 401/403.
  */

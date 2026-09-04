@@ -63,7 +63,8 @@ export async function applyFullRecordingSettings(
     '#chunk-extended-timeslice',
     String(settings.chunkExtendedTimesliceMs)
   );
-  await page.click('#save-settings');
+  // Autosave: every edit above is persisted on its own; a typed number is
+  // debounced, so wait for the status line to settle rather than assuming.
   await page.waitForFunction(
     () => document.getElementById('status')?.textContent === 'Saved'
   );

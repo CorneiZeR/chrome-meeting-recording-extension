@@ -42,6 +42,20 @@ export type DriveTokenResponse =
   | { ok: true; token: string }
   | { ok: false; error: string };
 
+/** What the settings page shows about the connected Google account. */
+export type DriveConnectionView = {
+  connected: boolean;
+  email: string | null;
+  /** False when the browser decides the account (Chrome's native sign-in), so no picker is offered. */
+  canChooseAccount: boolean;
+};
+
+export type DriveConnectResponse =
+  | { ok: true; connection: DriveConnectionView }
+  | { ok: false; error: string };
+
+export type DriveDisconnectResponse = { ok: true } | { ok: false; error: string };
+
 export type PopupStartRecording = {
   type: 'START_RECORDING';
   tabId: number;
@@ -53,6 +67,12 @@ export type PopupStopRecording = { type: 'STOP_RECORDING' };
 export type PopupDiscardRecording = { type: 'DISCARD_RECORDING' };
 export type PopupGetRecordingStatus = { type: 'GET_RECORDING_STATUS' };
 export type PopupGetDriveToken = { type: 'GET_DRIVE_TOKEN'; refresh?: boolean };
+/** Reads the stored Google grant for the settings page, without prompting. */
+export type PopupGetDriveConnection = { type: 'GET_DRIVE_CONNECTION' };
+/** Runs the interactive Google account picker + consent from the settings page. */
+export type PopupConnectDrive = { type: 'CONNECT_DRIVE' };
+/** Revokes the Google grant and forgets it. */
+export type PopupDisconnectDrive = { type: 'DISCONNECT_DRIVE' };
 /** Toggles microphone mute on the live recording; the mic emits silence while muted. */
 export type PopupSetMicMuted = { type: 'SET_MIC_MUTED'; muted: boolean };
 /** Toggles the camera on the live self-video recording; it emits black frames while hidden. */
@@ -90,6 +110,9 @@ export type PopupToBg =
   | PopupDiscardRecording
   | PopupGetRecordingStatus
   | PopupGetDriveToken
+  | PopupGetDriveConnection
+  | PopupConnectDrive
+  | PopupDisconnectDrive
   | PopupSetMicMuted
   | PopupSetCameraMuted
   | PopupSetInputDevice
@@ -111,6 +134,9 @@ export type PopupToBgResponse<T extends PopupToBg> =
   T extends PopupDiscardRecording ? CommandResult :
   T extends PopupGetRecordingStatus ? { session: RecordingStatusView } :
   T extends PopupGetDriveToken ? DriveTokenResponse :
+  T extends PopupGetDriveConnection ? { connection: DriveConnectionView } :
+  T extends PopupConnectDrive ? DriveConnectResponse :
+  T extends PopupDisconnectDrive ? DriveDisconnectResponse :
   T extends PopupSetMicMuted ? CommandResult :
   T extends PopupSetCameraMuted ? CommandResult :
   T extends PopupSetInputDevice ? CommandResult :

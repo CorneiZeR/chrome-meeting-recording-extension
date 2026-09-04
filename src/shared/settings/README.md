@@ -6,7 +6,9 @@
 
 ## Purpose & mental model
 
-The single source of *configuration*. Two responsibilities: (1) hold the user's choices (`ExtensionSettings`, persisted in `chrome.storage.local`), and (2) **derive recording choices** into the exact numeric `RecorderRuntimeSettingsSnapshot` the offscreen recorder needs. The mental model: **the Settings page edits the schema; the background freezes recorder settings at `start()` and ships them in `OFFSCREEN_START`**—so encode/capture choices are fixed for the run. The privacy preference is intentionally different: every runtime watches it live so opt-out stops collection immediately rather than waiting for the next recording.
+The single source of *configuration* — with one deliberate exception: the Google OAuth grant behind Drive uploads is **not** part of `ExtensionSettings`. It is a credential, not a preference, and lives under its own storage key behind [`platform/capabilities`](../../platform/capabilities/README.md).
+
+The single source of *configuration*. Two responsibilities: (1) hold the user's choices (`ExtensionSettings`, persisted in `chrome.storage.local`), and (2) **derive recording choices** into the exact numeric `RecorderRuntimeSettingsSnapshot` the offscreen recorder needs. The mental model: **the Settings page edits the schema — autosaving every change, and mirroring back changes the popup writes; the background freezes recorder settings at `start()` and ships them in `OFFSCREEN_START`**—so encode/capture choices are fixed for the run. The privacy preference is intentionally different: every runtime watches it live so opt-out stops collection immediately rather than waiting for the next recording.
 
 ## The settings schema
 

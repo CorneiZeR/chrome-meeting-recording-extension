@@ -2,20 +2,32 @@
  * @file settings/SettingsController.ts
  *
  * Owns all settings-page interaction: load saved settings → apply to the form,
- * save/reset, page status, and the single delegated tooltip controller. The
- * `settings.ts` entry is a thin shell that queries the DOM and hands the elements
- * here — mirroring `popup.ts → PopupController` and `debug.ts → DebugDashboard`.
+ * autosave/reset, the Google Drive connection, page status, and the single
+ * delegated tooltip controller. The `settings.ts` entry is a thin shell that
+ * queries the DOM and hands the elements here — mirroring
+ * `popup.ts → PopupController` and `debug.ts → DebugDashboard`.
+ *
+ * The page has no unsaved state: every edit is written immediately, exactly like
+ * the popup's pre-start form, and a change made anywhere else is mirrored back
+ * through the storage-changed listener. An explicit Save button could not
+ * survive next to a popup that writes at once — the stale form would silently
+ * overwrite whatever the popup had just stored.
  */
 
 import {
   DEFAULT_EXTENSION_SETTINGS,
+  EXTENSION_SETTINGS_STORAGE_KEY,
   loadExtensionSettingsFromStorage,
+  normalizeExtensionSettings,
   resetExtensionSettingsToDefaults,
   saveExtensionSettingsToStorage,
   type ExtensionSettings,
 } from '../shared/settings';
 import { getRecordingFormatCapabilities, type RecordingFormatCapabilities } from '../shared/recordingFormats';
 import { applyThemePreference } from '../shared/theme';
+import { sendToBackground } from '../shared/messages';
+import type { DriveConnectionView } from '../shared/protocol';
+import { addStorageChangedListener } from '../platform/chrome/storage';
 
 export type SettingsElements = {
   anonymousDiagnostics: HTMLInputElement | null;
@@ -39,13 +51,20 @@ export type SettingsElements = {
   chunkDefaultTimeslice: HTMLInputElement | null;
   chunkExtendedTimeslice: HTMLInputElement | null;
   themeCycle: HTMLButtonElement | null;
+  themeCycleValue: HTMLElement | null;
+  driveStatus: HTMLElement | null;
+  driveConnectBtn: HTMLButtonElement | null;
+  driveDisconnectBtn: HTMLButtonElement | null;
+  driveNotice: HTMLElement | null;
   professionalToggle: HTMLButtonElement | null;
   professionalFields: HTMLElement | null;
   professionalSummary: HTMLElement | null;
-  saveBtn: HTMLButtonElement | null;
   resetBtn: HTMLButtonElement | null;
   status: HTMLElement | null;
 };
+
+/** How long to wait after the last keystroke in a number field before saving it. */
+const TYPING_SAVE_DELAY_MS = 400;
 
 type SettingsDocument = Document & {
   __recorderSettingsSelectAbortController__?: AbortController;
@@ -53,6 +72,18 @@ type SettingsDocument = Document & {
 
 export class SettingsController {
   private readonly formatCapabilities: RecordingFormatCapabilities = getRecordingFormatCapabilities();
+  /** True while settings are being mirrored into the form, so the echo is not saved back. */
+  private applying = false;
+  /** Monotonic edit counter: only the newest write may write its result back to the form. */
+  private editSeq = 0;
+  /** Serializes writes so the last edit is the last one to reach storage. */
+  private writeChain: Promise<void> = Promise.resolve();
+  /** Writes of ours not yet settled; while any is pending, storage events are our own echo. */
+  private inFlightWrites = 0;
+  /** The payload of our last write, to recognize its own trailing storage event. */
+  private lastWrittenJson = '';
+  private typingSaveTimer: ReturnType<typeof setTimeout> | null = null;
+  private driveConnection: DriveConnectionView = { connected: false, email: null, canChooseAccount: true };
 
   constructor(private readonly el: SettingsElements) {}
 
@@ -70,23 +101,13 @@ export class SettingsController {
     }
     this.applyFormatCapabilities();
 
-    this.el.saveBtn?.addEventListener('click', async () => {
-      const unavailable = this.selectedUnsupportedFormat();
-      if (unavailable) {
-        this.setStatus(`${unavailable} is unavailable in this browser. Select WebM instead.`, true);
-        return;
-      }
-      try {
-        const saved = await saveExtensionSettingsToStorage(this.readSettingsFromForm());
-        this.applySettings(saved);
-        this.setStatus('Saved');
-      } catch (error) {
-        console.error('[settings] failed to save settings', error);
-        this.setStatus('Save failed', true);
-      }
-    });
+    this.wireAutosave();
+    this.wireDriveControls();
 
     this.el.resetBtn?.addEventListener('click', async () => {
+      // Reset drops every section at once, privacy and theme included, so it
+      // asks first rather than being one misclick away.
+      if (!this.confirmReset()) return;
       try {
         const defaults = await resetExtensionSettingsToDefaults();
         this.applySettings(defaults);
@@ -96,6 +117,138 @@ export class SettingsController {
         this.setStatus('Reset failed', true);
       }
     });
+
+    void this.refreshDriveConnection();
+  }
+
+  /** Confirmation seam for Reset; overridden in tests that exercise the reset path. */
+  protected confirmReset(): boolean {
+    return typeof confirm !== 'function'
+      || confirm('Reset every setting — including the theme and diagnostics choice — back to its default?');
+  }
+
+  /**
+   * Persists the whole form on every edit and mirrors changes written elsewhere.
+   *
+   * Because nothing is ever pending, an external change can always be applied
+   * to the form: there is no user edit for it to clobber.
+   */
+  private wireAutosave(): void {
+    document.querySelectorAll<HTMLInputElement | HTMLSelectElement>('input, select').forEach((control) => {
+      control.addEventListener('change', () => {
+        if (this.applying) return;
+        this.cancelTypingSave();
+        void this.saveFromForm();
+      });
+      // A number field only emits `change` when it is committed — typically on
+      // blur. Nothing blurs the last field a user touches, so without an `input`
+      // path a typed value would sit there unsaved, and the old Save button was
+      // what used to commit it. Debounced so a save is not queued per keystroke.
+      if (control instanceof HTMLInputElement && (control.type === 'number' || control.type === 'text')) {
+        control.addEventListener('input', () => {
+          if (this.applying) return;
+          this.setStatus('Saving…');
+          this.cancelTypingSave();
+          this.typingSaveTimer = setTimeout(() => {
+            this.typingSaveTimer = null;
+            void this.saveFromForm();
+          }, TYPING_SAVE_DELAY_MS);
+        });
+      }
+    });
+
+    addStorageChangedListener((changes, areaName) => {
+      if (areaName !== 'local' || this.applying) return;
+      const change = changes[EXTENSION_SETTINGS_STORAGE_KEY];
+      if (!change) return;
+      // Our own writes come back as storage events too, and they arrive late.
+      // Mirroring one while a newer edit is still being written would put the
+      // *older* payload back into the form — and the pending write would then
+      // read that form and persist the value the user had already replaced.
+      if (this.inFlightWrites > 0) return;
+      // A debounced keystroke save is pending work the counter does not see, and
+      // mirroring now would rewrite the field still being typed in — after which
+      // that pending write would persist the mirrored value over the typed one.
+      if (this.typingSaveTimer !== null || this.isTypingInAField()) return;
+      const incoming = normalizeExtensionSettings(change.newValue);
+      if (JSON.stringify(incoming) === this.lastWrittenJson) return;
+      this.applySettings(incoming);
+    });
+  }
+
+  private cancelTypingSave(): void {
+    if (this.typingSaveTimer === null) return;
+    clearTimeout(this.typingSaveTimer);
+    this.typingSaveTimer = null;
+  }
+
+  /** True while a number/text field is focused, so a save must not rewrite it. */
+  private isTypingInAField(): boolean {
+    const active = document.activeElement;
+    return active instanceof HTMLInputElement && (active.type === 'number' || active.type === 'text');
+  }
+
+  /**
+   * Queues a write of the whole form.
+   *
+   * Writes are **chained**, so the last edit is the last one to reach storage
+   * rather than whichever request happened to resolve last.
+   */
+  private saveFromForm(): Promise<void> {
+    const seq = ++this.editSeq;
+    this.inFlightWrites += 1;
+    // Set synchronously: anything watching the status line (a person or an e2e
+    // harness) must be able to tell a pending write from a settled one.
+    this.setStatus('Saving…');
+    this.writeChain = this.writeChain.then(() => this.writeOnce(seq));
+    return this.writeChain;
+  }
+
+  private async writeOnce(seq: number): Promise<void> {
+    const written = await this.attemptWrite(seq);
+    this.inFlightWrites -= 1;
+    if (written) this.settleStatus();
+  }
+
+  /** Performs one write, reporting its own failures; never throws. */
+  private async attemptWrite(seq: number): Promise<boolean> {
+    const unavailable = this.selectedUnsupportedFormat();
+    if (unavailable) {
+      this.setStatus(`${unavailable} is unavailable in this browser. Select WebM instead.`, true);
+      try {
+        this.applySettings(await loadExtensionSettingsFromStorage());
+      } catch (error) {
+        console.error('[settings] failed to reload settings after an unavailable format', error);
+      }
+      return false;
+    }
+    try {
+      const saved = await saveExtensionSettingsToStorage(this.readSettingsFromForm());
+      this.lastWrittenJson = JSON.stringify(saved);
+      // A write whose edit has been superseded must not touch the form: it would
+      // put back the value it was told to save, over the newer one.
+      if (seq !== this.editSeq) return false;
+      // Mirroring the normalized result back is what shows a clamped number —
+      // but never into a field still being typed in, where it would fight the
+      // user mid-value. Blurring it emits `change`, which applies it then.
+      if (!this.isTypingInAField()) this.applySettings(saved);
+      return true;
+    } catch (error) {
+      console.error('[settings] failed to save settings', error);
+      this.setStatus('Save failed', true);
+      return false;
+    }
+  }
+
+  /**
+   * Reports "Saved" only when nothing is pending.
+   *
+   * A debounced keystroke save counts as pending: otherwise an earlier write
+   * settling would leave the page — and anything watching it — believing the
+   * value just typed had already been stored.
+   */
+  private settleStatus(): void {
+    this.setStatus(this.inFlightWrites > 0 || this.typingSaveTimer !== null ? 'Saving…' : 'Saved');
   }
 
   /** Updates the inline page status message after load/save/reset actions. */
@@ -107,6 +260,15 @@ export class SettingsController {
 
   /** Mirrors normalized settings into the current form controls. */
   private applySettings(settings: Readonly<ExtensionSettings>): void {
+    this.applying = true;
+    try {
+      this.writeSettingsToForm(settings);
+    } finally {
+      this.applying = false;
+    }
+  }
+
+  private writeSettingsToForm(settings: Readonly<ExtensionSettings>): void {
     const el = this.el;
     if (el.anonymousDiagnostics) el.anonymousDiagnostics.checked = settings.privacy.anonymousDiagnostics;
     if (el.theme) el.theme.value = settings.appearance.theme;
@@ -136,6 +298,7 @@ export class SettingsController {
     if (el.chunkDefaultTimeslice) el.chunkDefaultTimeslice.value = String(settings.professional.chunkDefaultTimesliceMs);
     if (el.chunkExtendedTimeslice) el.chunkExtendedTimeslice.value = String(settings.professional.chunkExtendedTimesliceMs);
     this.syncConsoleControls();
+    this.renderDriveConnection();
   }
 
   /** Reads the current form state into the storage payload expected by settings normalization. */
@@ -410,9 +573,123 @@ export class SettingsController {
       this.el.professionalSummary.textContent = `CAM ${settings.professional.selfVideoFrameRate}FPS · TAB ${tabType} ${tabResolution}P @${settings.professional.tabMaxFrameRate}FPS · ${dsp}`;
     }
     if (this.el.themeCycle && this.el.theme) {
-      this.el.themeCycle.setAttribute('aria-label', `Theme: ${this.el.theme.value}. Click to cycle theme.`);
-      this.el.themeCycle.title = `Theme: ${this.el.theme.value}. Click to cycle theme.`;
+      // The visible label has to name the theme: an accessible name that
+      // disagrees with the text on the control is both confusing and a
+      // label-in-name failure.
+      const theme = this.el.theme.value;
+      if (this.el.themeCycleValue) this.el.themeCycleValue.textContent = theme.toUpperCase();
+      this.el.themeCycle.setAttribute('aria-label', `Theme: ${theme}. Click to cycle theme.`);
+      this.el.themeCycle.title = `Theme: ${theme}. Click to cycle theme.`;
     }
+  }
+
+  /** Wires Connect / Disconnect and keeps the section honest about the grant. */
+  private wireDriveControls(): void {
+    this.el.driveConnectBtn?.addEventListener('click', () => void this.connectDrive());
+    this.el.driveDisconnectBtn?.addEventListener('click', () => void this.disconnectDrive());
+  }
+
+  /** Reads the stored grant without prompting, so opening the page never pops a login. */
+  private async refreshDriveConnection(): Promise<void> {
+    try {
+      const res = await sendToBackground({ type: 'GET_DRIVE_CONNECTION' });
+      this.driveConnection = res.connection;
+      this.setDriveNotice('');
+    } catch (error) {
+      console.error('[settings] failed to read the Drive connection', error);
+      this.driveConnection = { ...this.driveConnection, connected: false, email: null };
+      this.setDriveNotice('The extension background is unreachable, so the Drive connection is unknown.', 'error');
+    }
+    this.renderDriveConnection();
+  }
+
+  private async connectDrive(): Promise<void> {
+    this.setDriveBusy(true, 'Opening Google sign-in…');
+    try {
+      const res = await sendToBackground({ type: 'CONNECT_DRIVE' });
+      if (!res.ok) {
+        this.setDriveNotice(res.error, 'error');
+        return;
+      }
+      this.driveConnection = res.connection;
+      this.setDriveNotice('');
+      this.setStatus('Google Drive connected');
+    } catch (error) {
+      this.setDriveNotice(error instanceof Error ? error.message : String(error), 'error');
+    } finally {
+      this.setDriveBusy(false);
+      this.renderDriveConnection();
+    }
+  }
+
+  private async disconnectDrive(): Promise<void> {
+    this.setDriveBusy(true, 'Disconnecting…');
+    try {
+      const res = await sendToBackground({ type: 'DISCONNECT_DRIVE' });
+      // The grant is dropped locally even when revoking at Google failed, so the
+      // connection is reported as gone either way — with the error alongside it.
+      this.driveConnection = { ...this.driveConnection, connected: false, email: null };
+      this.setDriveNotice(res.ok ? '' : res.error, res.ok ? undefined : 'error');
+      if (res.ok) this.setStatus('Google Drive disconnected');
+    } catch (error) {
+      this.setDriveNotice(error instanceof Error ? error.message : String(error), 'error');
+    } finally {
+      this.setDriveBusy(false);
+      this.renderDriveConnection();
+    }
+  }
+
+  private setDriveBusy(busy: boolean, statusText?: string): void {
+    if (this.el.driveConnectBtn) this.el.driveConnectBtn.disabled = busy;
+    if (this.el.driveDisconnectBtn) this.el.driveDisconnectBtn.disabled = busy;
+    if (busy && statusText && this.el.driveStatus) this.el.driveStatus.textContent = statusText;
+  }
+
+  /**
+   * Renders the connection and the one warning that matters: Drive selected as
+   * the recording default while no account is connected would only fail after a
+   * recording, when the upload starts.
+   */
+  private renderDriveConnection(): void {
+    const { connected, email, canChooseAccount } = this.driveConnection;
+    if (this.el.driveStatus) {
+      this.el.driveStatus.textContent = connected ? (email ?? 'Connected') : 'Not connected';
+      this.el.driveStatus.dataset.connected = String(connected);
+    }
+    if (this.el.driveConnectBtn) {
+      this.el.driveConnectBtn.textContent = connected ? 'Switch account' : 'Connect';
+      // Offering "Switch account" where the browser decides the account would
+      // promise something the sign-in cannot deliver.
+      this.el.driveConnectBtn.hidden = connected && !canChooseAccount;
+    }
+    if (this.el.driveDisconnectBtn) this.el.driveDisconnectBtn.hidden = !connected;
+
+    if (this.driveNoticeIsError()) return;
+    if (!connected && this.el.recordingMode?.value === 'drive') {
+      this.setDriveNotice(
+        'Google Drive is the default recording mode but no account is connected — an upload would ask you to sign in once a recording has already finished.',
+        'warning'
+      );
+    } else if (connected && !canChooseAccount) {
+      this.setDriveNotice(
+        'Signed in with the Google account of this browser profile. To upload to a different account, use a Chrome profile signed into it.'
+      );
+    } else {
+      this.setDriveNotice('');
+    }
+  }
+
+  private driveNoticeIsError(): boolean {
+    return this.el.driveNotice?.dataset.tone === 'error';
+  }
+
+  private setDriveNotice(text: string, tone?: 'error' | 'warning'): void {
+    const notice = this.el.driveNotice;
+    if (!notice) return;
+    notice.textContent = text;
+    notice.hidden = !text;
+    if (tone) notice.dataset.tone = tone;
+    else delete notice.dataset.tone;
   }
 
   /** Opens or closes the Professional rows without disturbing the settings values. */
