@@ -25,7 +25,7 @@ Co-locating a module's unit test (`src/foo/__tests__/foo.test.ts`) gives an agen
 | :--- | :--- |
 | `npm run test:unit` | jest (all unit + integration) **+** `node --test` (build-level) |
 | `npm run test:e2e:mock` | build the e2e bundle + Playwright functional specs and `@perf-smoke`; excludes the heavier full/endurance/hardware/contention tiers |
-| `npm run test:e2e:perf:smoke` / `:full` / `:contention` / `:endurance` / `:hardware` | the perf tiers (tagged `@perf-*`) |
+| `npm run test:e2e:perf:smoke` / `:full` / `:contention` / `:endurance` / `:hardware` | the perf tiers (tagged `@perf-*`). None of them run in CI — their budgets need calibrated hardware; see [scenario A](../docs/testing-scenario-a.md) |
 | `npm run test:e2e:real` | the real-Google-Meet harness (needs a configured profile — `test:e2e:real:profile`) |
 
 The perf tiers are tagged in the spec titles (`@perf-smoke`, `@perf-full`, `@perf-contention`, `@perf-endurance`, `@perf-hardware`) and selected via Playwright `--grep`.

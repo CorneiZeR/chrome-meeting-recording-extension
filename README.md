@@ -363,8 +363,8 @@ Chromium capture and offscreen-media APIs.
 | `npm run release:build` | Production build to `dist/` then the production guards (version + no E2E markers) |
 | `npm run release:artifacts` | Build **every** browser target, guard each one, and zip them into `release/` with `SHA256SUMS.txt` — exactly what the release workflow publishes |
 | `npm run test:e2e` / `npm run test:e2e:mock` | Functional mocked-Meet E2E plus performance smoke |
-| `npm run test:e2e:functional` | Functional mocked-Meet E2E only, no performance tier — the blocking CI gate |
-| `npm run test:e2e:perf:smoke` | Three critical browser/extension performance cases |
+| `npm run test:e2e:functional` | Functional mocked-Meet E2E only, no performance tier — the CI gate |
+| `npm run test:e2e:perf:smoke` | Three critical browser/extension performance cases; run it on calibrated hardware, not in CI |
 | `npm run test:e2e:perf:full` / `npm run test:e2e:perf` | Complete pairwise matrix and repeated benchmarks |
 | `npm run test:e2e:perf:endurance` | Ten-minute local and two-minute throttled-Drive runs |
 | `npm run test:e2e:perf:hardware` | Headed physical microphone/camera tier |
@@ -403,10 +403,14 @@ Chrome requires the manifest `version` to be 1–4 dot-separated integers and to
 
 Two end-to-end testing scenarios exist:
 
-- **Scenario A** — the deterministic mocked-Meet Playwright suite and CI gate: functional tests, the performance matrix, mocked Drive, media analysis, and the physical camera/microphone tier. See the [Scenario A guide](docs/testing-scenario-a.md).
+- **Scenario A** — the deterministic mocked-Meet Playwright suite: functional tests, mocked Drive, media analysis, the performance matrix, and the physical camera/microphone tier. Its **functional tier is the CI gate**; the performance and hardware tiers are run deliberately, on calibrated hardware (see below). See the [Scenario A guide](docs/testing-scenario-a.md).
 - **Scenario B** — manual real Google Meet calibration in stable Chrome with a signed-in account, real `chrome.tabCapture`, and real devices. See the [Scenario B guide](docs/testing-scenario-b.md).
 
-Scenario A runs on every push and pull request in the [`CI` workflow](.github/workflows/ci.yml) alongside the typecheck and unit suite, and a further job packs every browser target so a release can never be the first time the artifacts are built. The functional tier blocks a merge; the performance smoke tier runs as an informational job, because its budgets are calibrated against real hardware and a shared runner encoding 1080p30 in software misses them intermittently — judge performance with `npm run test:e2e:perf` on a calibrated machine. Scenario B stays manual — it needs a real signed-in Google account.
+Scenario A's functional tier runs on every push and pull request in the [`CI` workflow](.github/workflows/ci.yml) alongside the typecheck and unit suite, and a further job packs every browser target so a release can never be the first time the artifacts are built. All three block a merge.
+
+**Performance is not gated in CI.** The budgets are calibrated against real hardware, and a shared 2-vCPU runner encoding 1080p30 in software misses them: the smoke tier ran as an informational job for a while and was red on three runs out of four, which is worse than not running it — a permanently red job is one nobody reads, and it still cost ~2 minutes of runner time per push. Judge performance with `npm run test:e2e:perf` (or `:perf:smoke`) on a calibrated machine; every tier stays available as an npm script.
+
+Scenario B stays manual — it needs a real signed-in Google account.
 
 ### Real Google Meet (Scenario B)
 

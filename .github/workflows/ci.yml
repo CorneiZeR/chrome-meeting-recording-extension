@@ -1,5 +1,13 @@
 # Continuous integration: the same gates a release runs, on every push and PR,
 # so a release button press can never be the first time the tree is checked.
+#
+# Performance is deliberately *not* gated here. The perf budgets (A/V marker
+# drift, freeze and silence windows) are calibrated against real hardware, and a
+# shared 2-vCPU runner encoding 1080p30 in software misses them: the tier ran as
+# an informational job for a while and was red on three runs out of four, which
+# is worse than not running it — a permanently red job is one nobody reads.
+# A performance verdict comes from `npm run test:e2e:perf` on a calibrated
+# machine; the tiers stay available as npm scripts.
 name: CI
 
 on:
@@ -16,6 +24,7 @@ jobs:
   checks:
     name: Typecheck & unit tests
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -30,6 +39,9 @@ jobs:
   e2e:
     name: E2E (mocked capture & Drive)
     runs-on: ubuntu-latest
+    # A headed browser under xvfb can hang instead of failing; without a bound
+    # that spends hours of runner time saying nothing.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -37,8 +49,9 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      # The performance specs measure the recorded artifacts with ffprobe, so
-      # the media toolchain is part of the E2E environment, not an extra.
+      # Not an extra: the functional tier confirms a setting end-to-end in the
+      # *encoded* artifact (settings-matrix probes the recorded tab file), so
+      # ffprobe is part of the E2E environment.
       - name: Install FFmpeg
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - run: npx playwright install --with-deps chromium
@@ -52,39 +65,18 @@ jobs:
           path: output/playwright
           retention-days: 7
 
-  perf-smoke:
-    name: E2E performance smoke (informational)
-    runs-on: ubuntu-latest
-    # The performance budgets (A/V marker drift, freeze and silence windows) are
-    # calibrated against real hardware; a shared 2-vCPU runner encoding 1080p30 in
-    # software misses them intermittently. The tier still runs so a regression is
-    # visible in the log, but a runner-bound miss does not block a merge — a real
-    # performance verdict comes from `npm run test:e2e:perf` on a calibrated machine.
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-      - run: npm ci
-      - name: Install FFmpeg
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg
-      - run: npx playwright install --with-deps chromium
-      - run: xvfb-run -a npm run test:e2e:perf:smoke
-      - uses: actions/upload-artifact@v4
-        if: failure()
-        with:
-          name: playwright-report-perf
-          path: output/playwright
-          retention-days: 7
-
   build:
     name: Production build (all browser targets)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
+          # Full history, deliberately. `check:version` compares package.json
+          # against the highest release tag and *skips silently* when it cannot
+          # read tags — so a shallower clone would risk turning that guard into a
+          # no-op that still reports green. The whole repo is 5 MB; the seconds
+          # this costs are not worth trading a guard for.
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
@@ -97,7 +89,11 @@ jobs:
       - run: npm run release:artifacts
         env:
           TELEMETRY_ENDPOINT: ${{ vars.TELEMETRY_ENDPOINT || 'https://recording-extension-telemetry.kstroevsky.workers.dev/api/telemetry/batches' }}
+      # The build and its guards are the gate on a pull request; the zips
+      # themselves are only worth keeping where someone installs from them —
+      # a push to main or a manual dispatch.
       - uses: actions/upload-artifact@v4
+        if: github.event_name != 'pull_request'
         with:
           name: extension-builds-${{ github.sha }}
           path: release/

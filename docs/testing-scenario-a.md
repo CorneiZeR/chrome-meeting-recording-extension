@@ -2,7 +2,7 @@
 
 This guide is the human- and agent-readable operating manual for the deterministic Playwright suite. It covers functional tests, the full performance matrix, mocked Drive uploads, media artifact analysis, and the optional physical microphone/camera tier.
 
-For testing against the **real** production Google Meet — real Chrome, real `chrome.tabCapture`, and concurrent real camera/microphone use — see [Scenario B: Real Google Meet Live Calibration](testing-scenario-b.md). Scenario A is the deterministic CI gate; Scenario B is a manual real-world calibration tier.
+For testing against the **real** production Google Meet — real Chrome, real `chrome.tabCapture`, and concurrent real camera/microphone use — see [Scenario B: Real Google Meet Live Calibration](testing-scenario-b.md). Scenario A's functional tier is the deterministic CI gate; its performance tiers run on calibrated hardware rather than in CI, and Scenario B is a manual real-world calibration tier.
 
 ## What Scenario A Runs
 
@@ -191,7 +191,7 @@ test('@perf-full workload custom', async ({}, testInfo) => {
 
 Choose the tag based on execution cost:
 
-- `@perf-smoke`: required on every PR, on calibrated hardware — in GitHub Actions it runs as an informational job whose budgets a shared 2-vCPU runner cannot honour;
+- `@perf-smoke`: expected before a release, on calibrated hardware. It is **not** run in GitHub Actions: a shared 2-vCPU runner cannot honour these budgets, and the informational job it used to occupy was red on three runs out of four — signal nobody could read, at ~2 minutes of runner time per push;
 - `@perf-full`: daily matrix and manually dispatched full runs;
 - `@perf-endurance`: weekly or manual long runs;
 - `@perf-hardware`: manually dispatched self-hosted hardware only;
