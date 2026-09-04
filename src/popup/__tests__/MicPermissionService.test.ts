@@ -103,6 +103,52 @@ describe('MicPermissionService', () => {
     });
   });
 
+  describe('a browser that never answers', () => {
+    /** Replaces the permission query with one that never settles. */
+    function setHangingPermissionQuery() {
+      Object.defineProperty(global.navigator, 'permissions', {
+        value: { query: jest.fn(() => new Promise(() => {})) },
+        configurable: true,
+      });
+    }
+
+    it('still reports a state when the permission query never settles', async () => {
+      // Edge left a click doing nothing at all: the handler was waiting behind
+      // a query that never came back.
+      setHangingPermissionQuery();
+      (navigator.mediaDevices.enumerateDevices as jest.Mock | undefined)?.mockResolvedValue?.([]);
+
+      await expect(service.queryMicPermissionState()).resolves.toBe('unknown');
+    });
+
+    it('infers a granted microphone from a device label when the query cannot answer', async () => {
+      setHangingPermissionQuery();
+      (navigator.mediaDevices.enumerateDevices as jest.Mock).mockResolvedValue([
+        { kind: 'audioinput', label: 'MacBook Pro Microphone' },
+      ]);
+
+      await expect(service.queryMicPermissionState()).resolves.toBe('granted');
+    });
+
+    it('gives up on an inline prompt that never appears, and releases a late stream', async () => {
+      const stop = jest.fn();
+      let resolveLate: ((stream: unknown) => void) | undefined;
+      (navigator.mediaDevices.getUserMedia as jest.Mock).mockImplementation(
+        () => new Promise((resolve) => { resolveLate = resolve; })
+      );
+
+      const primed = await service.tryPrimeInline();
+      expect(primed).toBe(false);
+
+      // The prompt is answered after we stopped waiting: the microphone must
+      // not be left open by a popup that has moved on.
+      resolveLate?.({ getTracks: () => [{ stop }] });
+      await flush();
+      expect(stop).toHaveBeenCalled();
+    });
+
+  });
+
   describe('bindButton', () => {
     function makeButton() {
       return document.createElement('button');
@@ -113,8 +159,8 @@ describe('MicPermissionService', () => {
       const btn = makeButton();
       const onText = jest.fn();
       service.bindButton(btn, onText);
-      await Promise.resolve();
-      await Promise.resolve();
+      await flush();
+      await flush();
 
       expect(btn.textContent).toBe('Microphone Enabled ✓');
       expect(btn.disabled).toBe(true);
@@ -125,36 +171,68 @@ describe('MicPermissionService', () => {
       setPermissionState('denied');
       const btn = makeButton();
       service.bindButton(btn);
-      await Promise.resolve();
-      await Promise.resolve();
+      await flush();
+      await flush();
 
       expect(btn.textContent).toBe('Microphone Blocked');
       expect(btn.disabled).toBe(false);
     });
 
-    it('alerts without opening a setup tab when clicked while already granted', async () => {
-      setPermissionState('granted');
+    it('alerts without opening a setup tab when the permission was granted since the label was rendered', async () => {
+      // A granted state disables the button, so this path is reached only with a
+      // stale label: the user granted access in the setup tab and came back.
+      setPermissionState('prompt');
       const btn = makeButton();
       service.bindButton(btn);
-      await Promise.resolve();
+      await flush();
+      expect(btn.disabled).toBe(false);
 
+      setPermissionState('granted');
       btn.click();
-      await Promise.resolve();
-      await Promise.resolve();
+      await flush();
+      await flush();
 
       expect(window.alert).toHaveBeenCalledWith('Microphone is already enabled for this extension.');
       expect(createRuntimeTab).not.toHaveBeenCalled();
+      // And the label catches up.
+      expect(btn.textContent).toBe('Microphone Enabled ✓');
+    });
+
+    it('opens the setup tab when nothing about the permission can be determined', async () => {
+      // The guarantee this file exists for: on Edge a click did nothing at all,
+      // because both browser calls stayed pending instead of answering.
+      Object.defineProperty(global.navigator, 'permissions', {
+        value: { query: jest.fn(() => new Promise(() => {})) },
+        configurable: true,
+      });
+      (navigator.mediaDevices.getUserMedia as jest.Mock).mockImplementation(() => new Promise(() => {}));
+      (navigator.mediaDevices.enumerateDevices as jest.Mock).mockResolvedValue([]);
+      const btn = makeButton();
+      // Both bounded waits have to elapse (the query, then the inline prompt),
+      // so drive the clock rather than sleeping through two real seconds.
+      jest.useFakeTimers();
+      try {
+        service.bindButton(btn);
+        await jest.advanceTimersByTimeAsync(600);
+
+        btn.click();
+        await jest.advanceTimersByTimeAsync(2_200);
+
+        expect(createRuntimeTab).toHaveBeenCalledWith('micsetup.html');
+      } finally {
+        jest.useRealTimers();
+      }
     });
 
     it('opens the setup tab when clicked while denied', async () => {
       setPermissionState('denied');
       const btn = makeButton();
       service.bindButton(btn);
-      await Promise.resolve();
+      await flush();
 
       btn.click();
-      await Promise.resolve();
-      await Promise.resolve();
+      await flush();
+      await flush();
 
       expect(createRuntimeTab).toHaveBeenCalledWith('micsetup.html');
     });

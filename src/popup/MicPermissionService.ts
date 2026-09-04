@@ -1,12 +1,22 @@
 /**
  * @file popup/MicPermissionService.ts
  *
- * Popup-side microphone permission helper. It handles state queries, inline
- * permission priming, and setup-page fallback when Chrome blocks inline prompts.
+ * Popup-side microphone permission helper: state queries, inline permission
+ * priming, and the setup-page fallback for when a browser will not prompt from
+ * a popup.
+ *
+ * The bounded primitives it asks with live in [`devicePermissions`](./devicePermissions.ts),
+ * shared with the camera service — an unbounded wait here is a dead button, not
+ * a slow one.
  */
 
 import type { MicMode } from '../shared/recording';
 import { createRuntimeTab } from '../platform/chrome/tabs';
+import {
+  primeDeviceInline,
+  queryDevicePermissionState,
+  type DevicePermissionState,
+} from './devicePermissions';
 
 export class MicPermissionService {
   /** Opens the dedicated runtime page that can trigger Chrome's microphone permission UI. */
@@ -14,27 +24,14 @@ export class MicPermissionService {
     await createRuntimeTab('micsetup.html');
   }
 
-  /** Reads Chrome's current microphone permission state for the extension origin. */
-  async queryMicPermissionState(): Promise<'granted' | 'denied' | 'prompt' | 'unknown'> {
-    if (!('permissions' in navigator)) return 'unknown';
-
-    try {
-      const status = await navigator.permissions.query({ name: 'microphone' as PermissionName });
-      return (status?.state as any) ?? 'unknown';
-    } catch {
-      return 'unknown';
-    }
+  /** Reads the browser's microphone permission state for the extension origin. */
+  queryMicPermissionState(): Promise<DevicePermissionState> {
+    return queryDevicePermissionState('microphone', 'audioinput');
   }
 
-  /** Tries to grant microphone access inline from the popup when Chrome allows it. */
-  async tryPrimeInline(): Promise<boolean> {
-    try {
-      const s = await navigator.mediaDevices.getUserMedia({ audio: true });
-      s.getTracks().forEach((t) => t.stop());
-      return true;
-    } catch {
-      return false;
-    }
+  /** Tries to grant microphone access inline from the popup. */
+  tryPrimeInline(): Promise<boolean> {
+    return primeDeviceInline({ audio: true });
   }
 
   /** Ensures microphone permission is ready before a recording that needs mic audio starts. */
@@ -106,6 +103,9 @@ export class MicPermissionService {
 
         await this.openMicSetupTab();
       } catch (e) {
+        // The flow above cannot hang, but it can still fail (a blocked tab
+        // create, say) — and a click that reports nothing is the bug this file
+        // exists to prevent.
         console.error('[popup] mic enable flow error', e);
         alert('Could not open the microphone setup page. Please try again.');
       }

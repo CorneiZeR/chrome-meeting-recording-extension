@@ -148,7 +148,7 @@ All three commands compile TypeScript via `ts-loader`, copy HTML shells, styles,
 
 ### Recording
 
-**Enable Microphone** — click this before starting a recording if you want to use any mic mode. The popup prompt may not appear reliably; if it fails, the button opens a dedicated `micsetup.html` page where you can click **Enable** and grant mic access. Once granted, the label changes to **Microphone Enabled**.
+**Enable Microphone** — click this before starting a recording if you want to use any mic mode. A permission prompt cannot be shown reliably from a popup in any browser (and Edge refuses outright), so the button falls back to a dedicated `micsetup.html` page where you click **Enable** and grant mic access. Whatever the browser answers — including not answering at all — the click ends in either a granted microphone or that page. Once granted, the label changes to **Microphone Enabled**.
 
 **Microphone Mode** — controls mic capture for the upcoming recording:
 

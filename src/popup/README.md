@@ -71,7 +71,11 @@ flowchart TD
     P -->|blocked| T
 ```
 
-`MicPermissionService` / `CameraPermissionService` each expose `queryPermissionState`, `tryPrimeInline` (a throwaway `getUserMedia` that grants from the popup when Chrome allows), and `openSetupTab`. `ensureReadyForRecording` runs this ladder before a run that needs the device; the mic button (`bindButton`) reflects granted/blocked/enable state live.
+`MicPermissionService` / `CameraPermissionService` each expose `queryPermissionState`, `tryPrimeInline` (a throwaway `getUserMedia` that grants from the popup when the browser allows), and `openSetupTab`. `ensureReadyForRecording` runs this ladder before a run that needs the device; the mic button (`bindButton`) reflects granted/blocked/enable state live.
+
+**Every await in both permission ladders is bounded, and each ladder always ends somewhere the user can act.** Both browser calls it depends on can stay *pending* rather than fail — a permission query that never answers, or an inline `getUserMedia` whose prompt the browser refuses to show in a popup. On Edge that made the button do nothing at all: the handler sat behind a promise that never settled, so no prompt, no setup tab, no error. The shared primitives in `devicePermissions.ts` therefore time out into `unknown` and take a second opinion from `enumerateDevices` (a device label is exposed only once access is granted, and enumerating never prompts), and the inline prime gives up on the prompt while still releasing a stream that arrives late, so the popup never leaves a device open.
+
+The camera half matters more than the button: `CameraPermissionService.ensureReadyForRecording` runs *before* a recording starts, so the same unbounded wait would hang **Start Recording** rather than a control the user can click again.
 
 When separate camera capture is selected with a sub-1080p camera preset, the setup form shows a non-blocking resolution nudge (`Camera delivering <preset>p · raise in settings`). It reflects the configured target profile for the next run, not the device's guaranteed delivered resolution; users can change it on the Settings page.
 
@@ -120,6 +124,7 @@ Separate from recording: the header **Save** button (`wireTranscriptDownload`) p
 | `popupView.ts` | `setActiveView` + DOM helpers (the view switch) |
 | `popupRunConfig.ts`, `popupStatus.ts`, `popupMessages.ts` | config-view run-config reads, status/label text, message/toast string builders |
 | `MicPermissionService.ts`, `CameraPermissionService.ts` | permission query + inline-prime + setup-tab ladder |
+| `devicePermissions.ts` | the bounded query/prime primitives both ladders share, and the `enumerateDevices` second opinion |
 
 The storage selector's **Connect Google Drive…** entry is a link, not a picker: the Google account a Drive upload needs is connected on the settings page, so it opens `settings.html#drive-heading`.
 
@@ -130,7 +135,7 @@ Entry: `../popup.ts` (DOM wiring only). The Settings *page* is a separate surfac
 - `__tests__/PopupController.test.ts` and `PopupStateController.test.ts` drive the controller against a fake element set + mocked `chrome.runtime`, asserting view switches, stop/discard reconciliation, session-tab/upload flows, naming prompt ordering, skip persistence, and rename response reconciliation.
 - `__tests__/RecordingNameDialog.test.ts` covers validation, focus trapping, busy/error state, Save, Skip, and disposal. `tests/e2e/recording-rename.spec.ts` proves a completed mocked-Drive upload can rename the real remote folder/file projections through the built extension.
 - The extracted collaborators are unit-tested in isolation: `RecordingTimer.test.ts` (tick / pause / stop-idempotence), `CaptionPoller.test.ts` (on / off / unreachable tab / idempotent start), and `SessionTabsView.test.ts` (tab render/select, retry/cancel, and recovery states).
-- `MicPermissionService`/`CameraPermissionService` are tested against a mocked `navigator.permissions`/`mediaDevices` — the ladder (granted / denied / prompt→prime→fallback) is the unit under test.
+- `MicPermissionService`/`CameraPermissionService` are tested against a mocked `navigator.permissions`/`mediaDevices` — the ladder (granted / denied / prompt→prime→fallback) is the unit under test. The hang cases of both are pinned with promises that never settle: five of those tests fail against the old unbounded code, three of them by timing out.
 - `popupMessages.test.ts` pins the user-facing strings.
 
 ## Related

@@ -164,6 +164,9 @@ Object.defineProperty(global.navigator, 'mediaDevices', {
       }],
       getTracks: () => [],
     }),
+    // A device label is only exposed once microphone access is granted, which is
+    // how the popup reads the permission when a browser's query cannot answer.
+    enumerateDevices: jest.fn().mockResolvedValue([]),
   },
   writable: true
 });

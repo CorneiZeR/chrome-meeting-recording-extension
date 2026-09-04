@@ -89,4 +89,26 @@ describe('CameraPermissionService', () => {
       expect(createRuntimeTab).toHaveBeenCalledWith('camsetup.html');
     });
   });
+
+  it('opens the setup tab instead of hanging when the browser never answers', async () => {
+    // This ladder runs before a recording starts, so an unbounded wait here
+    // hangs Start Recording itself — the camera half of the Edge mic bug.
+    Object.defineProperty(global.navigator, 'permissions', {
+      value: { query: jest.fn(() => new Promise(() => {})) },
+      configurable: true,
+    });
+    (navigator.mediaDevices.getUserMedia as jest.Mock).mockImplementation(() => new Promise(() => {}));
+    (navigator.mediaDevices.enumerateDevices as jest.Mock).mockResolvedValue([]);
+
+    jest.useFakeTimers();
+    try {
+      const ready = service.ensureReadyForRecording();
+      await jest.advanceTimersByTimeAsync(2_200);
+
+      await expect(ready).resolves.toBe(false);
+      expect(createRuntimeTab).toHaveBeenCalledWith('camsetup.html');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
 });
