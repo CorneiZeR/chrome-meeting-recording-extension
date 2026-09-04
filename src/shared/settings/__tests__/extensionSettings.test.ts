@@ -9,7 +9,112 @@ import {
   resolveTabVideoBitrate,
   TAB_SCREEN_QUALITY_FACTOR,
   TAB_VIDEO_QUALITY_FACTOR,
+  saveRunConfigAsDefaults,
 } from '..';
+
+describe('saveRunConfigAsDefaults', () => {
+  const STORAGE_KEY = 'extensionSettings';
+  let store: Record<string, unknown>;
+
+  beforeEach(() => {
+    store = {};
+    (globalThis as any).chrome = {
+      storage: {
+        local: {
+          get: jest.fn(async (keys: unknown) => {
+            const names = typeof keys === 'string' ? [keys] : (keys as string[]);
+            return Object.fromEntries(names.map((name) => [name, store[name]]));
+          }),
+          set: jest.fn(async (values: Record<string, unknown>) => {
+            Object.assign(store, values);
+          }),
+        },
+      },
+    };
+  });
+
+  afterEach(() => {
+    delete (globalThis as any).chrome;
+  });
+
+  it('writes every run-config field back as its persisted default', async () => {
+    const saved = await saveRunConfigAsDefaults({
+      storageMode: 'local',
+      micMode: 'off',
+      recordSelfVideo: false,
+      tabContentType: 'video',
+    });
+
+    // 'local' is the runtime name for the persisted 'opfs' recording mode.
+    expect(saved.basic.recordingMode).toBe('opfs');
+    expect(saved.basic.microphoneRecordingMode).toBe('off');
+    expect(saved.basic.separateCameraCapture).toBe(false);
+    expect(saved.professional.tabContentType).toBe('video');
+    expect((store[STORAGE_KEY] as any).basic.recordingMode).toBe('opfs');
+  });
+
+  it('round-trips through the popup default it feeds', async () => {
+    const config = {
+      storageMode: 'local' as const,
+      micMode: 'mixed' as const,
+      recordSelfVideo: false,
+      tabContentType: 'video' as const,
+    };
+
+    expect(buildDefaultRunConfigFromSettings(await saveRunConfigAsDefaults(config))).toEqual(config);
+  });
+
+  it('re-applies its fields on top of a change written between the read and the write', async () => {
+    store[STORAGE_KEY] = {
+      basic: { autoEnableCaptions: true },
+      professional: { selfVideoFrameRate: 24 },
+    };
+    // Stand in for the settings page persisting an unrelated field mid-flight:
+    // the first read returns the old record, the next one the newer record.
+    let reads = 0;
+    (globalThis as any).chrome.storage.local.get = jest.fn(async (keys: unknown) => {
+      const names = typeof keys === 'string' ? [keys] : (keys as string[]);
+      reads += 1;
+      if (reads === 2) {
+        store[STORAGE_KEY] = {
+          ...(store[STORAGE_KEY] as any),
+          basic: { ...(store[STORAGE_KEY] as any).basic, autoEnableCaptions: false },
+        };
+      }
+      return Object.fromEntries(names.map((name) => [name, store[name]]));
+    });
+
+    const saved = await saveRunConfigAsDefaults({
+      storageMode: 'local',
+      micMode: 'off',
+      recordSelfVideo: false,
+    });
+
+    expect(saved.basic.separateCameraCapture).toBe(false);
+    // The concurrent writer's field survives instead of being blasted back to
+    // the value read before it landed.
+    expect(saved.basic.autoEnableCaptions).toBe(false);
+  });
+
+  it('leaves settings the run config does not cover untouched', async () => {
+    store[STORAGE_KEY] = {
+      basic: { selfVideoResolutionPreset: '1280x720', autoEnableCaptions: false },
+      professional: { selfVideoFrameRate: 30, tabContentType: 'video' },
+    };
+
+    const saved = await saveRunConfigAsDefaults({
+      storageMode: 'drive',
+      micMode: 'separate',
+      recordSelfVideo: true,
+    });
+
+    expect(saved.basic.selfVideoResolutionPreset).toBe('1280x720');
+    expect(saved.basic.autoEnableCaptions).toBe(false);
+    expect(saved.professional.selfVideoFrameRate).toBe(30);
+    // An absent per-recording override must not reset the stored tab default.
+    expect(saved.professional.tabContentType).toBe('video');
+  });
+});
 
 describe('settings', () => {
   it('migrates anonymous diagnostics as default-on while preserving an explicit opt-out', () => {

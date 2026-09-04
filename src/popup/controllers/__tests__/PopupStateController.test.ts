@@ -3,12 +3,16 @@ jest.mock('../../../shared/messages', () => ({
 }));
 jest.mock('../../../shared/settings', () => {
   const actual = jest.requireActual('../../../shared/settings');
-  return { ...actual, loadExtensionSettingsFromStorage: jest.fn().mockResolvedValue(actual.DEFAULT_EXTENSION_SETTINGS) };
+  return {
+    ...actual,
+    loadExtensionSettingsFromStorage: jest.fn().mockResolvedValue(actual.DEFAULT_EXTENSION_SETTINGS),
+    saveRunConfigAsDefaults: jest.fn().mockResolvedValue(actual.DEFAULT_EXTENSION_SETTINGS),
+  };
 });
 
 import { PopupStateController } from '../PopupStateController';
 import { sendToBackground } from '../../../shared/messages';
-import { loadExtensionSettingsFromStorage } from '../../../shared/settings';
+import { loadExtensionSettingsFromStorage, saveRunConfigAsDefaults } from '../../../shared/settings';
 import type { RecordingStatusView } from '../../../shared/recording';
 
 function makeElements() {
@@ -26,10 +30,20 @@ function makeElements() {
   });
   const recordSelfVideoCheckbox = document.createElement('input');
   recordSelfVideoCheckbox.type = 'checkbox';
+  const tabContentTypeGroup = document.createElement('div');
+  ['screen', 'video'].forEach((v) => {
+    const input = document.createElement('input');
+    input.type = 'radio';
+    input.name = 'tab-content-type';
+    input.value = v;
+    input.checked = v === 'screen';
+    tabContentTypeGroup.appendChild(input);
+  });
   return {
     storageModeSelect,
     micModeSelect,
     recordSelfVideoCheckbox,
+    tabContentTypeGroup,
     startBtn: document.createElement('button'),
     stopBtn: document.createElement('button'),
   } as any;
@@ -94,6 +108,106 @@ describe('PopupStateController', () => {
       await controller.refreshInitialState();
 
       expect(callbacks.onPhaseChange).toHaveBeenLastCalledWith('idle', expect.objectContaining({ phase: 'idle', runConfig: null }));
+    });
+  });
+
+  describe('the pre-start form', () => {
+    const changeOn = async (control: HTMLElement) => {
+      control.dispatchEvent(new Event('change', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    };
+
+    it('remembers the camera choice as the next run default', async () => {
+      const { el } = makeController();
+
+      el.recordSelfVideoCheckbox.checked = false;
+      await changeOn(el.recordSelfVideoCheckbox);
+
+      expect(saveRunConfigAsDefaults).toHaveBeenCalledWith(
+        expect.objectContaining({ recordSelfVideo: false })
+      );
+    });
+
+    it('remembers the storage destination as the next run default', async () => {
+      const { el } = makeController();
+
+      el.storageModeSelect.value = 'local';
+      await changeOn(el.storageModeSelect);
+
+      expect(saveRunConfigAsDefaults).toHaveBeenCalledWith(
+        expect.objectContaining({ storageMode: 'local' })
+      );
+    });
+
+    it('remembers the microphone mode as the next run default', async () => {
+      const { el } = makeController();
+
+      el.micModeSelect.value = 'off';
+      await changeOn(el.micModeSelect);
+
+      expect(saveRunConfigAsDefaults).toHaveBeenCalledWith(
+        expect.objectContaining({ micMode: 'off' })
+      );
+    });
+
+    it('remembers the tab content type as the next run default', async () => {
+      const { el } = makeController();
+      const radios = el.tabContentTypeGroup.querySelectorAll('input');
+
+      radios[0].checked = false;
+      radios[1].checked = true;
+      await changeOn(radios[1]);
+
+      expect(saveRunConfigAsDefaults).toHaveBeenCalledWith(
+        expect.objectContaining({ tabContentType: 'video' })
+      );
+    });
+
+    it('keeps the choice when the next idle snapshot lands', async () => {
+      const { el, controller } = makeController();
+      (sendToBackground as jest.Mock).mockResolvedValue({ session: idleView() });
+      await controller.refreshInitialState();
+      expect(el.recordSelfVideoCheckbox.checked).toBe(true);
+
+      el.recordSelfVideoCheckbox.checked = false;
+      el.micModeSelect.value = 'off';
+      await changeOn(el.micModeSelect);
+      controller.applySession(idleView());
+
+      expect(el.recordSelfVideoCheckbox.checked).toBe(false);
+      expect(el.micModeSelect.value).toBe('off');
+      expect(controller.getIdleDefaultRunConfig()).toEqual(
+        expect.objectContaining({ recordSelfVideo: false, micMode: 'off' })
+      );
+    });
+
+    it('does not write back the config of a session it only mirrored into the form', async () => {
+      const { el, controller } = makeController();
+      // Values the mirrored config differs from, so applying it really does
+      // dispatch the `change` the styled selectors need.
+      el.storageModeSelect.value = 'drive';
+      el.micModeSelect.value = 'separate';
+
+      controller.applySession(idleView({
+        phase: 'recording',
+        runConfig: { storageMode: 'local', micMode: 'off', recordSelfVideo: false, tabContentType: 'video' },
+      }));
+      await Promise.resolve();
+
+      expect(saveRunConfigAsDefaults).not.toHaveBeenCalled();
+    });
+
+    it('survives a failed write without throwing', async () => {
+      const { el } = makeController();
+      (saveRunConfigAsDefaults as jest.Mock).mockRejectedValueOnce(new Error('storage error'));
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+
+      el.recordSelfVideoCheckbox.checked = false;
+      await changeOn(el.recordSelfVideoCheckbox);
+
+      expect(warn).toHaveBeenCalled();
+      warn.mockRestore();
     });
   });
 

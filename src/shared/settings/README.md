@@ -20,6 +20,12 @@ The single source of *configuration*. Two responsibilities: (1) hold the user's 
 
 ### basic
 
+`recordingMode`, `microphoneRecordingMode`, `separateCameraCapture` and
+`professional.tabContentType` are also the popup's pre-start form, which writes a
+choice made there straight back here through `saveRunConfigAsDefaults` (the
+inverse of `buildDefaultRunConfigFromSettings`) — so a setup entered once in the
+popup is the next run's default instead of something to re-enter on every open.
+
 | Field | Type | Drives |
 | :--- | :--- | :--- |
 | `recordingMode` | `'opfs' \| 'drive'` | `RunConfig.storageMode` (`opfs`→`local`) |
@@ -37,7 +43,7 @@ The single source of *configuration*. Two responsibilities: (1) hold the user's 
 | :--- | :--- |
 | `selfVideoFrameRate` | camera capture fps (**default 24** — a talking head is low-motion, so 24 cuts encode work and bytes vs. 30 with no perceptible loss). The camera bitrate has **no** user knob — fully automatic: delivered `W×H×fps × SELF_VIDEO_QUALITY_FACTOR` (0.05), clamped within the `SELF_VIDEO_MIN_ADAPTIVE_BITS_PER_SECOND` floor / `SELF_VIDEO_DEFAULT_BITS_PER_SECOND` ceiling, mirroring the tab. |
 | `tabResolutionPreset`, `tabMaxFrameRate` | tab capture target dimensions + fps ceiling |
-| `tabContentType` | `'screen' \| 'video'` — the **only** tab-bitrate knob. Selects the quality factor (screen ≈ low bits/pixel for UI/code/slides; video ≈ high bits/pixel for motion). The ceiling is the internal `MAX_TAB_VIDEO_BITRATE`, not user-facing. This is the **default**; the popup also exposes it as a **per-recording** choice (`RunConfig.tabContentType`) that overrides the default for one run. |
+| `tabContentType` | `'screen' \| 'video'` — the **only** tab-bitrate knob. Selects the quality factor (screen ≈ low bits/pixel for UI/code/slides; video ≈ high bits/pixel for motion). The ceiling is the internal `MAX_TAB_VIDEO_BITRATE`, not user-facing. It reaches a run as `RunConfig.tabContentType`, chosen in the popup's pre-start form — which **remembers** the choice by writing it back here, so it is the next run's default too. |
 | `microphoneEchoCancellation`, `microphoneNoiseSuppression`, `microphoneAutoGainControl` | mic `getUserMedia` constraints (DSP) |
 | `chunkDefaultTimesliceMs`, `chunkExtendedTimesliceMs` | `MediaRecorder` timeslice selection |
 

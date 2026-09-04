@@ -98,7 +98,7 @@ Separate from recording: the header **Save** button (`wireTranscriptDownload`) p
 
 ## Key invariants & gotchas
 
-- **Never persist state in the popup.** It dies on close; the next open rebuilds from the session. Anything you stash on the instance is a display cache, not state.
+- **Never persist state in the popup.** It dies on close; the next open rebuilds from the session. Anything you stash on the instance is a display cache, not state. The one deliberate exception is a *user choice*, not view state: every control of the pre-start form (storage destination, microphone mode, camera, tab quality) writes its choice back through `saveRunConfigAsDefaults` (`PopupStateController.rememberSetupChoices`), because a non-default setup would otherwise have to be re-entered on every open. It edits the same defaults the settings page shows — it does not invent popup-local storage. **Only a user edit may be written back**: `applyRunConfigToForm` dispatches `change` so the styled selectors can re-sync, and `applyingRunConfig` suppresses that echo — without it, mirroring a restored or running session into the form would persist *its* config as the new defaults.
 - **Always reconcile from the command response**, not from the optimistic local flip — that's what makes a rejected toggle self-correct.
 - **Clean up intervals on view-exit and `destroy()`** — a leaked timer/poll survives the view it belonged to.
 - **A muted mic records silence; a hidden camera records black frames; a paused span is never written** (seamless resume). The popup only *reflects* these; the actuation is in the offscreen recorder.

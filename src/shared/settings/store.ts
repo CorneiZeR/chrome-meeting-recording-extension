@@ -25,6 +25,7 @@ import {
 import type {
   ChunkingSettings,
   ExtensionSettings,
+  RecordingModeDefault,
   MicrophoneCaptureSettings,
   RecorderRuntimeSettingsSnapshot,
   SelfVideoProfileSettings,
@@ -54,6 +55,73 @@ export function buildDefaultRunConfigFromSettings(
     // The persisted default; the popup pre-selects it and may override per-recording.
     tabContentType: settings.professional.tabContentType,
   };
+}
+
+/** Reverse of {@link toStorageMode}: the persisted recording-mode default behind a runtime storage mode. */
+export function toRecordingModeDefault(storageMode: StorageMode): RecordingModeDefault {
+  return storageMode === 'local' ? 'opfs' : 'drive';
+}
+
+/**
+ * Persists a run configuration as the defaults the next popup open starts from —
+ * the exact inverse of {@link buildDefaultRunConfigFromSettings}.
+ *
+ * The popup's pre-start controls are the only writer: every one of them is a
+ * default that also lives on the settings page, so remembering a choice means
+ * writing that default rather than inventing popup-local storage. Fields the
+ * run config does not cover are carried through untouched.
+ */
+export async function saveRunConfigAsDefaults(config: RecordingRunConfig): Promise<ExtensionSettings> {
+  return await updateStoredSettings((current) => ({
+    ...current,
+    basic: {
+      ...current.basic,
+      recordingMode: toRecordingModeDefault(config.storageMode),
+      microphoneRecordingMode: config.micMode,
+      separateCameraCapture: config.recordSelfVideo,
+    },
+    professional: {
+      ...current.professional,
+      tabContentType: config.tabContentType ?? current.professional.tabContentType,
+    },
+  }));
+}
+
+/**
+ * Read-modify-writes the stored settings without clobbering a concurrent writer.
+ *
+ * The popup and the settings page persist the same storage key from different
+ * contexts, so a plain read-then-write can replace a change the other made in
+ * between — and the loss is permanent, because the settings page then mirrors
+ * the clobbered payload back into its form. Between reading and writing, this
+ * re-reads: if the record moved, the change is re-applied on top of the newer
+ * one instead of over it.
+ *
+ * `chrome.storage` offers no compare-and-swap, so this narrows the window to the
+ * gap between the final re-read and the write rather than closing it. Closing it
+ * would mean routing every settings write through one context.
+ */
+async function updateStoredSettings(
+  apply: (current: ExtensionSettings) => unknown,
+  attempts = 3,
+): Promise<ExtensionSettings> {
+  let stored = await readStoredSettingsRecord();
+  for (let attempt = 1; ; attempt += 1) {
+    const next = apply(normalizeExtensionSettings(stored));
+    const latest = await readStoredSettingsRecord();
+    // The last attempt writes regardless: making progress beats spinning while
+    // another surface is being edited.
+    if (attempt >= attempts || JSON.stringify(latest) === JSON.stringify(stored)) {
+      return await saveExtensionSettingsToStorage(next);
+    }
+    stored = latest;
+  }
+}
+
+/** The raw persisted settings value, or undefined when nothing is stored yet. */
+async function readStoredSettingsRecord(): Promise<unknown> {
+  if (!hasLocalStorageArea()) return undefined;
+  return (await getLocalStorageValues(EXTENSION_SETTINGS_STORAGE_KEY))[EXTENSION_SETTINGS_STORAGE_KEY];
 }
 
 /** Returns the numeric self-video profile currently requested from getUserMedia. */

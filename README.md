@@ -160,6 +160,8 @@ All three commands compile TypeScript via `ts-loader`, copy HTML shells, styles,
 
 **Record my camera separately** — if checked, starts an additional camera-only recorder. If camera permission is missing when you click Start, a `camsetup.html` tab opens so you can grant access. Camera quality is controlled by the extension settings page, not Google Meet's own video setting.
 
+**Your setup is remembered.** Microphone mode, storage mode, "record my camera separately", and the tab content type start from the defaults on the settings page — and changing one in the popup saves it back as that default. A setup entered once is what the next recording starts from, instead of something to re-select on every open.
+
 **Start Recording** — begins capturing the current tab (video + system audio). The extension asks Chrome for the selected tab resolution preset as the capture ceiling. Actual resolution still depends on Chrome tab-capture behavior and what Meet renders into the tab.
 
 **Stop Recording** — releases the extension-owned camera immediately, seals all active recorders, and runs the delivery handoff. The extension also stops the active run if the recorded tab closes, navigates away from the meeting, or the Meet page stays in an ended-call state for 30 seconds. In local mode a file download begins; in Drive mode a detached upload job starts and capture returns to idle immediately.
@@ -197,7 +199,7 @@ Use the history icon in the popup header to open the **Recordings** page. It is 
 
 ## Settings page
 
-Open the settings page by clicking the gear icon in the popup. Settings persist across sessions via `chrome.storage.local`.
+Open the settings page by clicking the gear icon in the popup. Settings persist across sessions via `chrome.storage.local`. The four defaults the popup's configuration screen also exposes — default recording mode, default microphone mode, record camera separately, and default tab content type — are shared with it in both directions: a choice made in the popup is saved here as well.
 
 | Setting | Description |
 | :--- | :--- |
