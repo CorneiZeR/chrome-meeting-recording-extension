@@ -76,9 +76,12 @@ function buildMisconfiguredClientError(rawError: string): string {
   const fix = manifestClientId
     ? 'Fix: create a Google Cloud OAuth client of type "Chrome Extension" for this extension ID '
       + `and put its client id in manifest.oauth2.client_id (currently ${manifestClientId}).`
-    : 'Fix: create a Google Cloud OAuth client that allows the redirect URI '
-      + `https://${extensionId}.chromiumapp.org/ (run "npm run redirect-uri" to confirm it), `
-      + 'then build with GOOGLE_WEB_OAUTH_CLIENT_ID and GOOGLE_WEB_OAUTH_CLIENT_SECRET set.';
+    : 'Fix: create a Google Cloud OAuth client of type "Web application" \u2014 only that '
+      + 'type has an "Authorized redirect URIs" field, and a "Chrome Extension" client is '
+      + `rejected here \u2014 register https://${extensionId}.chromiumapp.org/ in it `
+      + '(run "npm run redirect-uri" to confirm the URI, trailing "/" included), then build '
+      + 'with GOOGLE_WEB_OAUTH_CLIENT_ID set. GOOGLE_WEB_OAUTH_CLIENT_SECRET is optional: '
+      + 'without it the exchange authenticates with PKCE alone.';
 
   return `Google OAuth is misconfigured: ${rawError} Current extension ID: ${extensionId} ${fix}`;
 }

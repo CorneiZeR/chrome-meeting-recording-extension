@@ -192,26 +192,38 @@ async function postToTokenEndpoint(config: WebAuthFlowConfig, body: URLSearchPar
   return toTokenSet((await response.json()) as Record<string, unknown>);
 }
 
+/**
+ * Adds the client secret only when the build has one.
+ *
+ * A confidential client must send it; a **public** client configured for PKCE
+ * has no secret at all, and sending `client_secret=` empty is not the same as
+ * omitting the parameter — the token endpoint reads an empty value as a wrong
+ * secret and answers `invalid_client`. PKCE is what authenticates the exchange
+ * in that case (RFC 7636), so the parameter is left out entirely.
+ */
+function withOptionalClientSecret(body: URLSearchParams, config: WebAuthFlowConfig): URLSearchParams {
+  if (config.clientSecret) body.set('client_secret', config.clientSecret);
+  return body;
+}
+
 /** Default client-side code->token exchange against Google's token endpoint. */
 export function exchangeAuthCodeForToken({ code, codeVerifier, config }: TokenExchangeParams): Promise<TokenSet> {
-  return postToTokenEndpoint(config, new URLSearchParams({
+  return postToTokenEndpoint(config, withOptionalClientSecret(new URLSearchParams({
     grant_type: 'authorization_code',
     code,
     client_id: config.clientId,
-    client_secret: config.clientSecret,
     code_verifier: codeVerifier,
     redirect_uri: config.redirectUri,
-  }));
+  }), config));
 }
 
 /** Default silent refresh: spends the stored refresh token for a fresh access token. */
 export function refreshAccessTokenGrant({ refreshToken, config }: TokenRefreshParams): Promise<TokenSet> {
-  return postToTokenEndpoint(config, new URLSearchParams({
+  return postToTokenEndpoint(config, withOptionalClientSecret(new URLSearchParams({
     grant_type: 'refresh_token',
     refresh_token: refreshToken,
     client_id: config.clientId,
-    client_secret: config.clientSecret,
-  }));
+  }), config));
 }
 
 /** True for the one error a refresh can never recover from: the grant is gone. */

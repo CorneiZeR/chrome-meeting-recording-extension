@@ -326,10 +326,13 @@ later uploads never prompt. That path needs a configured OAuth client:
    `https://<id>.chromiumapp.org/`. Add that exact value (trailing `/` included)
    to the client's **Authorized redirect URIs**. All the Chromium targets share
    one `key`, so one URI covers them all.
-3. In `.env`, set `GOOGLE_WEB_OAUTH_CLIENT_ID` and
-   `GOOGLE_WEB_OAUTH_CLIENT_SECRET`. The secret ships inside those bundles —
-   acceptable for a local or privately distributed build, but **move the exchange
-   behind a server before publishing one publicly** (see ADR-0002).
+3. In `.env`, set `GOOGLE_WEB_OAUTH_CLIENT_ID`.
+   `GOOGLE_WEB_OAUTH_CLIENT_SECRET` is optional — a client that has no secret,
+   or one whose secret you would rather not ship, authenticates with PKCE alone
+   (RFC 7636), and the exchange then omits the parameter entirely. When you do
+   set it, the secret ships inside those bundles — acceptable for a local or
+   privately distributed build, but **move the exchange behind a server before
+   publishing one publicly** (see ADR-0002).
 4. Build the target (`npm run build:edge` and friends, emitting to
    `dist-<target>/`), load it unpacked, and connect the account in the settings
    page.
@@ -392,7 +395,7 @@ To reproduce the published artifacts locally (or to upload to the Chrome Web Sto
 npm run release:artifacts   # every target: build + guards + release/<name>-v<version>-<target>.zip
 ```
 
-The release workflow reads two optional repository secrets (**Settings → Secrets and variables → Actions**): the `GOOGLE_WEB_OAUTH_CLIENT_ID` / `GOOGLE_WEB_OAUTH_CLIENT_SECRET` pair the non-Chrome targets sign in with. Chrome needs no secret — its client id is public and committed. Missing OAuth secrets do not fail the build; those bundles simply ship without a working Drive sign-in.
+The release workflow reads two optional repository secrets (**Settings → Secrets and variables → Actions**): the `GOOGLE_WEB_OAUTH_CLIENT_ID` the non-Chrome targets sign in with, and the optional `GOOGLE_WEB_OAUTH_CLIENT_SECRET` that goes with it. Chrome needs neither — its client id is public and committed. Missing OAuth secrets do not fail the build; those bundles simply ship without a working Drive sign-in.
 
 `npm version` requires a clean working tree (commit or stash first) and runs the `preversion` gate — `typecheck` plus the unit suite — before it bumps and tags, so a release can't be cut over failing checks. It also keeps `package-lock.json` in sync automatically.
 
@@ -550,7 +553,7 @@ State persistence:  chrome.storage.session → RecordingSessionSnapshot + detach
 **`Google OAuth is misconfigured` when connecting Drive.**
 
 - On **Chrome**: `oauth2.client_id` in the manifest is still the placeholder, or Google rejected it (`bad client id`). Verify the client type is **Chrome Extension** and that it was created for the extension id `npm run redirect-uri` prints, then rebuild and reload.
-- On the **other targets**: the build has no usable web OAuth client, or Google rejected it (`invalid_client`, `redirect_uri_mismatch`). Verify `GOOGLE_WEB_OAUTH_CLIENT_ID` / `GOOGLE_WEB_OAUTH_CLIENT_SECRET` are set and that the client's **Authorized redirect URIs** contains exactly what `npm run redirect-uri` prints, trailing `/` included.
+- On the **other targets**: the build has no usable web OAuth client, or Google rejected it (`invalid_client`, `redirect_uri_mismatch`). Verify `GOOGLE_WEB_OAUTH_CLIENT_ID` is set (the secret is optional), that the client's **Application type** is **Web application** — a **Chrome Extension** client has no redirect URIs to register and always answers `redirect_uri_mismatch` here — and that its **Authorized redirect URIs** contains exactly what `npm run redirect-uri` prints, trailing `/` included.
 - In both cases: verify the consent screen includes `https://www.googleapis.com/auth/drive.file` and your account is listed as a test user while the app is in Testing mode.
 
 **Drive uploads started asking for a sign-in again.**
@@ -1277,8 +1280,8 @@ flowchart LR
 File: `static/manifest.json`
 
 - `oauth2.client_id` is Chrome's native sign-in configuration and is **public**: the real value belongs in source control, and the build keeps whatever the source manifest carries. `GOOGLE_OAUTH_CLIENT_ID` overrides it only when a build needs a different client.
-- The non-Chrome targets get no `oauth2` block at all; their OAuth client reaches the bundle as build-time defines from `.env` / shell env keys `GOOGLE_WEB_OAUTH_CLIENT_ID` and `GOOGLE_WEB_OAUTH_CLIENT_SECRET`.
-- If the values a target needs are missing, the build logs a warning and Drive cannot be connected until they are configured.
+- The non-Chrome targets get no `oauth2` block at all; their OAuth client reaches the bundle as build-time defines from `.env` / shell env keys `GOOGLE_WEB_OAUTH_CLIENT_ID` and the optional `GOOGLE_WEB_OAUTH_CLIENT_SECRET`.
+- If the client id a target needs is missing, the build logs a warning and Drive cannot be connected until it is configured. A missing secret is not a misconfiguration: the exchange then relies on PKCE, as a public client should.
 - The extension icon is declared by the top-level `icons` block and `action.default_icon` (sizes 16/32/48/128). The `icon16/32/48/128.png` set lives in `public/`; without it Chrome falls back to a generic grey placeholder for the toolbar button and the extensions menu.
 - Source HTML shells and the source manifest live under `static/`, shared static assets (the `icon*.png` set and the settings-page `gear.png`) live under `public/`, and both are copied to `dist/` at build time. The emitted extension layout in `dist/` is flat because Chrome requires entrypoints at the extension root.
 

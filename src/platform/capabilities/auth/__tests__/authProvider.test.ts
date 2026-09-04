@@ -108,6 +108,22 @@ describe('token endpoint calls', () => {
     expect(init.body).toContain('client_secret=web-secret');
   });
 
+  it('omits the client secret entirely for a public PKCE client', async () => {
+    // `client_secret=` empty is read as a *wrong* secret and answered with
+    // invalid_client; a public client has none, and PKCE authenticates the
+    // exchange instead.
+    (global as any).fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ access_token: 'at', expires_in: 3600 }),
+    });
+
+    await exchangeAuthCodeForToken({ code: 'c', codeVerifier: 'v', config: { ...config, clientSecret: '' } });
+    expect((global.fetch as jest.Mock).mock.calls[0][1].body).not.toContain('client_secret');
+
+    await refreshAccessTokenGrant({ refreshToken: 'rt', config: { ...config, clientSecret: '' } });
+    expect((global.fetch as jest.Mock).mock.calls[1][1].body).not.toContain('client_secret');
+  });
+
   it('spends a refresh token for a new access token', async () => {
     (global as any).fetch = jest.fn().mockResolvedValue({
       ok: true,
