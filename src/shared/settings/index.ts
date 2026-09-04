@@ -22,6 +22,7 @@ export {
   resetExtensionSettingsToDefaults,
   buildRecorderRuntimeSettingsSnapshot,
   buildDefaultRunConfigFromSettings,
+  saveRunConfigAsDefaults,
   getSelfVideoProfileSettings,
   getTabOutputSettings,
   getMicrophoneCaptureSettings,
