@@ -117,11 +117,6 @@ describe('saveRunConfigAsDefaults', () => {
 });
 
 describe('settings', () => {
-  it('migrates anonymous diagnostics as default-on while preserving an explicit opt-out', () => {
-    expect(normalizeExtensionSettings({}).privacy.anonymousDiagnostics).toBe(true);
-    expect(normalizeExtensionSettings({ privacy: { anonymousDiagnostics: false } }).privacy.anonymousDiagnostics).toBe(false);
-  });
-
   it('turns Meet captions on by default while preserving an explicit opt-out', () => {
     // Without captions Meet produces no text at all, so the useful default is on;
     // a user who does not want their Meet UI touched must be able to say so.

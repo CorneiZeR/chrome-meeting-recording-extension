@@ -30,7 +30,6 @@ import type { DriveConnectionView } from '../shared/protocol';
 import { addStorageChangedListener } from '../platform/chrome/storage';
 
 export type SettingsElements = {
-  anonymousDiagnostics: HTMLInputElement | null;
   theme: HTMLSelectElement | null;
   recordingMode: HTMLSelectElement | null;
   micMode: HTMLSelectElement | null;
@@ -105,8 +104,8 @@ export class SettingsController {
     this.wireDriveControls();
 
     this.el.resetBtn?.addEventListener('click', async () => {
-      // Reset drops every section at once, privacy and theme included, so it
-      // asks first rather than being one misclick away.
+      // Reset drops every section at once, the theme included, so it asks
+      // first rather than being one misclick away.
       if (!this.confirmReset()) return;
       try {
         const defaults = await resetExtensionSettingsToDefaults();
@@ -124,7 +123,7 @@ export class SettingsController {
   /** Confirmation seam for Reset; overridden in tests that exercise the reset path. */
   protected confirmReset(): boolean {
     return typeof confirm !== 'function'
-      || confirm('Reset every setting — including the theme and diagnostics choice — back to its default?');
+      || confirm('Reset every setting — the theme included — back to its default?');
   }
 
   /**
@@ -270,7 +269,6 @@ export class SettingsController {
 
   private writeSettingsToForm(settings: Readonly<ExtensionSettings>): void {
     const el = this.el;
-    if (el.anonymousDiagnostics) el.anonymousDiagnostics.checked = settings.privacy.anonymousDiagnostics;
     if (el.theme) el.theme.value = settings.appearance.theme;
     applyThemePreference(settings.appearance.theme);
     if (el.recordingMode) el.recordingMode.value = settings.basic.recordingMode;
@@ -305,9 +303,6 @@ export class SettingsController {
   private readSettingsFromForm(): unknown {
     const el = this.el;
     return {
-      privacy: {
-        anonymousDiagnostics: el.anonymousDiagnostics?.checked !== false,
-      },
       appearance: {
         theme: el.theme?.value,
       },

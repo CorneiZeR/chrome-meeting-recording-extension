@@ -9,7 +9,6 @@ Project documentation. (Architecture lives in the repo-root `README.md` and the 
 | `plans/` | **Living plans** — `perf-optimization-roadmap.md`, `storage-and-instrumentation-architecture.md` |
 | `testing-scenario-a.md`, `testing-scenario-b.md` | real-hardware manual test protocols |
 | `brand/` | brand assets |
-| [`../telemetry-worker/`](../telemetry-worker/README.md) | production telemetry Worker/D1 deployment, migration, retention, and bounded read-only query runbook |
 
 ## Conventions
 

@@ -78,7 +78,6 @@ export function normalizeLegacyVideoFormat(value: unknown): LegacyVideoFormat | 
 /** Clones settings so callers never mutate shared in-memory state by accident. */
 export function cloneSettings(settings: ExtensionSettings): ExtensionSettings {
   return {
-    privacy: { ...settings.privacy },
     appearance: { ...settings.appearance },
     basic: { ...settings.basic },
     professional: { ...settings.professional },
@@ -152,7 +151,6 @@ export function normalizeTabResolutionPreset(professionalCandidate: Record<strin
 export function normalizeExtensionSettings(value: unknown): ExtensionSettings {
   if (!isRecord(value)) return cloneSettings(DEFAULT_EXTENSION_SETTINGS);
   const appearanceCandidate = isRecord(value.appearance) ? value.appearance : {};
-  const privacyCandidate = isRecord(value.privacy) ? value.privacy : {};
   const basicCandidate = isRecord(value.basic) ? value.basic : {};
   const professionalCandidate = isRecord(value.professional) ? value.professional : {};
 
@@ -162,11 +160,6 @@ export function normalizeExtensionSettings(value: unknown): ExtensionSettings {
       : DEFAULT_EXTENSION_SETTINGS.appearance.theme,
   };
 
-  const privacy: ExtensionSettings['privacy'] = {
-    anonymousDiagnostics: typeof privacyCandidate.anonymousDiagnostics === 'boolean'
-      ? privacyCandidate.anonymousDiagnostics
-      : DEFAULT_EXTENSION_SETTINGS.privacy.anonymousDiagnostics,
-  };
 
   const basic: ExtensionSettings['basic'] = {
     recordingMode: hasAllowedString(basicCandidate.recordingMode, RECORDING_MODE_OPTIONS)
@@ -220,7 +213,7 @@ export function normalizeExtensionSettings(value: unknown): ExtensionSettings {
     professional.chunkExtendedTimesliceMs = professional.chunkDefaultTimesliceMs;
   }
 
-  return { privacy, appearance, basic, professional };
+  return { appearance, basic, professional };
 }
 
 /** Validates a frozen recorder snapshot received over RPC without applying defaults. */

@@ -11,14 +11,12 @@ const {
   usesWebAuthFlow,
   applyTargetToManifest,
 } = require('./scripts/lib/manifestTargets.cjs')
-const { telemetryHostPermission, resolveTelemetryEndpoint } = require('./scripts/lib/telemetryEndpoint.cjs')
 const { distDirForTarget } = require('./scripts/lib/releaseArtifacts.cjs')
 const { readProjectEnvValue } = require('./scripts/lib/projectEnv.cjs')
 
 const GOOGLE_OAUTH_CLIENT_ID_ENV_KEY = 'GOOGLE_OAUTH_CLIENT_ID'
 const GOOGLE_WEB_OAUTH_CLIENT_ID_ENV_KEY = 'GOOGLE_WEB_OAUTH_CLIENT_ID'
 const GOOGLE_WEB_OAUTH_CLIENT_SECRET_ENV_KEY = 'GOOGLE_WEB_OAUTH_CLIENT_SECRET'
-const TELEMETRY_ENDPOINT_ENV_KEY = 'TELEMETRY_ENDPOINT'
 // The value the source manifest ships when no real Chrome-extension client id
 // has been committed yet; a build warns instead of silently shipping it.
 const OAUTH_CLIENT_ID_PLACEHOLDER = '__GOOGLE_OAUTH_CLIENT_ID__'
@@ -51,7 +49,7 @@ function resolveBrowserTarget(rawTarget) {
   return target
 }
 
-function transformManifest(content, oauthClientId, isDevBuild, browserTarget, telemetryEndpoint) {
+function transformManifest(content, oauthClientId, isDevBuild, browserTarget) {
   const manifest = JSON.parse(content.toString('utf8'))
   // Per-target manifest decisions (oauth2 / key) live in the tested profile model
   // (scripts/lib/manifestTargets.cjs), keyed off browser family + auth capability.
@@ -67,10 +65,6 @@ function transformManifest(content, oauthClientId, isDevBuild, browserTarget, te
   // and avoids a permission re-review prompt for users.
   if (isDevBuild && Array.isArray(manifest.permissions) && !manifest.permissions.includes('system.cpu')) {
     manifest.permissions.push('system.cpu')
-  }
-  const telemetryPermission = telemetryHostPermission(telemetryEndpoint)
-  if (telemetryPermission && !manifest.host_permissions.includes(telemetryPermission)) {
-    manifest.host_permissions.push(telemetryPermission)
   }
   return Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`)
 }
@@ -102,15 +96,6 @@ module.exports = (_env, argv) => {
   const sourceManifestClientId = JSON.parse(
     fs.readFileSync(path.resolve(__dirname, 'static/manifest.json'), 'utf8')
   ).oauth2?.client_id
-  // An absent endpoint is allowed in every mode: the build ships with
-  // diagnostics inert rather than refusing to run. A malformed one still throws.
-  const telemetry = resolveTelemetryEndpoint(
-    readProjectEnvValue(TELEMETRY_ENDPOINT_ENV_KEY, __dirname),
-    { isDevBuild }
-  )
-  const telemetryEndpoint = telemetry.endpoint
-  if (telemetry.warning) console.warn(`[build] ${telemetry.warning}`)
-
   if (
     !isWebAuthFlowTarget
     && !configuredGoogleOauthClientId
@@ -170,7 +155,6 @@ module.exports = (_env, argv) => {
         '__BROWSER_TARGET__': JSON.stringify(browserTarget),
         '__WEB_OAUTH_CLIENT_ID__': JSON.stringify(webOauthClientId),
         '__WEB_OAUTH_CLIENT_SECRET__': JSON.stringify(webOauthClientSecret),
-        '__TELEMETRY_ENDPOINT__': JSON.stringify(telemetryEndpoint),
         'process.env.NODE_ENV': JSON.stringify(mode),
       }),
       // Stamp the per-compilation content hash into every entry bundle as
@@ -187,7 +171,7 @@ module.exports = (_env, argv) => {
           {
             from: path.join(STATIC_DIR, 'manifest.json'),
             to: 'manifest.json',
-            transform: (content) => transformManifest(content, configuredGoogleOauthClientId, isDevBuild, browserTarget, telemetryEndpoint),
+            transform: (content) => transformManifest(content, configuredGoogleOauthClientId, isDevBuild, browserTarget),
           },
           { from: path.join(STATIC_DIR, 'popup.html'),     to: 'popup.html' },
           ...(isDevBuild ? [{ from: path.join(STATIC_DIR, 'popup-gallery.html'), to: 'popup-gallery.html' }] : []),

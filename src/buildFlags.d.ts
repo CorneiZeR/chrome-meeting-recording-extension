@@ -7,5 +7,3 @@ declare const __POPUP_GALLERY_BUILD__: boolean;
 declare const __BROWSER_TARGET__: string | undefined;
 declare const __WEB_OAUTH_CLIENT_ID__: string | undefined;
 declare const __WEB_OAUTH_CLIENT_SECRET__: string | undefined;
-/** Exact HTTPS telemetry ingestion endpoint injected by webpack. */
-declare const __TELEMETRY_ENDPOINT__: string;

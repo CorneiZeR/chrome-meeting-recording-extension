@@ -214,6 +214,30 @@ describe('scrapingScript', () => {
     expect(lines[0]).toContain('John Doe : Hello world');
   });
 
+  it('re-states the observer count when the background clears the perf snapshot', async () => {
+    // The background wipes the snapshot at the start of each recording, which
+    // discards the attach-time observer count — a steady count is never
+    // reported again, so the diagnostics would show none for the whole run.
+    mountCaptionsRegion(createCaptionBlock('user1', 'John Doe', 'Hello'));
+    await flushMutations();
+    (chrome.runtime.sendMessage as jest.Mock).mockClear();
+
+    const listeners = (chrome.runtime.onMessage.addListener as jest.Mock).mock.calls.map(([listener]) => listener);
+    expect(listeners.length).toBeGreaterThan(0);
+    for (const listener of listeners) listener({ type: 'PERF_REPORT_STATE' }, {}, () => {});
+
+    const reports = (chrome.runtime.sendMessage as jest.Mock).mock.calls
+      .map(([message]) => message)
+      .filter((message) =>
+        message?.type === 'PERF_EVENT'
+        && message.entry?.scope === 'captions'
+        && message.entry?.event === 'observer_count'
+      );
+
+    expect(reports).toHaveLength(1);
+    expect(reports[0].entry.fields).toEqual(expect.objectContaining({ activeBlockObservers: 1 }));
+  });
+
   it('reports caption mutation processing and coalescing diagnostics', async () => {
     const region = mountCaptionsRegion(createCaptionBlock('user1', 'John Doe', 'Hello'));
     await flushMutations();

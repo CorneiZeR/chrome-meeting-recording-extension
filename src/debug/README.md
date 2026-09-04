@@ -8,7 +8,7 @@
 
 A **window onto a snapshot.** The background folds every perf event from every context into one persisted `PerfDebugSnapshot` (in `chrome.storage.session`); this dashboard reads that key, renders its sections, and lets you download it for offline analysis. The mental model: **the dashboard owns no state and changes nothing** — it's a pure projection of a snapshot that lives elsewhere, so it can be opened/closed freely and is safe to leave running.
 
-This local development snapshot is deliberately separate from anonymous production telemetry. Production does not ship this page, event log, raw fields, system information, or percentile samples; it uses a strict allowlisted reducer with bounded totals/maxima and sanitized incidents. See [`shared` production telemetry](../shared/README.md#production-telemetry-contract) and the [Worker runbook](../../telemetry-worker/README.md).
+This snapshot is local development diagnostics and nothing else: a production build ships this page but collects no samples to fill it, and the extension has no telemetry — nothing here is ever reported anywhere.
 
 ## The `PerfDebugSnapshot` (the catalog)
 

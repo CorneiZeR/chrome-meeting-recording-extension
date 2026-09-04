@@ -98,7 +98,7 @@ If the offscreen document dies mid-upload, recovery does **not** resume the aban
 
 Completed jobs persist `driveFolderId`, folder name/link, and each available `driveFileId` into the session/history projections. When the user names that recording, the background builds deterministic targets with `slugifyRecordingTitle` / `buildRenamedRecordingFilename` and calls `OFFSCREEN_RENAME_DRIVE_RESOURCES`; the offscreen owns the token and invokes `DriveMetadataRenamer`.
 
-The renamer first reads every original name, then PATCHes files followed by the folder **sequentially**. If any PATCH fails, it rolls already-changed resources back in reverse order. A complete rollback leaves history untouched and returns an actionable error. If rollback itself is incomplete, the renamer reads current names best-effort and returns them so `RecordingHistoryService` can synchronize history to observable Drive reality rather than claim either the old or requested names. IDs and names remain delivery/history data only—they are excluded from telemetry.
+The renamer first reads every original name, then PATCHes files followed by the folder **sequentially**. If any PATCH fails, it rolls already-changed resources back in reverse order. A complete rollback leaves history untouched and returns an actionable error. If rollback itself is incomplete, the renamer reads current names best-effort and returns them so `RecordingHistoryService` can synchronize history to observable Drive reality rather than claim either the old or requested names. IDs and names remain delivery/history data only.
 
 ## Configuration & flags
 
@@ -115,7 +115,7 @@ The renamer first reads every original name, then PATCHes files followed by the 
 
 ## Observability
 
-Drive upload feeds the `upload.*` section of the local perf snapshot and the production telemetry reducer. The development dashboard retains chunk/job distributions, throughput, concurrency, and fallback detail. Production retains only bounded job/file/chunk/byte counts, request/job duration totals and maxima, retries, concurrency maximum, and completed/partial/failed/canceled outcomes. It never includes Drive IDs, filenames, folder names, links, tokens, or raw errors. Metadata rename is intentionally outside telemetry because its inputs are user and Drive data.
+Drive upload feeds the `upload.*` section of the local perf snapshot: the development dashboard retains chunk/job distributions, throughput, concurrency, and fallback detail. None of it leaves the machine — the extension has no telemetry.
 
 ## Key invariants & gotchas
 

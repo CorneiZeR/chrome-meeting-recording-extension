@@ -25,7 +25,7 @@ import { isOffscreenToBgMessage } from '../shared/protocol';
 
 export type OffscreenStateListener = (msg: Extract<OffscreenToBg, { type: 'OFFSCREEN_STATE' }>) => void;
 export type OffscreenSaveListener = (msg: Extract<OffscreenToBg, { type: 'OFFSCREEN_SAVE' }>) => void;
-export type OffscreenUploadListener = (job: UploadJob, telemetryRunId?: string, telemetrySnapshot?: import('../shared/telemetry').TelemetrySnapshot) => void;
+export type OffscreenUploadListener = (job: UploadJob) => void;
 import { TIMEOUTS } from '../shared/timeouts';
 import { isBusyPhase, isStoppablePhase, normalizePhase, type RecordingPhase, type UploadJob } from '../shared/recording';
 
@@ -370,8 +370,7 @@ export class OffscreenManager {
       else this.activeUploadJobs.delete(msg.job.id);
       if (this.activeUploadJobs.size > 0) this.cancelRecorderTabCleanup();
       this.setBadge(this.lastKnownPhase);
-      if (msg.telemetryRunId || msg.telemetrySnapshot) this.onUploadJobChanged?.(msg.job, msg.telemetryRunId, msg.telemetrySnapshot);
-      else this.onUploadJobChanged?.(msg.job);
+      this.onUploadJobChanged?.(msg.job);
       return;
     }
 

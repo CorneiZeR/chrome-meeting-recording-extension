@@ -18,7 +18,6 @@ The single source of *configuration*. Two responsibilities: (1) hold the user's 
 
 | Field | Type | Drives |
 | :--- | :--- | :--- |
-| `anonymousDiagnostics` | `boolean` (default `true`) | production telemetry collection, checkpoint/outbox retention, sampling, and delivery; `false` immediately broadcasts disablement, resets reducers, deletes telemetry IndexedDB data, and cancels retry alarms |
 
 ### basic
 
@@ -77,7 +76,6 @@ The redesigned Settings page still edits this same schema; it does not introduce
 - **`store.ts`** keeps an in-memory `runtimeSettings` cache and `load`/`save`/`reset` against `chrome.storage.local` (key `EXTENSION_SETTINGS_STORAGE_KEY`). When the storage area is absent (e.g. the e2e tab-capture runtime), it **degrades to defaults** rather than throwing.
 - **`normalize.ts`** is the trust boundary: `normalizeExtensionSettings` coerces any persisted/incoming value into a valid, fully-populated `ExtensionSettings` (every field defaulted), so downstream derive code never sees a partial object.
 - **Legacy migration is built in.** `normalizeLegacyVideoFormat` upgrades the *old numeric* self-video size (`1080 | 720 | 480 | 360`, used before preset selectors existed) into a `ResolutionPreset`, so settings persisted by an older version load losslessly — no migration script. Missing or invalid recording-format fields normalize to their WebM defaults, preserving existing installations. Validation is **bounded**: `normalizePositiveInt` clamps numeric fields to a `[min, max]`, and unknown enum values coerce to the default.
-- **Diagnostics migration is default-on but preserves an explicit opt-out.** A legacy settings object with no `privacy` block receives `anonymousDiagnostics: true`; once stored as `false`, normalization/cloning keeps it false.
 - **The public surface is `index.ts`.** Nothing outside this folder should import `model`/`store`/`normalize`/`defaults` directly.
 
 ## Key invariants & gotchas
@@ -107,7 +105,7 @@ Consumers: the **Settings page** (`../../settings.ts`) edits the schema; the **p
 
 ## Testing notes
 
-- `__tests__/extensionSettings.test.ts` and `settings.test.ts` cover normalization (including default-on diagnostics and preserved opt-out), UI persistence, format migration/cloning/snapshot propagation, the derive math (`resolveTabVideoBitrate` factor + clamp, `tabContentType` selection), and run-config derivation. Telemetry store/runtime tests cover destructive opt-out propagation; the delivered-dimension bitrate path is exercised in `offscreen/__tests__/RecorderEngine.test.ts`.
+- `__tests__/extensionSettings.test.ts` and `settings.test.ts` cover normalization, UI persistence, format migration/cloning/snapshot propagation, the derive math (`resolveTabVideoBitrate` factor + clamp, `tabContentType` selection), and run-config derivation. The delivered-dimension bitrate path is exercised in `offscreen/__tests__/RecorderEngine.test.ts`.
 - Normalization and derivation are pure given a settings object — test with values, no storage mock needed (the storage seam is `hasLocalStorageArea`/`get`/`set`, mocked separately).
 
 ## Related
