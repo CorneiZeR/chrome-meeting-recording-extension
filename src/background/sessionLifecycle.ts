@@ -2,12 +2,13 @@
  * @file background/sessionLifecycle.ts
  *
  * Manages the service-worker keep-alive loop and perf diagnostics clearing
- * that are driven by recording session phase transitions.
+ * that are driven by recording session phase transitions, and the local save of
+ * a finished artifact into its recording's folder.
  */
 
 import { pokeRuntime } from '../platform/chrome/runtime';
 import { awaitDownloadSettled, downloadFile } from '../platform/chrome/downloads';
-import { isBusyPhase, type RecordingPhase } from '../shared/recording';
+import { buildRecordingDownloadPath, isBusyPhase, type RecordingPhase } from '../shared/recording';
 import { broadcastToPopup } from '../shared/messages';
 import type { OffscreenManager } from './OffscreenManager';
 import { debugPerf, nowMs, roundMs } from '../shared/perf';
@@ -45,7 +46,13 @@ export function registerSaveHandler(
 
     if (!blobUrl) return;
 
-    L.log('Saving OFFSCREEN_SAVE via blobUrl', resolvedFilename);
+    // Every artifact of one run goes into that run's own folder, the same one
+    // Drive mode uses. Poured flat into Downloads there was nothing to say which
+    // file belonged to which meeting. Only the download takes the path: history,
+    // its labels and the popup keep the bare filename.
+    const downloadPath = buildRecordingDownloadPath(resolvedFilename);
+
+    L.log('Saving OFFSCREEN_SAVE via blobUrl', downloadPath);
     void (async () => {
       const downloadStartedAt = nowMs();
       let downloadId: number | undefined;
@@ -62,7 +69,7 @@ export function registerSaveHandler(
       }
 
       try {
-        downloadId = await downloadFile({ url: blobUrl, filename: resolvedFilename, saveAs: false });
+        downloadId = await downloadFile({ url: blobUrl, filename: downloadPath, saveAs: false });
         debugPerf(L.log, 'finalizer', 'download_complete', {
           filename: resolvedFilename,
           durationMs: roundMs(nowMs() - downloadStartedAt),

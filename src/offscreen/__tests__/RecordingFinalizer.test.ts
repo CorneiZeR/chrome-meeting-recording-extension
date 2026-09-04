@@ -36,8 +36,8 @@ describe('RecordingFinalizer', () => {
   });
 
   it('requests local downloads in deterministic stream order', async () => {
-    const mic = makeArtifact('mic.webm');
-    const tab = makeArtifact('tab.webm');
+    const mic = makeArtifact('meet-abc-defg-hij-20260618T143045-mic.webm');
+    const tab = makeArtifact('meet-abc-defg-hij-20260618T143045-recording.webm');
 
     const summary = await finalizer.finalize({
       storageMode: 'local',
@@ -48,14 +48,14 @@ describe('RecordingFinalizer', () => {
     });
 
     expect(summary).toBeUndefined();
-    expect(deps.requestSave).toHaveBeenNthCalledWith(1, expect.objectContaining({ stream: 'tab', filename: 'tab.webm', blobUrl: 'blob:4', opfsFilename: 'tab.webm' }));
-    expect(deps.requestSave).toHaveBeenNthCalledWith(2, expect.objectContaining({ stream: 'mic', filename: 'mic.webm', blobUrl: 'blob:4', opfsFilename: 'mic.webm' }));
+    expect(deps.requestSave).toHaveBeenNthCalledWith(1, expect.objectContaining({ stream: 'tab', filename: 'meet-abc-defg-hij-20260618T143045-recording.webm', blobUrl: 'blob:4', opfsFilename: 'meet-abc-defg-hij-20260618T143045-recording.webm' }));
+    expect(deps.requestSave).toHaveBeenNthCalledWith(2, expect.objectContaining({ stream: 'mic', filename: 'meet-abc-defg-hij-20260618T143045-mic.webm', blobUrl: 'blob:4', opfsFilename: 'meet-abc-defg-hij-20260618T143045-mic.webm' }));
   });
 
   it('orders the transcript behind every media stream', async () => {
     const transcript = makeArtifact('transcript.vtt');
-    const tab = makeArtifact('tab.webm');
-    const mic = makeArtifact('mic.webm');
+    const tab = makeArtifact('meet-abc-defg-hij-20260618T143045-recording.webm');
+    const mic = makeArtifact('meet-abc-defg-hij-20260618T143045-mic.webm');
 
     await finalizer.finalize({
       storageMode: 'local',
@@ -72,7 +72,7 @@ describe('RecordingFinalizer', () => {
   });
 
   it('keeps the recording identity with a local fallback after another recording starts', async () => {
-    const tab = makeArtifact('tab.webm');
+    const tab = makeArtifact('meet-abc-defg-hij-20260618T143045-recording.webm');
 
     await finalizer.finalize({
       storageMode: 'local',
@@ -83,16 +83,16 @@ describe('RecordingFinalizer', () => {
     expect(deps.requestSave).toHaveBeenCalledWith({
       historyId: 'recording:n',
       stream: 'tab',
-      filename: 'tab.webm',
+      filename: 'meet-abc-defg-hij-20260618T143045-recording.webm',
       blobUrl: 'blob:4',
-      opfsFilename: 'tab.webm',
+      opfsFilename: 'meet-abc-defg-hij-20260618T143045-recording.webm',
     });
   });
 
   it('continues Drive uploads after one file falls back locally', async () => {
     jest.spyOn(DriveFolderResolver.prototype, 'resolveUploadParentId').mockResolvedValue('folder-1');
     const uploadSpy = jest.spyOn(DriveTarget.prototype, 'upload').mockImplementation(function (this: any) {
-      if (this.filename === 'tab.webm') {
+      if (this.filename === 'meet-abc-defg-hij-20260618T143045-recording.webm') {
         return Promise.reject(new DOMException('network timeout', 'AbortError'));
       }
       return Promise.resolve({
@@ -101,8 +101,8 @@ describe('RecordingFinalizer', () => {
       });
     });
 
-    const tab = makeArtifact('tab.webm');
-    const mic = makeArtifact('mic.webm');
+    const tab = makeArtifact('meet-abc-defg-hij-20260618T143045-recording.webm');
+    const mic = makeArtifact('meet-abc-defg-hij-20260618T143045-mic.webm');
 
     const summary = await finalizer.finalize({
       storageMode: 'drive',
@@ -116,7 +116,7 @@ describe('RecordingFinalizer', () => {
     expect(summary).toEqual({
       uploaded: [{
         stream: 'mic',
-        filename: 'mic.webm',
+        filename: 'meet-abc-defg-hij-20260618T143045-mic.webm',
         bytes: 4,
         driveFileId: 'drive-mic',
         webViewLink: 'https://drive.google.com/file/d/drive-mic/view',
@@ -124,16 +124,18 @@ describe('RecordingFinalizer', () => {
       localFallbacks: [
         {
           stream: 'tab',
-          filename: 'tab.webm',
+          filename: 'meet-abc-defg-hij-20260618T143045-recording.webm',
           bytes: 4,
           error: 'AbortError: network timeout code=20',
         },
       ],
       driveFolderId: 'folder-1',
-      driveFolderName: expect.stringMatching(/^google-meet-/),
+      // Every artifact of a run shares one folder, named for the meeting and
+      // the moment it started — not for the moment the upload happened.
+      driveFolderName: 'meet-abc-defg-hij-20260618T143045',
       folderWebViewLink: 'https://drive.google.com/drive/folders/folder-1',
     });
-    expect(deps.requestSave).toHaveBeenCalledWith(expect.objectContaining({ stream: 'tab', filename: 'tab.webm', blobUrl: 'blob:4', opfsFilename: 'tab.webm' }));
+    expect(deps.requestSave).toHaveBeenCalledWith(expect.objectContaining({ stream: 'tab', filename: 'meet-abc-defg-hij-20260618T143045-recording.webm', blobUrl: 'blob:4', opfsFilename: 'meet-abc-defg-hij-20260618T143045-recording.webm' }));
     expect(tab.cleanup).not.toHaveBeenCalled();
     expect(mic.cleanup).toHaveBeenCalledTimes(1);
   });
@@ -148,7 +150,7 @@ describe('RecordingFinalizer', () => {
       });
     });
     const controller = new AbortController();
-    const tab = makeArtifact('tab.webm');
+    const tab = makeArtifact('meet-abc-defg-hij-20260618T143045-recording.webm');
     const pending = finalizer.finalize({
       storageMode: 'drive',
       artifacts: [{ stream: 'tab', artifact: tab }],
@@ -161,16 +163,16 @@ describe('RecordingFinalizer', () => {
 
     expect(summary?.uploaded).toEqual([]);
     expect(summary?.localFallbacks).toEqual([
-      expect.objectContaining({ stream: 'tab', filename: 'tab.webm', bytes: 4 }),
+      expect.objectContaining({ stream: 'tab', filename: 'meet-abc-defg-hij-20260618T143045-recording.webm', bytes: 4 }),
     ]);
-    expect(deps.requestSave).toHaveBeenCalledWith(expect.objectContaining({ stream: 'tab', filename: 'tab.webm', blobUrl: 'blob:4', opfsFilename: 'tab.webm' }));
+    expect(deps.requestSave).toHaveBeenCalledWith(expect.objectContaining({ stream: 'tab', filename: 'meet-abc-defg-hij-20260618T143045-recording.webm', blobUrl: 'blob:4', opfsFilename: 'meet-abc-defg-hij-20260618T143045-recording.webm' }));
   });
 
   it('marks an upload pending before it starts and clears it on both success and fallback', async () => {
     jest.spyOn(DriveFolderResolver.prototype, 'resolveUploadParentId').mockResolvedValue('folder-1');
     jest.spyOn(DriveTarget.prototype, 'upload').mockImplementation(function (this: any) {
       // tab fails -> local fallback; mic succeeds.
-      return this.filename === 'tab.webm'
+      return this.filename === 'meet-abc-defg-hij-20260618T143045-recording.webm'
         ? Promise.reject(new DOMException('network timeout', 'AbortError'))
         : Promise.resolve(undefined);
     });
@@ -182,8 +184,8 @@ describe('RecordingFinalizer', () => {
     };
     const finalizerWithStore = new RecordingFinalizer({ ...deps, pendingUploads });
 
-    const tab = makeArtifact('tab.webm');
-    const mic = makeArtifact('mic.webm');
+    const tab = makeArtifact('meet-abc-defg-hij-20260618T143045-recording.webm');
+    const mic = makeArtifact('meet-abc-defg-hij-20260618T143045-mic.webm');
 
     await finalizerWithStore.finalize({
       storageMode: 'drive',
@@ -197,14 +199,14 @@ describe('RecordingFinalizer', () => {
 
     // A marker is written before each upload attempt...
     expect(pendingUploads.put).toHaveBeenCalledWith(
-      expect.objectContaining({ opfsFilename: 'mic.webm', filename: 'mic.webm', stream: 'mic', historyId: 'recording:1', jobId: 'job:1' })
+      expect.objectContaining({ opfsFilename: 'meet-abc-defg-hij-20260618T143045-mic.webm', filename: 'meet-abc-defg-hij-20260618T143045-mic.webm', stream: 'mic', historyId: 'recording:1', jobId: 'job:1' })
     );
     expect(pendingUploads.put).toHaveBeenCalledWith(
-      expect.objectContaining({ opfsFilename: 'tab.webm', stream: 'tab', historyId: 'recording:1', jobId: 'job:1' })
+      expect.objectContaining({ opfsFilename: 'meet-abc-defg-hij-20260618T143045-recording.webm', stream: 'tab', historyId: 'recording:1', jobId: 'job:1' })
     );
     // ...and cleared whether the upload succeeds (mic) or falls back locally (tab).
-    expect(pendingUploads.remove).toHaveBeenCalledWith('mic.webm');
-    expect(pendingUploads.remove).toHaveBeenCalledWith('tab.webm');
+    expect(pendingUploads.remove).toHaveBeenCalledWith('meet-abc-defg-hij-20260618T143045-mic.webm');
+    expect(pendingUploads.remove).toHaveBeenCalledWith('meet-abc-defg-hij-20260618T143045-recording.webm');
   });
 
   it('does not write a pending marker when shared Drive setup fails before any upload', async () => {
@@ -218,7 +220,7 @@ describe('RecordingFinalizer', () => {
 
     await finalizerWithStore.finalize({
       storageMode: 'drive',
-      artifacts: [{ stream: 'tab', artifact: makeArtifact('tab.webm') }],
+      artifacts: [{ stream: 'tab', artifact: makeArtifact('meet-abc-defg-hij-20260618T143045-recording.webm') }],
     });
 
     // No upload was attempted, so nothing should have been marked pending.
@@ -242,8 +244,8 @@ describe('RecordingFinalizer', () => {
       })
       .mockResolvedValueOnce({ status: 200 });
 
-    const tab = makeArtifact('tab.webm');
-    const mic = makeArtifact('mic.webm');
+    const tab = makeArtifact('meet-abc-defg-hij-20260618T143045-recording.webm');
+    const mic = makeArtifact('meet-abc-defg-hij-20260618T143045-mic.webm');
 
     const summary = await finalizer.finalize({
       storageMode: 'drive',
@@ -255,12 +257,12 @@ describe('RecordingFinalizer', () => {
 
     expect(summary).toEqual({
       uploaded: [
-        { stream: 'tab', filename: 'tab.webm', bytes: 4 },
-        { stream: 'mic', filename: 'mic.webm', bytes: 4 },
+        { stream: 'tab', filename: 'meet-abc-defg-hij-20260618T143045-recording.webm', bytes: 4 },
+        { stream: 'mic', filename: 'meet-abc-defg-hij-20260618T143045-mic.webm', bytes: 4 },
       ],
       localFallbacks: [],
       driveFolderId: 'folder-1',
-      driveFolderName: expect.stringMatching(/^google-meet-/),
+      driveFolderName: 'meet-abc-defg-hij-20260618T143045',
       folderWebViewLink: 'https://drive.google.com/drive/folders/folder-1',
     });
     expect(deps.getDriveToken).toHaveBeenCalledTimes(1);
@@ -286,8 +288,8 @@ describe('RecordingFinalizer', () => {
       return undefined;
     });
 
-    const tab = makeArtifact('tab.webm');
-    const mic = makeArtifact('mic.webm');
+    const tab = makeArtifact('meet-abc-defg-hij-20260618T143045-recording.webm');
+    const mic = makeArtifact('meet-abc-defg-hij-20260618T143045-mic.webm');
     const finalizePromise = finalizer.finalize({
       storageMode: 'drive',
       artifacts: [
@@ -306,12 +308,12 @@ describe('RecordingFinalizer', () => {
     expect(maxActiveUploads).toBe(2);
     expect(summary).toEqual({
       uploaded: [
-        { stream: 'tab', filename: 'tab.webm', bytes: 4 },
-        { stream: 'mic', filename: 'mic.webm', bytes: 4 },
+        { stream: 'tab', filename: 'meet-abc-defg-hij-20260618T143045-recording.webm', bytes: 4 },
+        { stream: 'mic', filename: 'meet-abc-defg-hij-20260618T143045-mic.webm', bytes: 4 },
       ],
       localFallbacks: [],
       driveFolderId: 'folder-1',
-      driveFolderName: expect.stringMatching(/^google-meet-/),
+      driveFolderName: 'meet-abc-defg-hij-20260618T143045',
       folderWebViewLink: 'https://drive.google.com/drive/folders/folder-1',
     });
   });
@@ -320,8 +322,8 @@ describe('RecordingFinalizer', () => {
     jest.spyOn(DriveFolderResolver.prototype, 'resolveUploadParentId').mockRejectedValue(new Error('folder lookup failed'));
     const uploadSpy = jest.spyOn(DriveTarget.prototype, 'upload');
 
-    const tab = makeArtifact('tab.webm');
-    const mic = makeArtifact('mic.webm');
+    const tab = makeArtifact('meet-abc-defg-hij-20260618T143045-recording.webm');
+    const mic = makeArtifact('meet-abc-defg-hij-20260618T143045-mic.webm');
 
     const summary = await finalizer.finalize({
       storageMode: 'drive',
@@ -335,13 +337,13 @@ describe('RecordingFinalizer', () => {
     expect(summary).toEqual({
       uploaded: [],
       localFallbacks: [
-        { stream: 'tab', filename: 'tab.webm', bytes: 4, error: 'Error: folder lookup failed' },
-        { stream: 'mic', filename: 'mic.webm', bytes: 4, error: 'Error: folder lookup failed' },
+        { stream: 'tab', filename: 'meet-abc-defg-hij-20260618T143045-recording.webm', bytes: 4, error: 'Error: folder lookup failed' },
+        { stream: 'mic', filename: 'meet-abc-defg-hij-20260618T143045-mic.webm', bytes: 4, error: 'Error: folder lookup failed' },
       ],
-      driveFolderName: expect.stringMatching(/^google-meet-/),
+      driveFolderName: 'meet-abc-defg-hij-20260618T143045',
     });
-    expect(deps.requestSave).toHaveBeenNthCalledWith(1, expect.objectContaining({ stream: 'tab', filename: 'tab.webm', blobUrl: 'blob:4', opfsFilename: 'tab.webm' }));
-    expect(deps.requestSave).toHaveBeenNthCalledWith(2, expect.objectContaining({ stream: 'mic', filename: 'mic.webm', blobUrl: 'blob:4', opfsFilename: 'mic.webm' }));
+    expect(deps.requestSave).toHaveBeenNthCalledWith(1, expect.objectContaining({ stream: 'tab', filename: 'meet-abc-defg-hij-20260618T143045-recording.webm', blobUrl: 'blob:4', opfsFilename: 'meet-abc-defg-hij-20260618T143045-recording.webm' }));
+    expect(deps.requestSave).toHaveBeenNthCalledWith(2, expect.objectContaining({ stream: 'mic', filename: 'meet-abc-defg-hij-20260618T143045-mic.webm', blobUrl: 'blob:4', opfsFilename: 'meet-abc-defg-hij-20260618T143045-mic.webm' }));
   });
 
   it('preserves deterministic summary order when parallel uploads finish with mixed outcomes', async () => {
@@ -349,7 +351,7 @@ describe('RecordingFinalizer', () => {
     PERF_FLAGS.parallelUploadConcurrency = 2;
     jest.spyOn(DriveFolderResolver.prototype, 'resolveUploadParentId').mockResolvedValue('folder-1');
     jest.spyOn(DriveTarget.prototype, 'upload').mockImplementation(function (this: any) {
-      if (this.filename === 'tab.webm') {
+      if (this.filename === 'meet-abc-defg-hij-20260618T143045-recording.webm') {
         return Promise.reject(new DOMException('network timeout', 'AbortError'));
       }
       return Promise.resolve({
@@ -358,8 +360,8 @@ describe('RecordingFinalizer', () => {
       });
     });
 
-    const tab = makeArtifact('tab.webm');
-    const mic = makeArtifact('mic.webm');
+    const tab = makeArtifact('meet-abc-defg-hij-20260618T143045-recording.webm');
+    const mic = makeArtifact('meet-abc-defg-hij-20260618T143045-mic.webm');
 
     const summary = await finalizer.finalize({
       storageMode: 'drive',
@@ -372,19 +374,19 @@ describe('RecordingFinalizer', () => {
     expect(summary).toEqual({
       uploaded: [{
         stream: 'mic',
-        filename: 'mic.webm',
+        filename: 'meet-abc-defg-hij-20260618T143045-mic.webm',
         bytes: 4,
         driveFileId: 'drive-mic',
         webViewLink: 'https://drive.google.com/file/d/drive-mic/view',
       }],
       localFallbacks: [
-        { stream: 'tab', filename: 'tab.webm', bytes: 4, error: 'AbortError: network timeout code=20' },
+        { stream: 'tab', filename: 'meet-abc-defg-hij-20260618T143045-recording.webm', bytes: 4, error: 'AbortError: network timeout code=20' },
       ],
       driveFolderId: 'folder-1',
-      driveFolderName: expect.stringMatching(/^google-meet-/),
+      driveFolderName: 'meet-abc-defg-hij-20260618T143045',
       folderWebViewLink: 'https://drive.google.com/drive/folders/folder-1',
     });
-    expect(deps.requestSave).toHaveBeenCalledWith(expect.objectContaining({ stream: 'tab', filename: 'tab.webm', blobUrl: 'blob:4', opfsFilename: 'tab.webm' }));
+    expect(deps.requestSave).toHaveBeenCalledWith(expect.objectContaining({ stream: 'tab', filename: 'meet-abc-defg-hij-20260618T143045-recording.webm', blobUrl: 'blob:4', opfsFilename: 'meet-abc-defg-hij-20260618T143045-recording.webm' }));
     expect(mic.cleanup).toHaveBeenCalledTimes(1);
     expect(tab.cleanup).not.toHaveBeenCalled();
   });
@@ -408,8 +410,8 @@ describe('RecordingFinalizer', () => {
       storageMode: 'drive',
       onUploadProgress,
       artifacts: [
-        { stream: 'tab', artifact: makeArtifact('tab.webm') },
-        { stream: 'mic', artifact: makeArtifact('mic.webm') },
+        { stream: 'tab', artifact: makeArtifact('meet-abc-defg-hij-20260618T143045-recording.webm') },
+        { stream: 'mic', artifact: makeArtifact('meet-abc-defg-hij-20260618T143045-mic.webm') },
       ],
     });
 
@@ -422,7 +424,7 @@ describe('RecordingFinalizer', () => {
     PERF_FLAGS.parallelUploadConcurrency = 1;
     jest.spyOn(DriveFolderResolver.prototype, 'resolveUploadParentId').mockResolvedValue('folder-1');
     jest.spyOn(DriveTarget.prototype, 'upload').mockImplementation(function (this: any) {
-      return this.filename === 'tab.webm'
+      return this.filename === 'meet-abc-defg-hij-20260618T143045-recording.webm'
         ? Promise.reject(new DOMException('network timeout', 'AbortError'))
         : Promise.resolve(undefined);
     });
@@ -433,8 +435,8 @@ describe('RecordingFinalizer', () => {
       storageMode: 'drive',
       onUploadProgress,
       artifacts: [
-        { stream: 'tab', artifact: makeArtifact('tab.webm') },
-        { stream: 'mic', artifact: makeArtifact('mic.webm') },
+        { stream: 'tab', artifact: makeArtifact('meet-abc-defg-hij-20260618T143045-recording.webm') },
+        { stream: 'mic', artifact: makeArtifact('meet-abc-defg-hij-20260618T143045-mic.webm') },
       ],
     });
 
@@ -448,11 +450,11 @@ describe('RecordingFinalizer', () => {
 
     const summary = await finalizer.finalize({
       storageMode: 'drive',
-      artifacts: [{ stream: 'tab', artifact: makeArtifact('tab.webm') }],
+      artifacts: [{ stream: 'tab', artifact: makeArtifact('meet-abc-defg-hij-20260618T143045-recording.webm') }],
     });
 
-    expect(summary?.localFallbacks).toEqual([{ stream: 'tab', filename: 'tab.webm', bytes: 4, error: expect.any(String) }]);
-    expect(deps.requestSave).toHaveBeenCalledWith(expect.objectContaining({ stream: 'tab', filename: 'tab.webm', blobUrl: expect.any(String), opfsFilename: 'tab.webm' }));
+    expect(summary?.localFallbacks).toEqual([{ stream: 'tab', filename: 'meet-abc-defg-hij-20260618T143045-recording.webm', bytes: 4, error: expect.any(String) }]);
+    expect(deps.requestSave).toHaveBeenCalledWith(expect.objectContaining({ stream: 'tab', filename: 'meet-abc-defg-hij-20260618T143045-recording.webm', blobUrl: expect.any(String), opfsFilename: 'meet-abc-defg-hij-20260618T143045-recording.webm' }));
   });
 
   it('skips the local-download failsafe on a retry (no duplicate copy)', async () => {
@@ -462,11 +464,11 @@ describe('RecordingFinalizer', () => {
     const summary = await finalizer.finalize({
       storageMode: 'drive',
       skipLocalFallback: true,
-      artifacts: [{ stream: 'tab', artifact: makeArtifact('tab.webm') }],
+      artifacts: [{ stream: 'tab', artifact: makeArtifact('meet-abc-defg-hij-20260618T143045-recording.webm') }],
     });
 
     // Still reported as not-uploaded — but NOT re-downloaded (the original failure saved it).
-    expect(summary?.localFallbacks).toEqual([{ stream: 'tab', filename: 'tab.webm', bytes: 4, error: expect.any(String) }]);
+    expect(summary?.localFallbacks).toEqual([{ stream: 'tab', filename: 'meet-abc-defg-hij-20260618T143045-recording.webm', bytes: 4, error: expect.any(String) }]);
     expect(deps.requestSave).not.toHaveBeenCalled();
   });
 });

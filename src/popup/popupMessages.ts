@@ -4,6 +4,7 @@
  * User-facing popup copy and small string-formatting helpers.
  */
 
+import { RECORDINGS_ROOT_FOLDER_NAME } from '../shared/recording';
 import type { MicMode } from '../shared/recording';
 
 const DEFAULT_RECORDING_FILENAME = 'recording.webm';
@@ -89,8 +90,15 @@ export function buildMicPermissionError(micMode: MicMode): string {
 export const CAMERA_PERMISSION_ERROR =
   'Camera permission is required for "Record my camera separately". A setup tab was opened. Enable camera there and start again.';
 
-/** Builds the transcript filename using the meeting id when one is available. */
+/**
+ * Builds the on-demand transcript download path.
+ *
+ * It lands in the shared recordings root rather than loose in Downloads, but
+ * not in a per-recording folder: this export is taken whenever the user asks,
+ * so it belongs to no run's stamp and inventing one would scatter single files
+ * across folders that hold nothing else.
+ */
 export function buildTranscriptFilename(meetingId?: string, now = Date.now()): string {
   const suffix = meetingId || DEFAULT_TRANSCRIPT_SUFFIX;
-  return `${TRANSCRIPT_FILENAME_PREFIX}-${suffix}-${now}.txt`;
+  return `${RECORDINGS_ROOT_FOLDER_NAME}/${TRANSCRIPT_FILENAME_PREFIX}-${suffix}-${now}.txt`;
 }

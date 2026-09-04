@@ -92,7 +92,7 @@ If the offscreen document dies mid-upload, recovery does **not** resume the aban
 
 ## Folder resolution
 
-`DriveFolderResolver` resolves `rootFolderName / recordingFolderName` to a parent id, creating folders as needed (`DRIVE_ROOT_FOLDER_NAME = "Google Meet Records"`). It caches a recording-folder **flight** statically (shared across `DriveTarget` instances, so the several files of one recording resolve the folder once and race-free), evicting a failed or fully canceled flight. Folder-name lookups escape the Drive query literal (`'` and `\`) to keep the `q=` search safe. Each flight owns an `AbortController`: it passes that signal into lookup/create requests, but aborts only when no cancelable caller remains. This preserves shared work without leaving abandoned Drive setup running.
+`DriveFolderResolver` resolves `rootFolderName / recordingFolderName` to a parent id, creating folders as needed (`DRIVE_ROOT_FOLDER_NAME = "Google Meet Records"`). The recording folder name comes from [`shared/recordingNames`](../../shared/README.md) (`deriveRecordingFolderName`), shared with the local download path so both storage modes file a run under the same `<slug>-<stamp>` folder. It caches a recording-folder **flight** statically (shared across `DriveTarget` instances, so the several files of one recording resolve the folder once and race-free), evicting a failed or fully canceled flight. Folder-name lookups escape the Drive query literal (`'` and `\`) to keep the `q=` search safe. Each flight owns an `AbortController`: it passes that signal into lookup/create requests, but aborts only when no cancelable caller remains. This preserves shared work without leaving abandoned Drive setup running.
 
 ## Post-upload metadata rename
 
@@ -140,7 +140,6 @@ Drive upload feeds the `upload.*` section of the local perf snapshot and the pro
 | `request.ts` | `driveFetch` (real / E2E bridge), `createCachedTokenProvider`, `fetchWithAuthRetry` |
 | `errors.ts` | `formatDriveError` (status + detail + actionable hint), `readDriveErrorDetail` |
 | `constants.ts` | endpoints, chunk-sizing + retry/backoff constants |
-| `folderNaming.ts` | derives the recording folder name from filenames |
 
 Orchestrator: [`../DriveTarget.ts`](../DriveTarget.ts) (per-file upload, adaptive chunk sizing, shared folder-resolver/token context).
 

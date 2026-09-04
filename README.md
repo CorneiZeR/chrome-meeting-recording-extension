@@ -45,7 +45,7 @@ Everything runs in your browser. Capture is **local-first**: recording data stre
 
 **State-driven popup** — a different layout per capture phase: a clean **configuration** screen before recording, a **recording** screen with a red banner, a pause-aware elapsed **timer** (counts recorded time only — it freezes on pause and equals the saved file's duration), a read-only live **mic meter**, status chips (a Transcript indicator that tracks whether Meet captions are actually on, plus the storage target), mic/camera **toggle rows**, and a short **finalizing** screen while capture seals.
 
-**Local or Google Drive output** — finalized files download locally or enter a detached background upload to `Google Meet Records/<meeting-id>-<timestamp>/` in Drive. Capture returns to idle as soon as a Drive job is queued, so another recording can start; the job has its own progress tab, is retryable briefly after a fallback, and falls back per file to a local download on failure or cancellation. After a successful Drive upload, the popup offers a one-time naming prompt: saving renames the Drive folder and every uploaded media file, while Skip leaves their original names unchanged.
+**Local or Google Drive output** — finalized files download locally or enter a detached background upload to `Google Meet Records/<slug>-<stamp>/` in Drive. Capture returns to idle as soon as a Drive job is queued, so another recording can start; the job has its own progress tab, is retryable briefly after a fallback, and falls back per file to a local download on failure or cancellation. After a successful Drive upload, the popup offers a one-time naming prompt: saving renames the Drive folder and every uploaded media file, while Skip leaves their original names unchanged.
 
 **Recording history** — the popup opens a paginated, IndexedDB-backed history page for local and Drive artifacts. A local recording rename changes its history label; a modern Drive recording rename updates the remote folder and uploaded filenames before committing the matching history projection, rolling completed remote changes back if a later rename fails. Open a confirmed local download or Drive file, or hide its history entry without deleting the underlying file. Pending and unavailable recovery outcomes are shown honestly rather than reported as saved.
 
@@ -144,7 +144,7 @@ All three commands compile TypeScript via `ts-loader`, copy HTML shells, styles,
 
 ### Transcript
 
-**Download Transcript** — saves `google-meet-transcript-<meeting-id>-<timestamp>.txt` from the buffered live captions. Captions must be enabled in Google Meet before the meeting or the buffer will be empty.
+**Download Transcript** — saves `Google Meet Records/google-meet-transcript-<meeting-id>-<timestamp>.txt` from the buffered live captions. Captions must be enabled in Google Meet before the meeting or the buffer will be empty.
 
 ### Recording
 
@@ -164,7 +164,7 @@ All three commands compile TypeScript via `ts-loader`, copy HTML shells, styles,
 
 **Start Recording** — begins capturing the current tab (video + system audio). The extension asks Chrome for the selected tab resolution preset as the capture ceiling. Actual resolution still depends on Chrome tab-capture behavior and what Meet renders into the tab.
 
-**Stop Recording** — releases the extension-owned camera immediately, seals all active recorders, and runs the delivery handoff. The extension also stops the active run if the recorded tab closes, navigates away from the meeting, or the Meet page stays in an ended-call state for 30 seconds. In local mode a file download begins; in Drive mode a detached upload job starts and capture returns to idle immediately.
+**Stop Recording** — releases the extension-owned camera immediately, seals all active recorders, and runs the delivery handoff. The extension also stops the active run if the recorded tab closes, navigates away from the meeting, or the Meet page stays in an ended-call state for 30 seconds. In local mode a download begins into this run's own `Google Meet Records/<slug>-<stamp>/` folder; in Drive mode a detached upload job starts and capture returns to idle immediately.
 
 **Discard Recording** — stops the active capture and deletes its temporary artifacts instead of downloading or uploading them. The action waits for cleanup; if cleanup fails, the popup reports the error and does not claim the recording was discarded.
 
@@ -256,17 +256,28 @@ Production builds require `TELEMETRY_ENDPOINT` to be the exact HTTPS `/api/telem
 
 ## Output files
 
-All filenames include the Google Meet meeting ID suffix and a UTC timestamp.
+Every artifact of one recording shares a **context slug** and a **UTC run stamp**
+(`YYYYMMDDTHHMMSS`), which is what groups them: the slug is `meet-<meeting-code>`
+on Google Meet, a slug of the page title on any other tab, and absent when there
+is neither.
 
 | Artifact | Filename pattern |
 | :--- | :--- |
-| Tab recording | `google-meet-recording-<meet-suffix>-<timestamp>.webm` (default) or `.mp4` |
-| Microphone (separate mode) | `google-meet-mic-<meet-suffix>-<timestamp>.webm` (default) or `.m4a` |
-| Self-video | `google-meet-self-video-<meet-suffix>-<timestamp>.webm` (default) or `.mp4` |
-| Transcript (saved with a recording) | `google-meet-<meet-suffix>-<timestamp>-transcript.vtt` |
+| Tab recording | `<slug>-<stamp>-recording.webm` (default) or `.mp4` |
+| Microphone (separate mode) | `<slug>-<stamp>-mic.webm` (default) or `.m4a` |
+| Self-video | `<slug>-<stamp>-self-video.webm` (default) or `.mp4` |
+| Transcript (saved with a recording) | `<slug>-<stamp>-transcript.vtt` |
 | Transcript (**Download Transcript** button) | `google-meet-transcript-<meet-suffix>-<timestamp>.txt` |
 
-In Drive mode, all artifacts for one recording session are uploaded to a per-recording folder: `Google Meet Records/<meeting-id>-<timestamp>/`. The detached upload tab and recording history expose the folder and per-file Drive links once Drive returns them. Naming a completed Drive recording slugifies the title for the folder and preserves each artifact extension while producing `<slug>-recording.<ext>`, `<slug>-mic.<ext>`, `<slug>-self-video.<ext>`, and `<slug>-transcript.vtt` filenames. The metadata update is sequential and rollback-aware so history is not advanced to names Drive did not accept.
+**Recordings are filed per meeting, in both storage modes.** A run's artifacts go
+into `Google Meet Records/<slug>-<stamp>/` — the same root and the same
+per-recording folder whether they are downloaded locally or uploaded to Drive, so
+switching storage mode does not change where you look for them. Locally that path
+is relative to your browser's downloads directory and Chrome creates the folders;
+the on-demand transcript export lands in the root rather than in a run's folder,
+because it belongs to no single run.
+
+In Drive mode that folder is created remotely: `Google Meet Records/<slug>-<stamp>/`. The detached upload tab and recording history expose the folder and per-file Drive links once Drive returns them. Naming a completed Drive recording slugifies the title for the folder and preserves each artifact extension while producing `<slug>-recording.<ext>`, `<slug>-mic.<ext>`, `<slug>-self-video.<ext>`, and `<slug>-transcript.vtt` filenames. The metadata update is sequential and rollback-aware so history is not advanced to names Drive did not accept.
 
 ---
 
@@ -332,7 +343,7 @@ Chromium capture and offscreen-media APIs.
 **Drive folder structure** — Drive mode auto-creates:
 
 - Root folder: `Google Meet Records` (created once, reused)
-- Per-recording folder: `<meeting-id>-<timestamp>` (created fresh each run)
+- Per-recording folder: `<slug>-<stamp>` (created fresh each run; the same folder the local downloads use)
 
 ---
 

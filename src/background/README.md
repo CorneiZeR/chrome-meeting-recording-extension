@@ -120,7 +120,7 @@ Production telemetry is a separate bounded path owned by `TelemetryRuntime`. It 
 | `RecordingHistoryService.ts` | history transitions for pending files, settled downloads, Drive jobs, rename/delete, and opening local downloads |
 | `TelemetryRuntime.ts` | production telemetry preference, per-run coordination, recovery, outbox delivery, retry alarms, and opt-out deletion |
 | `phaseWatchdog.ts` | liveness backstop for orphaned `starting`/`stopping` |
-| `sessionLifecycle.ts` | keep-alive loop, crash-safe save handler, and `isFreshRecordingStart` (resets diagnostics at the start of a new run, so a finished run's snapshot survives for export) |
+| `sessionLifecycle.ts` | keep-alive loop, crash-safe save handler (downloads each artifact into its run's `Google Meet Records/<slug>-<stamp>/` folder, while history and the popup keep the bare filename), and `isFreshRecordingStart` (resets diagnostics at the start of a new run, so a finished run's snapshot survives for export) |
 | `recordingAutoStop.ts` | auto-stop when the recorded tab is **closed** or **navigates away** from the meeting → `controller.stop()` |
 | `recordingCommands.ts` | keyboard-shortcut start path (preserves `activeTab`) |
 | `messageHandlers.ts` | registers the `chrome.runtime.onMessage` listener and dispatches popup commands to their handlers |

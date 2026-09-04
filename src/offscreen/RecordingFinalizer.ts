@@ -7,11 +7,11 @@
  * with bounded concurrency, and falls back to local download per-file if Drive fails.
  */
 
+import { deriveRecordingFolderName } from '../shared/recording';
 import type { RecordingArtifactContext, RecordingStream, UploadSummary } from '../shared/recording';
 import { DriveTarget } from './DriveTarget';
 import { DriveFolderResolver } from './drive/DriveFolderResolver';
 import { DRIVE_ROOT_FOLDER_NAME } from './drive/constants';
-import { inferDriveRecordingFolderName } from './drive/folderNaming';
 import { createCachedTokenProvider, type TokenProvider } from './drive/request';
 import type { PendingUploadStore } from './drive/PendingUploadStore';
 import { describeRuntimeError } from './errors';
@@ -125,7 +125,7 @@ export class RecordingFinalizer {
     }
 
     if (options.storageMode === 'drive') {
-      const recordingFolderName = inferDriveRecordingFolderName(orderedArtifacts[0].artifact.filename);
+      const recordingFolderName = deriveRecordingFolderName(orderedArtifacts[0].artifact.filename);
       const summary = await this.uploadArtifactsToDrive(
         orderedArtifacts,
         recordingFolderName,

@@ -64,11 +64,11 @@ describe('popupMessages', () => {
 
   describe('buildTranscriptFilename', () => {
     it('uses the meeting id when available', () => {
-      expect(buildTranscriptFilename('abc-defg-hij', 1700)).toBe('google-meet-transcript-abc-defg-hij-1700.txt');
+      expect(buildTranscriptFilename('abc-defg-hij', 1700)).toBe('Google Meet Records/google-meet-transcript-abc-defg-hij-1700.txt');
     });
 
     it('falls back to a generic suffix without a meeting id', () => {
-      expect(buildTranscriptFilename(undefined, 1700)).toBe('google-meet-transcript-google-meet-1700.txt');
+      expect(buildTranscriptFilename(undefined, 1700)).toBe('Google Meet Records/google-meet-transcript-google-meet-1700.txt');
     });
   });
 });

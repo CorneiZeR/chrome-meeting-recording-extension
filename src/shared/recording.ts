@@ -36,6 +36,11 @@ export type {
 export {
   buildRenamedRecordingFilename,
   slugifyRecordingTitle,
+  RECORDINGS_ROOT_FOLDER_NAME,
+  parseRecordingFilename,
+  isRecordingFilename,
+  deriveRecordingFolderName,
+  buildRecordingDownloadPath,
 } from './recordingNames';
 
 export {
