@@ -20,10 +20,6 @@ export type ResolutionDimensions = {
 };
 
 export type ExtensionSettings = {
-  privacy: {
-    /** Sends bounded anonymous recording diagnostics. No media, names, captions, identifiers, messages, or raw stacks. */
-    anonymousDiagnostics: boolean;
-  };
   appearance: {
     theme: ThemePreference;
   };

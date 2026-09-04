@@ -4,13 +4,7 @@ import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
 const { toChromeManifestVersion } = require('./lib/manifestVersion.cjs');
-const { readProjectEnvValue } = require('./lib/projectEnv.cjs');
 const pkg = require('../package.json');
-// Read it exactly as the build does — shell first, then the project's `.env`.
-// Reading only the shell made a `.env`-configured endpoint invisible here, so
-// the guard would report "diagnostics inert" about a build that had in fact
-// embedded the endpoint and its host permission.
-const telemetryEndpoint = readProjectEnvValue('TELEMETRY_ENDPOINT', process.cwd());
 
 // Every browser target is guarded, not just the default `dist/` one: the
 // per-target release zips ship the same code and must be equally free of E2E
@@ -41,19 +35,6 @@ async function collectFiles(directory) {
 
 const files = await collectFiles(distDir);
 const violations = [];
-let telemetryOrigin = '';
-// No endpoint is a supported build: diagnostics stay inert and no host
-// permission is injected, so there is nothing here to compare against. A
-// *configured* endpoint must still match exactly what the build embedded.
-if (telemetryEndpoint) {
-  try {
-    const url = new URL(telemetryEndpoint);
-    if (url.protocol !== 'https:' || url.pathname !== '/api/telemetry/batches' || url.search || url.hash || url.username || url.password) throw new Error('invalid shape');
-    telemetryOrigin = url.origin;
-  } catch {
-    violations.push('TELEMETRY_ENDPOINT must be the exact HTTPS /api/telemetry/batches endpoint used for this build');
-  }
-}
 for (const file of files.filter((candidate) => candidate.endsWith('.js'))) {
   const source = await fs.readFile(file, 'utf8');
   for (const marker of forbiddenMarkers) {
@@ -74,12 +55,6 @@ try {
   } else if (manifest.version !== expectedVersion) {
     violations.push(`${distName}/manifest.json version "${manifest.version}" != package.json-derived "${expectedVersion}"`);
   }
-  if (telemetryOrigin && !manifest.host_permissions?.includes(`${telemetryOrigin}/*`)) {
-    violations.push(`${distName}/manifest.json is missing the exact telemetry host permission ${telemetryOrigin}/*`);
-  }
-  if (!manifest.permissions?.includes('alarms')) {
-    violations.push(`${distName}/manifest.json is missing the alarms permission required for bounded one-shot telemetry retries`);
-  }
 } catch (error) {
   violations.push(`cannot validate ${distName}/manifest.json version: ${error.message}`);
 }
@@ -88,13 +63,7 @@ if (violations.length) {
   console.error(`Production build (${distName}) failed guards:\n${violations.join('\n')}`);
   process.exitCode = 1;
 } else {
-  // Say which telemetry configuration was actually validated: claiming an
-  // endpoint permission "is present" for a build that has no endpoint would
-  // make the guard's own output the least trustworthy line in the log.
-  const telemetryState = telemetryOrigin
-    ? `telemetry endpoint permission (${telemetryOrigin}/*)`
-    : 'no telemetry endpoint configured (diagnostics inert)';
   console.log(
-    `Production build (${distName}) clean: version ${expectedVersion}, ${telemetryState}, and retry alarm are present; no synthetic capture, fake OAuth, Drive fetch bridge, or live-E2E recorder-tab markers.`
+    `Production build (${distName}) clean: version ${expectedVersion}; no synthetic capture, fake OAuth, Drive fetch bridge, or live-E2E recorder-tab markers.`
   );
 }

@@ -12,7 +12,7 @@ Everything runs in your browser. Capture is **local-first**: recording data stre
 
 ## Why this extension
 
-- **Private by design** — media and captions never enter diagnostics. Optional anonymous diagnostics send only bounded aggregates and sanitized error fingerprints; a transcript leaves the page only with the recording it belongs to — saved beside it locally or uploaded into the same Drive folder — or when you download it yourself.
+- **Private by design** — nothing is reported anywhere. The extension has no telemetry, no analytics and no network destination of its own: a transcript leaves the page only with the recording it belongs to — saved beside it locally or uploaded into the same Drive folder — or when you download it yourself. Diagnostics exist, but they stay on the machine and are read in the local debug dashboard.
 - **Built for long meetings** — chunks stream to disk continuously, so memory stays flat on multi-hour recordings instead of growing until the tab crashes.
 - **Efficient encoding** — the camera bitrate adapts to the frame Chrome actually delivers (and defaults to 24 fps for a talking head), and the tab bitrate follows its content type — so files and CPU stay low with no visible quality loss.
 - **Flexible per run** — microphone off / mixed / separate, optional camera, screen-vs-video tab quality, and local-or-Drive, all chosen per recording.
@@ -53,7 +53,6 @@ Everything runs in your browser. Capture is **local-first**: recording data stre
 
 **Diagnostics dashboard** (dev builds) — aggregates structured perf events from every runtime context: recorder start latency, chunk persistence, audio-bridge behavior, Drive upload timings, memory, event-loop lag, and long tasks (offscreen and the Meet-tab main thread).
 
-**Anonymous production diagnostics** — enabled by default with an opt-out in Settings. The extension keeps bounded counters/totals/maxima locally, checkpoints active runs once per minute, and sends compact completion summaries plus incident breadcrumbs only for failures or data-loss risks. It never sends recording media, captions, meeting/file names, Drive or device identifiers, OAuth data, raw error messages, raw stacks, a persistent browser identity, or per-event network requests. Pending diagnostics are deleted immediately on opt-out.
 
 ---
 
@@ -63,7 +62,7 @@ Everything runs in your browser. Capture is **local-first**: recording data stre
 - **Node.js 20+** and **npm** — only to build from source; the [prebuilt release zips](#install-a-prebuilt-release-no-node-required) need no toolchain.
 - **FFmpeg and FFprobe** for performance E2E artifact analysis.
 
-The extension requests the following Chrome permissions: `activeTab`, `downloads`, `downloads.open`, `tabCapture`, `offscreen`, `storage`, `tabs`, `desktopCapture`, `alarms`. The one-shot alarm retries a queued anonymous diagnostics batch after a retryable network failure; it does not create a periodic heartbeat.
+The extension requests the following Chrome permissions: `activeTab`, `downloads`, `downloads.open`, `tabCapture`, `offscreen`, `storage`, `tabs`, `desktopCapture`, `identity`, `identity.email`. There is no `alarms` permission and no host permission beyond Meet and the Google APIs the uploader talks to: nothing is scheduled and nothing is reported.
 
 Drive mode additionally requires: `identity` and host access to `https://www.googleapis.com/*`.
 
@@ -88,9 +87,9 @@ git clone https://github.com/kstroevsky/chrome-meeting-recording-extension.git
 cd chrome-recording-transcription-extension
 npm install
 
-# 2. Build production with the deployed write-only telemetry endpoint
-TELEMETRY_ENDPOINT=https://recording-extension-telemetry.kstroevsky.workers.dev/api/telemetry/batches npm run build
-# outputs to ./dist; TELEMETRY_ENDPOINT is optional in every mode
+# 2. Build production
+npm run build
+# outputs to ./dist; a production build needs no environment configuration
 
 # 3. Load into Chrome
 #    chrome://extensions → Developer mode ON → Load unpacked → select ./dist
@@ -199,7 +198,7 @@ Use the history icon in the popup header to open the **Recordings** page. It is 
 
 ## Settings page
 
-Open the settings page by clicking the gear icon in the popup. It has **no Save button**: every edit is written to `chrome.storage.local` at once, and a change made anywhere else (the popup's pre-start form) is mirrored back into the open page. **Reset to defaults** asks for confirmation, because it drops every section including the theme and the diagnostics choice.
+Open the settings page by clicking the gear icon in the popup. It has **no Save button**: every edit is written to `chrome.storage.local` at once, and a change made anywhere else (the popup's pre-start form) is mirrored back into the open page. **Reset to defaults** asks for confirmation, because it drops every section, the theme included.
 
 The page is grouped by who edits what:
 
@@ -240,17 +239,15 @@ The page is grouped by who edits what:
 
 | Setting | Description |
 | :--- | :--- |
-| Anonymous diagnostics | Default on; sends bounded recording/upload summaries and sanitized failure evidence. Turning it off deletes queued batches and active checkpoints immediately. |
 
 The theme control (system / light / dark) sits in the page's title bar and names the theme it will cycle to next.
 
-The tab and camera capture presets control what size the final file targets, not what resolution Chrome delivers from the source. Actual resolution depends on Chrome, camera hardware, and sharing limits. During recording, the popup labels the tab source with the reported delivered height when Chrome exposes it; the diagnostics data records requested-versus-delivered profiles. Separately, selecting separate camera capture with a sub-1080p **configured** preset shows a non-blocking setup nudge to raise that setting. That nudge is profile guidance, not a guarantee of the camera's delivered resolution.
+The tab and camera capture presets control what size the final file targets, not what resolution Chrome delivers from the source. Actual resolution depends on Chrome, camera hardware, and sharing limits. During recording, the popup labels the tab source with the reported delivered height when Chrome exposes it; the local diagnostics dashboard records requested-versus-delivered profiles. Separately, selecting separate camera capture with a sub-1080p **configured** preset shows a non-blocking setup nudge to raise that setting. That nudge is profile guidance, not a guarantee of the camera's delivered resolution.
 
 Every settings field shows a tooltip (click the label) with a short operational explanation. MP4 and M4A are offered only when the current browser reports a compatible native `MediaRecorder` encoder; unavailable options are disabled. The extension never substitutes another container: if a persisted MP4/M4A choice becomes unsupported, starting a recording explains that you must change the format in Settings.
 
 Legacy stored width/height values from previous extension versions are normalized to the nearest supported preset on settings load.
 
-`TELEMETRY_ENDPOINT` is **optional**. When set it must be the exact HTTPS `/api/telemetry/batches` route: webpack injects that endpoint and only its origin into `host_permissions`, and a malformed one fails the build rather than degrading a typo into silence. Without it the build succeeds with a warning and ships diagnostics **inert** — counters are still kept locally, `TelemetryDelivery` refuses to send anything with no valid endpoint, and no telemetry host permission is requested. That is the configuration for anyone packaging this from a fork, who has no Worker of their own. The Worker, D1 schema, deployment sequence, tests, retention job, and read-only operational queries live in [`telemetry-worker/`](telemetry-worker/README.md).
 
 ---
 
@@ -395,7 +392,7 @@ To reproduce the published artifacts locally (or to upload to the Chrome Web Sto
 npm run release:artifacts   # every target: build + guards + release/<name>-v<version>-<target>.zip
 ```
 
-The release workflow reads three optional repository secrets (**Settings → Secrets and variables → Actions**): `TELEMETRY_ENDPOINT`, and the `GOOGLE_WEB_OAUTH_CLIENT_ID` / `GOOGLE_WEB_OAUTH_CLIENT_SECRET` pair the non-Chrome targets sign in with. A release without the telemetry secret builds fine and ships with diagnostics inert. Chrome needs no secret — its client id is committed. Missing OAuth secrets do not fail the build; those bundles simply ship without a working Drive sign-in.
+The release workflow reads two optional repository secrets (**Settings → Secrets and variables → Actions**): the `GOOGLE_WEB_OAUTH_CLIENT_ID` / `GOOGLE_WEB_OAUTH_CLIENT_SECRET` pair the non-Chrome targets sign in with. Chrome needs no secret — its client id is public and committed. Missing OAuth secrets do not fail the build; those bundles simply ship without a working Drive sign-in.
 
 `npm version` requires a clean working tree (commit or stash first) and runs the `preversion` gate — `typecheck` plus the unit suite — before it bumps and tags, so a release can't be cut over failing checks. It also keeps `package-lock.json` in sync automatically.
 
@@ -507,11 +504,9 @@ State persistence:  chrome.storage.session → RecordingSessionSnapshot + detach
 | `tabCapture` / `desktopCapture` | Capture video and audio from the current tab |
 | `offscreen` | Create a hidden offscreen document to run `MediaRecorder` (not available in MV3 service workers) |
 | `storage` | Persist ephemeral session state for UI sync and service worker recovery after suspension |
-| `alarms` | Schedule one-shot 5/15/60-minute retries for queued anonymous diagnostics after retryable delivery failures |
 | `identity` | Authenticate the user silently to write to Google Drive (Drive mode only) |
 | `host: meet.google.com/*` | Scope the content script to Google Meet pages |
 | `host: googleapis.com/*` | Allow Drive API requests during post-stop upload (Drive mode only) |
-| `host: <telemetry Worker>/*` | Injected from the exact `TELEMETRY_ENDPOINT` when one is configured; allows bounded anonymous batch delivery to that one origin. A build without the endpoint requests no such permission |
 | `system.cpu` | **Dev builds only** — system CPU% for the diagnostics dashboard; injected into the manifest only in development builds, never requested in production |
 
 ---
@@ -620,7 +615,7 @@ Per-module documentation lives in each module's `README.md` — the *why*, invar
 | Debug | [`src/debug`](src/debug/README.md) | the diagnostics dashboard |
 | Platform | [`src/platform`](src/platform/README.md) | browser-abstraction layer ([chrome seam](src/platform/chrome/README.md), [auth capability](src/platform/capabilities/README.md)) |
 
-Also: [`tests/`](tests/README.md) · [`scripts/`](scripts/README.md) · [`static/`](static/README.md) · [`docs/`](docs/README.md) · [`telemetry-worker/`](telemetry-worker/README.md) · [module-README conventions](docs/agents/module-readmes.md).
+Also: [`tests/`](tests/README.md) · [`scripts/`](scripts/README.md) · [`static/`](static/README.md) · [`docs/`](docs/README.md) · [module-README conventions](docs/agents/module-readmes.md).
 
 
 ## Design principles
@@ -1206,30 +1201,28 @@ flowchart LR
 | Message | Meaning |
 | :--- | :--- |
 | `OFFSCREEN_READY` | offscreen port is attached and ready |
-| `OFFSCREEN_STATE` | phase transition or finalize result; carries the fenced run `epoch` and optional bounded telemetry snapshot |
+| `OFFSCREEN_STATE` | phase transition or finalize result; carries the fenced run `epoch` |
 | `OFFSCREEN_SAVE` | request a local save through background |
-| `OFFSCREEN_UPLOAD_STATE` | current or terminal detached Drive job plus optional telemetry-only run association/snapshot; terminal jobs replay until acknowledged |
-| `TELEMETRY_SNAPSHOT` / `TELEMETRY_FLUSH` | bounded producer aggregate for background merge/checkpoint or lifecycle flush; never per-event media/text data |
+| `OFFSCREEN_UPLOAD_STATE` | current or terminal detached Drive job; terminal jobs replay until acknowledged |
 
 ### Content Script → Background
 
 | Message | Meaning |
 | :--- | :--- |
 | `MEETING_ENDED` | Meet page entered a post-call state; routed to auto-stop, which stops any active recording |
-| `TELEMETRY_SNAPSHOT` | bounded caption counts/totals/maxima and sanitized incidents for the current telemetry-only run |
 
 ### Background → Content
 
 | Message | Meaning |
 | :--- | :--- |
-| `TELEMETRY_RUN` | start/reset the caption reducer for a random telemetry-only run, or disable it on opt-out |
-| `TELEMETRY_GET_SNAPSHOT` | request the final bounded caption aggregate before stopping capture |
+| `ENABLE_CAPTIONS` | switch Meet's own captions on when a recording starts, unless the user disabled that setting |
+| `PERF_REPORT_STATE` | re-state caption diagnostics after the background cleared the perf snapshot for a new recording — a count reported only on change would otherwise be missing for the whole run |
 
 ### Background → Offscreen
 
 | Message | Meaning |
 | :--- | :--- |
-| `OFFSCREEN_START` | begin a run for a specific `streamId`/`runConfig`; carries independent fenced `epoch` and telemetry-only run ID |
+| `OFFSCREEN_START` | begin a run for a specific `streamId`/`runConfig`; carries an independent fenced `epoch` |
 | `OFFSCREEN_STOP` | stop active recording and begin finalize flow |
 | `OFFSCREEN_DISCARD` | stop capture and delete sealed temporary artifacts without delivery |
 | `OFFSCREEN_RETRY_UPLOAD` / `OFFSCREEN_CANCEL_UPLOAD` | control a detached Drive job by id |

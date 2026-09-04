@@ -122,14 +122,6 @@ Object.assign(global, {
       },
       getAll: jest.fn().mockResolvedValue([]),
     },
-    alarms: {
-      create: jest.fn().mockResolvedValue(undefined),
-      clear: jest.fn().mockResolvedValue(true),
-      onAlarm: {
-        addListener: jest.fn(),
-        removeListener: jest.fn(),
-      },
-    },
     identity: {
       getAuthToken: jest.fn(),
       removeCachedAuthToken: jest.fn((_details: any, cb?: () => void) => cb?.()),

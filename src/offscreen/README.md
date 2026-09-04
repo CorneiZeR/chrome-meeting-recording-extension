@@ -49,8 +49,8 @@ The meeting transcript joins the sealed artifacts *before* the storage-mode bran
 
 ## The command/status protocol (offscreen side)
 
-- **Commands in (RPC over a `chrome.runtime.Port`):** `OFFSCREEN_START` (validate → busy-check → freeze `epoch`/`storageMode`/telemetry run id → `pushState('starting')` → `engine.startFromStreamId`), `OFFSCREEN_STOP`, `OFFSCREEN_DISCARD`, `OFFSCREEN_SET_MIC_MUTED` / `_CAMERA_MUTED` / `_PAUSED`, `OFFSCREEN_RETRY_UPLOAD`, `OFFSCREEN_CANCEL_UPLOAD`, `OFFSCREEN_RENAME_DRIVE_RESOURCES`, and `REVOKE_BLOB_URL`.
-- **Status out:** `pushState` broadcasts `OFFSCREEN_STATE { phase, epoch, warnings?, telemetrySnapshot? }`. The offscreen **self-derives** its capture phase and **echoes** the run `epoch` from `OFFSCREEN_START` — it never reads the background's phase. `UploadManager` independently broadcasts `OFFSCREEN_UPLOAD_STATE { job, telemetryRunId?, telemetrySnapshot? }`; job state is not a recording phase. (The echoed epoch is what the background's [fence](../shared/README.md) matches against; see ADR-0003.)
+- **Commands in (RPC over a `chrome.runtime.Port`):** `OFFSCREEN_START` (validate → busy-check → freeze `epoch`/`storageMode` → `pushState('starting')` → `engine.startFromStreamId`), `OFFSCREEN_STOP`, `OFFSCREEN_DISCARD`, `OFFSCREEN_SET_MIC_MUTED` / `_CAMERA_MUTED` / `_PAUSED`, `OFFSCREEN_RETRY_UPLOAD`, `OFFSCREEN_CANCEL_UPLOAD`, `OFFSCREEN_RENAME_DRIVE_RESOURCES`, and `REVOKE_BLOB_URL`.
+- **Status out:** `pushState` broadcasts `OFFSCREEN_STATE { phase, epoch, warnings? }`. The offscreen **self-derives** its capture phase and **echoes** the run `epoch` from `OFFSCREEN_START` — it never reads the background's phase. `UploadManager` independently broadcasts `OFFSCREEN_UPLOAD_STATE { job }`; job state is not a recording phase. (The echoed epoch is what the background's [fence](../shared/README.md) matches against; see ADR-0003.)
 - **Readiness & reconnect:** on connect it posts `OFFSCREEN_READY { version }` (the build id — the **version handshake** that lets the background detect and heal SW/offscreen code skew), current capture state, and any active upload jobs. A dropped port reconnects with exponential backoff (1 s → 30 s cap). Terminal jobs are first written to `UploadJobStateOutbox` in `chrome.storage.local`; the entry is replayed until `OFFSCREEN_ACK_UPLOAD_STATE { jobId }` arrives after the background has persisted it.
 
 ## Key invariants & gotchas
@@ -67,7 +67,7 @@ The meeting transcript joins the sealed artifacts *before* the storage-mode bran
 
 | File | Role |
 | :--- | :--- |
-| `offscreen.ts` | the entrypoint: port lifecycle, `OFFSCREEN_READY` handshake, engine/finalizer/controller/upload composition, detached-state replay, per-run telemetry reducers/checkpoints, and production/development runtime sampling |
+| `offscreen.ts` | the entrypoint: port lifecycle, `OFFSCREEN_READY` handshake, engine/finalizer/controller/upload composition, detached-state replay, and development runtime sampling |
 | `OffscreenController.ts` | capture phase/warning state machine plus stop→local-save or stop→enqueue coordinator; owns discard cleanup |
 | `transcriptArtifact.ts` | wraps the rendered WebVTT transcript as a sealed artifact and derives its filename from the media's run stamp |
 | `RecordingFinalizer.ts` | sealed-artifact delivery primitive: local save or per-file Drive upload with bounded concurrency and local fallback; emits `finalizer.*` perf events |
@@ -79,12 +79,12 @@ Subsystems (own READMEs): [`engine/`](./engine/README.md), [`storage/`](./storag
 
 ## Observability
 
-The finalizer emits `finalizer.*` events (`finalize_complete`, `local_save_requested`, `drive_file_complete`, `drive_finalize_complete` with `fallbackRate`); `RuntimeSampler` emits `runtime.*` (lag/long-tasks/heap). Both fold into the background's `PerfDebugStore` and render in [`debug`](../debug/README.md). Separately, one `TelemetryAccumulator` per telemetry-only run ID reduces capture, recorder, OPFS, finalization, upload, and runtime signals into bounded production totals/maxima/incidents. High-frequency work mutates memory only; snapshots move to the background at most every 60 seconds and at critical/terminal boundaries. Production runtime sampling is 10 seconds while recording and diagnostics are enabled; the existing development sampler remains more frequent. Opt-out resets accumulators and stops production sampling immediately. The offscreen is the only context that can observe its *own* event-loop lag — see the [instrumentation doc](../../docs/plans/storage-and-instrumentation-architecture.md).
+The finalizer emits `finalizer.*` events (`finalize_complete`, `local_save_requested`, `drive_file_complete`, `drive_finalize_complete` with `fallbackRate`); `RuntimeSampler` emits `runtime.*` (lag/long-tasks/heap). Both fold into the background's `PerfDebugStore` and render in [`debug`](../debug/README.md). Sampling runs only in perf-debug mode: nothing else consumes a sample, so a production build measures nothing. The offscreen is the only context that can observe its *own* event-loop lag — see the [instrumentation doc](../../docs/plans/storage-and-instrumentation-architecture.md).
 
 ## Testing notes
 
 - `__tests__/OffscreenController.test.ts` drives the phase machine plus local save, detached Drive enqueue, discard cleanup/error propagation, and single-flight behavior against fake engine/finalizer slices — no live port/DOM needed (the controller was *extracted from* `offscreen.ts` precisely so it's testable).
-- `__tests__/RecordingFinalizer.test.ts` covers local/Drive paths, immutable artifact/telemetry context, per-file fallback, and cancellation. `UploadManager.test.ts` covers queueing, cancel/retry, and bounded retry retention; `rpcHandlers` covers metadata rename delegation; `RuntimeSampler` covers cumulative/reset behavior.
+- `__tests__/RecordingFinalizer.test.ts` covers local/Drive paths, the immutable artifact context, per-file fallback, and cancellation. `UploadManager.test.ts` covers queueing, cancel/retry, and bounded retry retention; `rpcHandlers` covers metadata rename delegation; `RuntimeSampler` covers cumulative/reset behavior.
 
 ## Related
 

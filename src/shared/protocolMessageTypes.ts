@@ -29,6 +29,9 @@ export const POPUP_TO_BG_MESSAGE_TYPES = [
   'GET_MEETING_TRANSCRIPT',
 ] as const;
 
+/** Asks the content script to re-state its caption diagnostics (see PerfDebugStore.clear). */
+export const PERF_REPORT_STATE_MESSAGE_TYPE = 'PERF_REPORT_STATE' as const;
+
 export const POPUP_TO_CONTENT_MESSAGE_TYPES = [
   'GET_TRANSCRIPT',
   'RESET_TRANSCRIPT',
@@ -46,10 +49,7 @@ export const OFFSCREEN_TO_BG_MESSAGE_TYPES = [
   'OFFSCREEN_STATE',
   'OFFSCREEN_UPLOAD_STATE',
   'OFFSCREEN_SAVE',
-  'TELEMETRY_SNAPSHOT',
-  'TELEMETRY_FLUSH',
 ] as const;
 
 export const BG_TO_OFFSCREEN_RUNTIME_CONNECT = 'OFFSCREEN_CONNECT' as const;
 export const PERF_EVENT_MESSAGE_TYPE = 'PERF_EVENT' as const;
-export const TELEMETRY_RUN_MESSAGE_TYPE = 'TELEMETRY_RUN' as const;

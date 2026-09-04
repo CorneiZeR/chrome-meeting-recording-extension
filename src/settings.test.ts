@@ -13,9 +13,6 @@ const settingsHtml = readFileSync(
 
 describe('settings page', () => {
   const savedSettings: ExtensionSettings = {
-    privacy: {
-      anonymousDiagnostics: true,
-    },
     appearance: {
       theme: 'dark',
     },
@@ -98,11 +95,9 @@ describe('settings page', () => {
     expect((document.getElementById('self-video-resolution-preset') as HTMLSelectElement).value).toBe('1280x720');
     expect((document.getElementById('tab-resolution-preset') as HTMLSelectElement).value).toBe('854x480');
     expect((document.getElementById('theme') as HTMLSelectElement).value).toBe('dark');
-    expect((document.getElementById('anonymous-diagnostics') as HTMLInputElement).checked).toBe(true);
     expect(document.documentElement.dataset.theme).toBe('dark');
 
     (document.getElementById('theme') as HTMLSelectElement).value = 'light';
-    (document.getElementById('anonymous-diagnostics') as HTMLInputElement).checked = false;
     (document.getElementById('recording-mode') as HTMLSelectElement).value = 'opfs';
     (document.getElementById('mic-mode') as HTMLSelectElement).value = 'mixed';
     (document.getElementById('separate-camera') as HTMLInputElement).checked = false;
@@ -116,9 +111,6 @@ describe('settings page', () => {
     await flushWrites();
 
     expect(saveExtensionSettingsToStorage).toHaveBeenLastCalledWith({
-      privacy: {
-        anonymousDiagnostics: false,
-      },
       appearance: {
         theme: 'light',
       },

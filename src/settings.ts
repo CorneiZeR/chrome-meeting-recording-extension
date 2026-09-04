@@ -16,7 +16,6 @@ import { initializeExtensionTheme } from './shared/theme';
 initializeExtensionTheme();
 
 const el: SettingsElements = {
-  anonymousDiagnostics: document.getElementById('anonymous-diagnostics') as HTMLInputElement | null,
   theme: document.getElementById('theme') as HTMLSelectElement | null,
   recordingMode: document.getElementById('recording-mode') as HTMLSelectElement | null,
   micMode: document.getElementById('mic-mode') as HTMLSelectElement | null,

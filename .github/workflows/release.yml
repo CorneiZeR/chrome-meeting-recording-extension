@@ -7,7 +7,6 @@
 #   - push of a `v*` tag — e.g. after a local `npm version patch && git push --follow-tags`.
 #
 # Required repository secrets (Settings → Secrets and variables → Actions):
-#   TELEMETRY_ENDPOINT              optional; exact https://…/api/telemetry/batches URL. Without it the release builds ship with diagnostics inert
 #   GOOGLE_WEB_OAUTH_CLIENT_ID      Web OAuth client id for the non-Chrome targets (launchWebAuthFlow, ADR-0002)
 #   GOOGLE_WEB_OAUTH_CLIENT_SECRET  its secret — embedded in those bundles, as the launchWebAuthFlow path requires
 #   (Chrome needs no secret: its client id is public and committed in static/manifest.json)
@@ -98,7 +97,6 @@ jobs:
 
       - name: Pack every browser target
         env:
-          TELEMETRY_ENDPOINT: ${{ secrets.TELEMETRY_ENDPOINT }}
           GOOGLE_WEB_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_WEB_OAUTH_CLIENT_ID }}
           GOOGLE_WEB_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_WEB_OAUTH_CLIENT_SECRET }}
         run: npm run release:artifacts

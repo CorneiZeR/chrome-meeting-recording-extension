@@ -13,8 +13,7 @@
     "tabs",
     "desktopCapture",
     "identity",
-    "identity.email",
-    "alarms"
+    "identity.email"
   ],
   "oauth2": {
     "client_id": "333031384006-k6etca3d3uk251luc6chide1o3rlep27.apps.googleusercontent.com",

@@ -22,7 +22,6 @@ import type { RecordingSession } from './RecordingSession';
 import type { PerfDebugStore } from './PerfDebugStore';
 import type { CpuSampler } from './perf/CpuSampler';
 import type { RecordingHistoryService } from './RecordingHistoryService';
-import type { TelemetryRuntime } from './TelemetryRuntime';
 import { isRecordingHistoryMessage } from '../shared/recordingHistory';
 
 export type MessageHandlersDeps = {
@@ -33,7 +32,6 @@ export type MessageHandlersDeps = {
   /** Dev-only system CPU sampler; null in production (no `system.cpu` permission). */
   cpuSampler?: CpuSampler | null;
   history?: RecordingHistoryService;
-  telemetry?: TelemetryRuntime;
 };
 
 /**
@@ -42,20 +40,12 @@ export type MessageHandlersDeps = {
  * START_RECORDING, STOP_RECORDING,
  * and GET_RECORDING_STATUS handlers.
  */
-export function registerMessageHandlers({ L, session, perfDebugStore, controller, cpuSampler, history, telemetry }: MessageHandlersDeps) {
+export function registerMessageHandlers({ L, session, perfDebugStore, controller, cpuSampler, history }: MessageHandlersDeps) {
   chrome.runtime.onMessage.addListener((
     msg: unknown,
     sender: chrome.runtime.MessageSender,
     sendResponse: (response?: unknown) => void
   ) => {
-    if (msg && typeof msg === 'object' && (msg as any).type === 'TELEMETRY_SNAPSHOT') {
-      void telemetry?.receive((msg as any).snapshot, (msg as any).critical === true).then(() => sendResponse({ ok: true })).catch(() => sendResponse({ ok: false }));
-      return true;
-    }
-    if (msg && typeof msg === 'object' && (msg as any).type === 'TELEMETRY_FLUSH') {
-      void telemetry?.receiveFlush((msg as any).snapshot, (msg as any).reason).then(() => sendResponse({ ok: true })).catch(() => sendResponse({ ok: false }));
-      return true;
-    }
     if (
       (typeof __E2E_MOCK_DRIVE_BUILD__ !== 'undefined'
         ? __E2E_MOCK_DRIVE_BUILD__

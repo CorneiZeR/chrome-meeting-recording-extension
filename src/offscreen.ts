@@ -14,7 +14,7 @@
  */
 
 import { connectRuntimePort, trySendRuntimeMessage } from './platform/chrome/runtime';
-import { addStorageChangedListener, hasLocalStorageArea } from './platform/chrome/storage';
+import { hasLocalStorageArea } from './platform/chrome/storage';
 import { getBuildId } from './shared/build';
 import { makeLogger } from './shared/logger';
 import { sendToBackground } from './shared/messages';
@@ -33,72 +33,23 @@ import { RuntimeSampler } from './offscreen/RuntimeSampler';
 import { OffscreenController } from './offscreen/OffscreenController';
 import { wirePortHandlers, wireRuntimeListener } from './offscreen/rpcHandlers';
 import { configurePerfRuntime, debugPerf, isPerfDebugMode, nowMs, roundMs, PERF_FLAGS, type PerfEventEntry } from './shared/perf';
-import { loadExtensionSettingsFromStorage, normalizeExtensionSettings } from './shared/settings';
-import { TelemetryAccumulator, type TelemetrySink } from './shared/telemetry';
 
 const L = makeLogger('offscreen');
 const RUNTIME_SAMPLE_INTERVAL_MS = 2_000;
-const PRODUCTION_RUNTIME_SAMPLE_INTERVAL_MS = 10_000;
 
-let telemetryEnabled = true;
-let activeTelemetryRunId: string | null = null;
-let lastProductionRuntimeSampleAt = 0;
-const telemetryRuns = new Map<string, TelemetryAccumulator>();
-const telemetryDriveRuns = new Set<string>();
-const telemetryUploadJobsStarted = new Set<string>();
-
-const telemetryProxy: TelemetrySink = {
-  increment: (...args) => activeTelemetryRunId && telemetryRuns.get(activeTelemetryRunId)?.increment(...args),
-  measure: (...args) => activeTelemetryRunId && telemetryRuns.get(activeTelemetryRunId)?.measure(...args),
-  context: (...args) => activeTelemetryRunId && telemetryRuns.get(activeTelemetryRunId)?.context(...args),
-  incident: (...args) => activeTelemetryRunId && telemetryRuns.get(activeTelemetryRunId)?.incident(...args),
-  checkpoint: (...args) => activeTelemetryRunId && telemetryRuns.get(activeTelemetryRunId)?.checkpoint(...args),
-  flush: (...args) => activeTelemetryRunId && telemetryRuns.get(activeTelemetryRunId)?.flush(...args),
-};
-
-function beginTelemetryRun(runId: string): void {
-  activeTelemetryRunId = runId;
-  lastProductionRuntimeSampleAt = Date.now();
-  runtimeSampler.reset(nowMs());
-  productionRuntimeSampler.reset(nowMs());
-  if (!telemetryEnabled) return;
-  const accumulator = new TelemetryAccumulator(runId, 'offscreen', {
-    onCheckpoint: (snapshot, critical) => void trySendRuntimeMessage({ type: 'TELEMETRY_SNAPSHOT', snapshot, critical }),
-    onFlush: (snapshot, reason) => void trySendRuntimeMessage({ type: 'TELEMETRY_FLUSH', snapshot, reason }),
-  });
-  telemetryRuns.set(runId, accumulator);
-  accumulator.context('run_started');
-  accumulator.checkpoint(true);
-}
-
-function disableTelemetry(): void {
-  telemetryEnabled = false;
-  for (const accumulator of telemetryRuns.values()) accumulator.reset();
-  telemetryRuns.clear();
-  telemetryDriveRuns.clear();
-  activeTelemetryRunId = null;
-}
 
 // Global safety nets so failures are not swallowed by the hidden offscreen page.
 window.addEventListener('error', (e) => {
   console.error('[offscreen] window.onerror', (e as any)?.message, (e as any)?.error);
-  const accumulator = activeTelemetryRunId ? telemetryRuns.get(activeTelemetryRunId) : undefined;
-  accumulator?.context('application_error');
-  accumulator?.incident({ kind: 'application_error', stage: 'offscreen_window', error: (e as any)?.error });
-  accumulator?.flush('incident');
 });
 window.addEventListener('unhandledrejection', (e: any) => {
   console.error('[offscreen] unhandledrejection', e?.reason || e);
-  const accumulator = activeTelemetryRunId ? telemetryRuns.get(activeTelemetryRunId) : undefined;
-  accumulator?.incident({ kind: 'unhandled_rejection', stage: 'offscreen_promise', error: e?.reason });
-  accumulator?.flush('incident');
 });
 L.log('script loaded');
 
 const perfRuntimeReady = configurePerfRuntime({
   source: 'offscreen',
   sink: (entry: PerfEventEntry) => void trySendRuntimeMessage({ type: 'PERF_EVENT', entry }),
-  telemetrySink: telemetryProxy,
   onSettingsChanged: (settings) => {
     debugPerf(L.log, 'runtime', 'settings_applied', {
       audioPlaybackBridgeMode: settings.audioPlaybackBridgeMode,
@@ -118,40 +69,16 @@ let reconnectEnabled = true;
 // ─── Runtime diagnostics ─────────────────────────────────────────────────────
 
 const runtimeSampler = new RuntimeSampler(RUNTIME_SAMPLE_INTERVAL_MS, nowMs());
-const productionRuntimeSampler = new RuntimeSampler(PRODUCTION_RUNTIME_SAMPLE_INTERVAL_MS, nowMs());
 
 // Phase/warning state machine and stop→finalize coordinator. Services are
 // attached below once the engine and finalizer exist.
 const controller = new OffscreenController({
-  postMessage: (message) => {
-    const runId = activeTelemetryRunId;
-    const accumulator = runId ? telemetryRuns.get(runId) : undefined;
-    if (!accumulator) { getPort().postMessage(message); return; }
-    if (message.phase === 'idle') {
-      accumulator.context('finalize_completed');
-      getPort().postMessage({ ...message, telemetrySnapshot: accumulator.snapshot() });
-      if (!telemetryDriveRuns.has(runId!)) telemetryRuns.delete(runId!);
-      activeTelemetryRunId = null;
-    } else if (message.phase === 'failed') {
-      if (accumulator.snapshot().incidents.length === 0) {
-        accumulator.incident({ kind: 'recording_runtime_failed', stage: 'offscreen_phase' });
-      }
-      getPort().postMessage({ ...message, telemetrySnapshot: accumulator.snapshot() });
-      telemetryRuns.delete(runId!);
-      activeTelemetryRunId = null;
-    } else {
-      getPort().postMessage(message);
-    }
-  },
+  postMessage: (message) => getPort().postMessage(message),
   sampler: runtimeSampler,
   error: L.error,
   now: nowMs,
   onWarning: (warning) => {
     debugPerf(L.log, 'lifecycle', 'warning', { warning });
-  },
-  onFinalizeFailed: (error) => {
-    const accumulator = activeTelemetryRunId ? telemetryRuns.get(activeTelemetryRunId) : undefined;
-    accumulator?.incident({ kind: 'recording_finalize_failed', stage: 'offscreen_phase', error });
   },
   fetchTranscript: () => sendToBackground({ type: 'GET_MEETING_TRANSCRIPT' }),
 });
@@ -163,7 +90,6 @@ if (typeof PerformanceObserver !== 'undefined') {
       const observer = new PerformanceObserver((list) => {
         for (const entry of list.getEntries()) {
           runtimeSampler.recordLongTask(roundMs(entry.duration));
-          productionRuntimeSampler.recordLongTask(roundMs(entry.duration));
         }
       });
       observer.observe({ entryTypes: ['longtask'] as any });
@@ -183,13 +109,7 @@ function connectPort(retryDelay = 1_000): chrome.runtime.Port {
     currentPhase: controller.currentPhase,
     isFinalizing: controller.isFinalizing,
     clearWarnings: controller.clearWarnings,
-    onStartRequested: (runConfig, storageMode, epoch, historyId, telemetryRunId) => {
-      if (telemetryRunId) {
-        if (storageMode === 'drive') telemetryDriveRuns.add(telemetryRunId);
-        beginTelemetryRun(telemetryRunId);
-      }
-      controller.onStartRequested(runConfig, storageMode, epoch, historyId, telemetryRunId);
-    },
+    onStartRequested: controller.onStartRequested,
     onStopRequested: controller.onStopRequested,
     onDiscardRequested: controller.onDiscardRequested,
     retryUpload: (jobId) => uploadManager.retry(jobId),
@@ -245,31 +165,7 @@ async function getDriveToken(options?: { refresh?: boolean }): Promise<string> {
 const pendingUploadStore = createChromePendingUploadStore();
 const uploadJobStateOutbox = createChromeUploadJobStateOutbox();
 
-async function reportUploadJob(job: import('./shared/recording').UploadJob, telemetryRunId?: string): Promise<void> {
-  const accumulator = telemetryRunId ? telemetryRuns.get(telemetryRunId) : undefined;
-  let telemetrySnapshot: import('./shared/telemetry').TelemetrySnapshot | undefined;
-  if (accumulator && !telemetryUploadJobsStarted.has(job.id)) {
-    telemetryUploadJobsStarted.add(job.id);
-    accumulator.increment('upload.jobs');
-    accumulator.measure('upload.concurrency.max', uploadManager?.activeJobs?.().length ?? 1);
-    accumulator.context('upload_started');
-    accumulator.checkpoint(true);
-  }
-  if (accumulator && job.status !== 'uploading') {
-    accumulator.increment(`upload.${job.status}`);
-    const duration = Math.max(0, (job.finishedAt ?? Date.now()) - job.startedAt);
-    accumulator.increment('upload.job.count');
-    accumulator.increment('upload.job.total_ms', duration);
-    accumulator.measure('upload.job.max_ms', duration);
-    accumulator.context(`upload_${job.status}`);
-    if (job.status === 'partial' || job.status === 'failed') {
-      accumulator.incident({ kind: job.status === 'partial' ? 'upload_partial' : 'upload_failed', stage: 'drive_upload' });
-    }
-    telemetrySnapshot = accumulator.snapshot();
-    telemetryRuns.delete(telemetryRunId!);
-    telemetryDriveRuns.delete(telemetryRunId!);
-    telemetryUploadJobsStarted.delete(job.id);
-  }
+async function reportUploadJob(job: import('./shared/recording').UploadJob): Promise<void> {
   if (job.status !== 'uploading') {
     try {
       await uploadJobStateOutbox.put(job);
@@ -278,7 +174,7 @@ async function reportUploadJob(job: import('./shared/recording').UploadJob, tele
     }
   }
   try {
-    getPort().postMessage({ type: 'OFFSCREEN_UPLOAD_STATE', job, telemetryRunId, telemetrySnapshot });
+    getPort().postMessage({ type: 'OFFSCREEN_UPLOAD_STATE', job });
   } catch (error) {
     // The terminal outbox remains intact and is replayed when a later port connects.
     L.warn('Could not send upload state to background', job.id, describeRuntimeError(error));
@@ -297,7 +193,7 @@ async function replayUploadStates(port: chrome.runtime.Port): Promise<void> {
   for (const job of terminal) byId.set(job.id, job);
   for (const job of byId.values()) {
     try {
-      port.postMessage({ type: 'OFFSCREEN_UPLOAD_STATE', job, telemetryRunId: uploadManager.telemetryRunId(job.id) });
+      port.postMessage({ type: 'OFFSCREEN_UPLOAD_STATE', job });
     } catch {
       return;
     }
@@ -357,7 +253,7 @@ const engine = new RecorderEngine({
   },
 });
 
-controller.attachServices(engine, finalizer, (artifacts, context) => uploadManager.enqueue(artifacts, context.historyId, context.telemetryRunId));
+controller.attachServices(engine, finalizer, (artifacts, context) => uploadManager.enqueue(artifacts, context.historyId));
 
 // Captured during synchronous module load — before any OFFSCREEN_START RPC can
 // create this session's recording files — so orphan recovery can tell a stale
@@ -407,12 +303,11 @@ void (async () => {
 
 function sampleRuntimeMetrics() {
   if (controller.currentPhase() === 'idle') return;
-  const now = Date.now();
-  if (!isPerfDebugMode()) {
-    if (!telemetryEnabled || !activeTelemetryRunId || now - lastProductionRuntimeSampleAt < PRODUCTION_RUNTIME_SAMPLE_INTERVAL_MS) return;
-    lastProductionRuntimeSampleAt = now;
-  }
-  const diagnostics = (isPerfDebugMode() ? runtimeSampler : productionRuntimeSampler).sample(nowMs());
+  // Only the diagnostics dashboard consumes these samples, and `emitPerfEntry`
+  // drops them outside perf-debug mode — so sampling in a production build now
+  // measures a recording to feed nobody.
+  if (!isPerfDebugMode()) return;
+  const diagnostics = runtimeSampler.sample(nowMs());
   const perfMemory = (performance as any)?.memory;
   const nav = navigator as Navigator & { deviceMemory?: number };
   debugPerf(L.log, 'runtime', 'sample', {
@@ -436,22 +331,8 @@ function sampleRuntimeMetrics() {
 }
 
 setInterval(sampleRuntimeMetrics, RUNTIME_SAMPLE_INTERVAL_MS);
-setInterval(() => {
-  if (!telemetryEnabled) return;
-  for (const accumulator of telemetryRuns.values()) accumulator.checkpoint();
-}, 60_000);
 
-const telemetryPreferenceReady = loadExtensionSettingsFromStorage()
-  .then((settings) => { telemetryEnabled = settings.privacy.anonymousDiagnostics; if (!telemetryEnabled) disableTelemetry(); })
-  .catch(() => {});
-addStorageChangedListener((changes, areaName) => {
-  if (areaName !== 'local' || !changes.extensionSettings) return;
-  const enabled = normalizeExtensionSettings(changes.extensionSettings.newValue).privacy.anonymousDiagnostics;
-  telemetryEnabled = enabled;
-  if (!enabled) disableTelemetry();
-});
-
-void Promise.all([perfRuntimeReady, telemetryPreferenceReady])
+void perfRuntimeReady
   .catch((error) => {
     L.warn('Failed to initialize performance settings; continuing with defaults', error);
   })

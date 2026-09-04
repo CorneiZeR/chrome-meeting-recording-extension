@@ -28,29 +28,19 @@ import { trySendRuntimeMessage } from './platform/chrome/runtime';
 import { isPopupToContentMessage } from './shared/protocol';
 import {
   configurePerfRuntime,
+  isPerfSinkReady,
   logPerf,
   nowMs,
   roundMs,
   type PerfEventEntry,
 } from './shared/perf';
+import { isPerfReportStateMessage } from './shared/protocol';
 import { CaptionBuffer } from './content/captionBuffer';
 import { MeetingEndDetector, type MeetingEndedPayload } from './content/MeetingEndDetector';
-import { TelemetryAccumulator, type TelemetrySink, type TelemetrySnapshot } from './shared/telemetry';
-import { addStorageChangedListener } from './platform/chrome/storage';
-import { normalizeExtensionSettings } from './shared/settings';
 import { TIMEOUTS } from './shared/timeouts';
 
-let captionTelemetry: TelemetryAccumulator | null = null;
 let perfDebugEnabled = false;
 let contentLongTaskObserver: PerformanceObserver | null = null;
-const captionTelemetrySink: TelemetrySink = {
-  increment: (...args) => captionTelemetry?.increment(...args),
-  measure: (...args) => captionTelemetry?.measure(...args),
-  context: (...args) => captionTelemetry?.context(...args),
-  incident: (...args) => captionTelemetry?.incident(...args),
-  checkpoint: (...args) => captionTelemetry?.checkpoint(...args),
-  flush: (...args) => captionTelemetry?.flush(...args),
-};
 
 function sendPerfEvent(entry: PerfEventEntry) {
   void trySendRuntimeMessage({ type: 'PERF_EVENT', entry });
@@ -59,42 +49,10 @@ function sendPerfEvent(entry: PerfEventEntry) {
 const perfRuntimeReady = configurePerfRuntime({
   source: 'captions',
   sink: sendPerfEvent,
-  telemetrySink: captionTelemetrySink,
   onSettingsChanged: (settings) => {
     perfDebugEnabled = settings.debugMode;
     updateContentMainThreadLongTaskObserver();
   },
-});
-
-setInterval(() => captionTelemetry?.checkpoint(), 60_000);
-chrome.runtime.onMessage.addListener((msg: unknown, _sender, sendResponse) => {
-  if (!msg || typeof msg !== 'object') return false;
-  if ((msg as any).type === 'TELEMETRY_RUN') {
-    const runId = typeof (msg as any).runId === 'string' ? (msg as any).runId : null;
-    captionTelemetry?.checkpoint(true);
-    captionTelemetry = runId && (msg as any).enabled !== false
-      ? new TelemetryAccumulator(runId, 'captions', {
-          onCheckpoint: (snapshot, critical) => void trySendRuntimeMessage({ type: 'TELEMETRY_SNAPSHOT', snapshot, critical }),
-        })
-      : null;
-    updateContentMainThreadLongTaskObserver();
-    collector.reportActiveBlockObserverCount();
-    sendResponse({ ok: true });
-    return false;
-  }
-  if ((msg as any).type === 'TELEMETRY_GET_SNAPSHOT') {
-    sendResponse({ snapshot: captionTelemetry?.snapshot() as TelemetrySnapshot | undefined });
-    return false;
-  }
-  return false;
-});
-addStorageChangedListener((changes, areaName) => {
-  if (areaName !== 'local' || !changes.extensionSettings) return;
-  if (!normalizeExtensionSettings(changes.extensionSettings.newValue).privacy.anonymousDiagnostics) {
-    captionTelemetry?.reset();
-    captionTelemetry = null;
-    updateContentMainThreadLongTaskObserver();
-  }
 });
 
 type ObservedCaptionBlock = {
@@ -112,6 +70,8 @@ class TranscriptCollector {
   private readonly blockObservers = new WeakMap<HTMLElement, ObservedCaptionBlock>();
   private readonly observedBlocks = new Set<HTMLElement>();
   private activeBlockObserverCount = 0;
+  /** The last count a *live* perf sink received — see reportObserverCountIfChanged. */
+  private lastReportedObserverCount = -1;
 
   constructor(private readonly provider: MeetingProviderAdapter) {}
 
@@ -252,6 +212,10 @@ class TranscriptCollector {
         coalesced: !changed,
         textLength: trimmed.length,
       });
+      // Caption activity is the first moment the perf sink is reliably wired,
+      // and the observer count reported while it was not is simply dropped.
+      // Re-report it here when it has moved since the last one that landed.
+      this.reportObserverCountIfChanged();
     };
 
     push();
@@ -293,7 +257,21 @@ class TranscriptCollector {
   }
 
   reportActiveBlockObserverCount() {
+    // Only a report that can land counts as reported: observers attach at page
+    // load, before the perf runtime is configured, and those emits are dropped.
+    if (isPerfSinkReady()) this.lastReportedObserverCount = this.activeBlockObserverCount;
     logPerf(console.log, 'captions', 'observer_count', { activeBlockObservers: this.activeBlockObserverCount });
+  }
+
+  /**
+   * Re-reports the observer count from the caption path when the last report
+   * never reached a sink — the normal case for the attach-time one, which fires
+   * before the perf runtime is configured. Caption activity is the one signal
+   * that is definitely flowing by then.
+   */
+  private reportObserverCountIfChanged() {
+    if (this.lastReportedObserverCount === this.activeBlockObserverCount) return;
+    this.reportActiveBlockObserverCount();
   }
 
   private reportObserverCount() { this.reportActiveBlockObserverCount(); }
@@ -362,14 +340,13 @@ class TranscriptCollector {
 }
 
 /**
- * Records long tasks (>50ms) on the Meet-tab main thread while either the local
- * development dashboard or an active anonymous diagnostics run needs them. It
- * emits one aggregate event per PerformanceObserver batch and disconnects as
- * soon as neither consumer is active.
+ * Records long tasks (>50ms) on the Meet-tab main thread while the local
+ * development dashboard needs them — its only consumer. It emits one aggregate
+ * event per PerformanceObserver batch and disconnects as soon as the dashboard
+ * stops asking.
  */
 function updateContentMainThreadLongTaskObserver(): void {
-  const shouldObserve = perfDebugEnabled || captionTelemetry !== null;
-  if (!shouldObserve) {
+  if (!perfDebugEnabled) {
     contentLongTaskObserver?.disconnect();
     contentLongTaskObserver = null;
     return;
@@ -397,6 +374,13 @@ function updateContentMainThreadLongTaskObserver(): void {
     /* longtask entry type unsupported here — diagnostics-only, never fatal */
   }
 }
+
+chrome.runtime.onMessage.addListener((msg: unknown) => {
+  // The background cleared the perf snapshot for a new recording; re-state the
+  // caption diagnostics it just discarded.
+  if (isPerfReportStateMessage(msg)) collector.reportActiveBlockObserverCount();
+  return false;
+});
 
 const collector = new TranscriptCollector(new GoogleMeetAdapter());
 if (typeof process !== 'undefined' && process.env.NODE_ENV === 'test') {

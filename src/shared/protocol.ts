@@ -23,6 +23,7 @@ import {
   CONTENT_TO_BG_MESSAGE_TYPES,
   OFFSCREEN_TO_BG_MESSAGE_TYPES,
   PERF_EVENT_MESSAGE_TYPE,
+  PERF_REPORT_STATE_MESSAGE_TYPE,
   POPUP_TO_BG_MESSAGE_TYPES,
   POPUP_TO_CONTENT_MESSAGE_TYPES,
 } from './protocolMessageTypes';
@@ -207,7 +208,6 @@ export type OffscreenPhaseUpdate = {
   tabResolution?: CapturedTabResolution;
   capturedDevices?: RecordingCaptureDevices;
   /** Bounded anonymous producer snapshot carried only to the background coordinator. */
-  telemetrySnapshot?: import('./telemetry').TelemetrySnapshot;
 };
 
 export type BgToOffscreenRpc =
@@ -219,8 +219,6 @@ export type BgToOffscreenRpc =
       recorderSettings: RecorderRuntimeSettingsSnapshot;
       perfSettings: PerfSettings;
       historyId: string;
-      /** Random telemetry-only identity, never derived from history, meeting, or upload identifiers. */
-      telemetryRunId: string;
       /** Monotonic run epoch the offscreen must echo in OFFSCREEN_STATE; see ADR-0003. */
       epoch: number;
     }>
@@ -248,12 +246,18 @@ export type BgToOffscreenRuntime =
 export type OffscreenToBg =
   | { type: 'OFFSCREEN_READY'; version?: string }
   | ({ type: 'OFFSCREEN_STATE' } & OffscreenPhaseUpdate)
-  | { type: 'OFFSCREEN_UPLOAD_STATE'; job: UploadJob; telemetryRunId?: string; telemetrySnapshot?: import('./telemetry').TelemetrySnapshot }
-  | { type: 'OFFSCREEN_SAVE'; historyId: string; stream: import('./recording').RecordingStream; filename: string; blobUrl: string; opfsFilename?: string }
-  | { type: 'TELEMETRY_SNAPSHOT'; snapshot: import('./telemetry').TelemetrySnapshot; critical?: boolean }
-  | { type: 'TELEMETRY_FLUSH'; snapshot: import('./telemetry').TelemetrySnapshot; reason: 'incident' | 'recording_complete' | 'upload_complete' };
+  | { type: 'OFFSCREEN_UPLOAD_STATE'; job: UploadJob }
+  | { type: 'OFFSCREEN_SAVE'; historyId: string; stream: import('./recording').RecordingStream; filename: string; blobUrl: string; opfsFilename?: string };
 
-export type TelemetryRunMessage = { type: 'TELEMETRY_RUN'; runId: string | null; enabled: boolean };
+
+/**
+ * Asks a producer to report its current diagnostics state again.
+ *
+ * The background clears the perf snapshot when a new recording starts, which
+ * discards state a producer reported once and would not repeat — the caption
+ * observer count is reported on change, and a steady count never changes again.
+ */
+export type PerfReportStateMessage = { type: 'PERF_REPORT_STATE' };
 
 export type PerfEventMessage = {
   type: 'PERF_EVENT';
@@ -297,6 +301,11 @@ export function isOffscreenToBgMessage(value: unknown): value is OffscreenToBg {
 /** Checks whether a runtime nudge is asking the offscreen page to reconnect its port. */
 export function isBgToOffscreenRuntimeMessage(value: unknown): value is BgToOffscreenRuntime {
   return getMessageType(value) === BG_TO_OFFSCREEN_RUNTIME_CONNECT;
+}
+
+/** Checks whether a message asks a producer to re-state its diagnostics. */
+export function isPerfReportStateMessage(value: unknown): value is PerfReportStateMessage {
+  return getMessageType(value) === PERF_REPORT_STATE_MESSAGE_TYPE;
 }
 
 /** Checks whether a message is a structured performance event emitted by another context. */

@@ -98,7 +98,9 @@ Rule of thumb: **if it's a selector or a Meet-DOM shape, the fix is in `GoogleMe
 
 The pipeline emits `logPerf(console.log, 'captions', …)` events: `mutation_processed` (with `durationMs`, `sourceLatencyMs`, `coalesced`, `textLength`) and `observer_count` (`activeBlockObservers`). `sourceLatencyMs` (now − the caption's `emittedAt`) is the best signal for "are we keeping up with Meet's caption rate." The complete entries still feed the development dashboard only.
 
-For anonymous production diagnostics, `scrapingScript.ts` reduces those same allowlisted events into a per-run `TelemetryAccumulator`: counts, duration/source-latency totals and maxima, observer maximum, and long-task aggregates—never caption text, speaker names, meeting identifiers, or raw DOM data. Dirty state is checkpointed to the background at most once per minute and on lifecycle boundaries, not per mutation. The Meet-tab `PerformanceObserver('longtask')` is installed only while either the development dashboard or an active diagnostics run needs it; it disconnects immediately when neither consumer is active or the user opts out. `TELEMETRY_GET_SNAPSHOT` supplies the final caption aggregate before stop.
+The Meet-tab `PerformanceObserver('longtask')` is installed only while the development dashboard needs it — its only consumer — and disconnects as soon as the dashboard stops asking.
+
+The block-observer count is *state*, not an event, and reporting it has two traps. It is reported at attach time, when the perf runtime is not configured yet and the emit is dropped: `isPerfSinkReady()` decides whether a report counted, so the next caption mutation re-reports it. And the background clears the whole snapshot when a recording starts, which discards it again: `PERF_REPORT_STATE` asks for it back. Until this was made explicit the count rode along on a telemetry message, and removing telemetry silently emptied that part of the dashboard.
 
 ## Configuration
 
@@ -120,7 +122,7 @@ All timing lives in `shared/timeouts.ts` (`TIMEOUTS`), so the latency/safety tra
 | `MeetingEndDetector.ts` | conservative auto-stop signal (observer + poll + grace + once) |
 | `captionBuffer.ts` | per-speaker dedup + grace-commit into timestamped transcript lines |
 
-Orchestrator: [`../scrapingScript.ts`](../scrapingScript.ts) — `TranscriptCollector` wires the observers and exposes this module's outside surfaces: `window.getTranscript()` / `window.resetTranscript()`; the runtime handlers `GET_TRANSCRIPT` / `GET_TRANSCRIPT_CUES` / `RESET_TRANSCRIPT` / `GET_CAPTION_STATE` / `ENABLE_CAPTIONS` (popup → content; `GET_TRANSCRIPT_CUES` serves the background relay that hands the transcript to the offscreen document at finalize, and is the only one that returns timings structurally rather than pre-formatted); `TELEMETRY_RUN` / `TELEMETRY_GET_SNAPSHOT`; and the `MEETING_ENDED` message it emits to the background to drive auto-stop.
+Orchestrator: [`../scrapingScript.ts`](../scrapingScript.ts) — `TranscriptCollector` wires the observers and exposes this module's outside surfaces: `window.getTranscript()` / `window.resetTranscript()`; the runtime handlers `GET_TRANSCRIPT` / `GET_TRANSCRIPT_CUES` / `RESET_TRANSCRIPT` / `GET_CAPTION_STATE` / `ENABLE_CAPTIONS` (popup → content; `GET_TRANSCRIPT_CUES` serves the background relay that hands the transcript to the offscreen document at finalize, and is the only one that returns timings structurally rather than pre-formatted); `PERF_REPORT_STATE` (background → content), which re-reports the block-observer count after the background clears the perf snapshot for a new recording; and the `MEETING_ENDED` message it emits to the background to drive auto-stop.
 
 ## Testing notes
 

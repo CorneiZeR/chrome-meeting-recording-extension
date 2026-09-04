@@ -5,11 +5,11 @@
 | Script | npm script | What it does |
 | :--- | :--- | :--- |
 | `check-version-monotonic.mjs` | `check:version` (part of `release:build`) | asserts the release version only ever increases — guards against shipping a non-monotonic Chrome Web Store version |
-| `check-production-build.mjs` | `test:production-guards` (part of `release:build`) | asserts a production bundle has the exact telemetry host permission and retry alarm and leaked no E2E-only markers — the production-safety gate. `--dist=<dir>` guards a non-default target's output |
+| `check-production-build.mjs` | `test:production-guards` (part of `release:build`) | asserts a production bundle carries the derived manifest version and leaked no E2E-only markers — the production-safety gate. `--dist=<dir>` guards a non-default target's output |
 | `pack-release-artifacts.mjs` | `release:artifacts` | builds every browser target, guards each output, and zips them into `release/` with `SHA256SUMS.txt` — the assets the release workflow uploads |
 | `run-real-meet-e2e.mjs` | `test:e2e:real` / `:live` | drives the real-Google-Meet harness against a configured Chrome profile |
 | `setup-real-meet-profile.mjs` | `test:e2e:real:profile` | provisions the stable Chrome profile the real-Meet run reuses |
-| `lib/` | — | shared helpers for manifest versioning, target profiles, release-artifact naming, build-time configuration reading (`projectEnv.cjs`), and the telemetry endpoint policy |
+| `lib/` | — | shared helpers for manifest versioning, target profiles, release-artifact naming, and build-time configuration reading (`projectEnv.cjs`) |
 
 ## Release flow
 
@@ -19,7 +19,7 @@
 
 ## Browser-target profiles
 
-`lib/projectEnv.cjs` is how every build tool reads configuration — the shell first, then the project's `.env` — and `lib/telemetryEndpoint.cjs` owns what an endpoint must look like and what a build does without one: absent is allowed (diagnostics ship inert, no host permission), malformed fails the build. Both webpack and `check-production-build.mjs` go through them, because a guard that read configuration differently from the build reported a `.env`-configured endpoint as absent.
+`lib/projectEnv.cjs` is how every build tool reads configuration — the shell first, then the project's `.env`. Both webpack and `check-production-build.mjs` go through it, so a guard cannot read configuration differently from the build it validates.
 
 The manifest target model in `lib/manifestTargets.cjs` supports `chrome`, `edge`, `brave`, `opera`, `vivaldi`, and `arc`. Each has an `npm run build:<target>` alias, and `distDirForTarget` in `lib/releaseArtifacts.cjs` is the single source of truth for where a target builds (`dist/` for Chrome, `dist-<target>/` otherwise) — webpack and the packer both read it.
 
@@ -29,4 +29,4 @@ Chrome signs in through `chrome.identity.getAuthToken`, whose only configuration
 
 - [`static/`](../static/README.md) — the manifest transform whose output `check-production-build` validates.
 - [ADR-0002](../docs/adr/0002-cross-browser-support-strategy.md) — the supported-target boundary and the prerequisites for a future Firefox port.
-- [`tests/scripts/`](../tests/README.md) — the `node --test` suite that unit-tests this `lib/` (manifest source/version/targets, release artifacts, configuration reading, telemetry endpoint policy) and runs `check-production-build.mjs` against synthetic build trees.
+- [`tests/scripts/`](../tests/README.md) — the `node --test` suite that unit-tests this `lib/` (manifest source/version/targets, release artifacts, configuration reading) and runs `check-production-build.mjs` against synthetic build trees.

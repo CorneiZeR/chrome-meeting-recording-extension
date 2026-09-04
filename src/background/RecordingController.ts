@@ -26,14 +26,11 @@ import { type CommandResult } from '../shared/protocol';
 import { isStoppablePhase, parseRunConfig, toStatusView, type RecordingInputDevice } from '../shared/recording';
 import type { OffscreenManager } from './OffscreenManager';
 import type { RecordingSession } from './RecordingSession';
-import type { TelemetryRuntime } from './TelemetryRuntime';
-import { createTelemetryId } from '../shared/telemetry';
 
 export type RecordingControllerDeps = {
   L: { log: (...a: any[]) => void; warn: (...a: any[]) => void; error: (...a: any[]) => void };
   offscreen: OffscreenManager;
   session: RecordingSession;
-  telemetry?: TelemetryRuntime;
 };
 
 export type StartRecordingMessage = {
@@ -57,13 +54,11 @@ export class RecordingController {
   private readonly L: RecordingControllerDeps['L'];
   private readonly offscreen: OffscreenManager;
   private readonly session: RecordingSession;
-  private readonly telemetry?: TelemetryRuntime;
 
-  constructor({ L, offscreen, session, telemetry }: RecordingControllerDeps) {
+  constructor({ L, offscreen, session }: RecordingControllerDeps) {
     this.L = L;
     this.offscreen = offscreen;
     this.session = session;
-    this.telemetry = telemetry;
   }
 
   /**
@@ -84,7 +79,6 @@ export class RecordingController {
       );
     }
 
-    const telemetryRunId = this.telemetry?.start(runConfig) ?? createTelemetryId();
 
     let recorderSettings: RecorderRuntimeSettingsSnapshot;
     try {
@@ -92,7 +86,6 @@ export class RecordingController {
     } catch (e: any) {
       const error = `Failed to load recorder settings: ${e?.message || e}`;
       this.L.error(error);
-      this.telemetry?.incident({ kind: 'recording_start_failed', stage: 'settings_load', error: e });
       return this.fail(error);
     }
 
@@ -108,9 +101,6 @@ export class RecordingController {
       meetingSlug: meetingSlug || undefined,
     };
     const started = this.session.start(runConfig, target);
-    this.telemetry?.configureRun(telemetryRunId, runConfig, recorderSettings, started.epoch);
-    this.telemetry?.context('capture_requested');
-    void chrome.tabs.sendMessage(msg.tabId, { type: 'TELEMETRY_RUN', runId: telemetryRunId, enabled: this.telemetry?.isEnabled() ?? false }).catch(() => {});
     // Deliberately not awaited: Meet can take a moment to bring its captions up,
     // and capture must not wait on it. A few seconds of speech may precede the
     // first cue, which beats delaying the recording the user just asked for.
@@ -131,7 +121,6 @@ export class RecordingController {
       }
     } catch (e: any) {
       const error = `Recording runtime not ready: ${e?.message || e}`;
-      this.telemetry?.incident({ kind: 'recording_start_failed', stage: 'runtime_ready', error: e });
       this.session.fail(error);
       return this.fail(error);
     }
@@ -146,7 +135,6 @@ export class RecordingController {
         recorderSettings,
         perfSettings: getPerfSettingsSnapshot(),
         historyId: started.historyId ?? '',
-        telemetryRunId,
         // Fencing token (ADR-0003): the offscreen echoes this in OFFSCREEN_STATE.
         epoch: started.epoch ?? 0,
       } as const;
@@ -157,14 +145,12 @@ export class RecordingController {
       if (r?.ok) return this.ok();
 
       const error = r?.error || 'Failed to start';
-      this.telemetry?.incident({ kind: 'recording_start_failed', stage: 'offscreen_start', error: new Error(error) });
       this.session.fail(error);
       return this.fail(error);
     } catch (e: any) {
       await this.restoreTargetTab(msg.tabId, recorderRuntimeTabId);
       this.L.error('OFFSCREEN_START failed', e);
       const error = `OFFSCREEN_START failed: ${e?.message || e}`;
-      this.telemetry?.incident({ kind: 'recording_start_failed', stage: 'offscreen_rpc', error: e });
       this.session.fail(error);
       return this.fail(error);
     }
@@ -200,13 +186,6 @@ export class RecordingController {
   async stop(reason = 'user requested stop'): Promise<CommandResult> {
     if (!isStoppablePhase(this.session.getSnapshot().phase)) {
       return this.fail('Stop requested but no recording session is active');
-    }
-    const targetTabId = this.session.getSnapshot().targetTabId;
-    if (typeof targetTabId === 'number') {
-      try {
-        const response = await chrome.tabs.sendMessage(targetTabId, { type: 'TELEMETRY_GET_SNAPSHOT' }) as { snapshot?: import('../shared/telemetry').TelemetrySnapshot };
-        if (response?.snapshot) await this.telemetry?.receive(response.snapshot, true);
-      } catch {}
     }
     this.session.markStopping();
     this.L.log('Stopping recording:', reason);

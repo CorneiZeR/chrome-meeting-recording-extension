@@ -14,7 +14,6 @@ import {
 } from '../platform/chrome/storage';
 import { DEFAULT_PERF_SETTINGS, PERF_FLAGS, PERF_SETTINGS_STORAGE_KEY } from './constants/perfConstants';
 import type { PerfEventEntry, PerfEventSink, PerfFields, PerfSettings, PerfSource } from './types/perfTypes';
-import { reducePerfEntryToTelemetry, type TelemetrySink } from './telemetry';
 
 export * from './constants/perfConstants';
 export * from './types/perfTypes';
@@ -23,14 +22,12 @@ export * from './utils/mathUtils';
 type ConfigurePerfRuntimeOptions = {
   source: PerfSource;
   sink?: PerfEventSink;
-  telemetrySink?: TelemetrySink;
   onSettingsChanged?: (settings: PerfSettings) => void;
 };
 
 let debugMode = DEFAULT_PERF_SETTINGS.debugMode;
 let perfSource: PerfSource = 'unknown';
 let perfSink: PerfEventSink | null = null;
-let telemetrySink: TelemetrySink | null = null;
 let storageWatchInstalled = false;
 
 function cleanPerfFields(fields?: PerfFields): Record<string, string | number | boolean | null> {
@@ -105,7 +102,6 @@ export async function updateStoredPerfSettings(partial: Partial<PerfSettings>): 
 export async function configurePerfRuntime(options: ConfigurePerfRuntimeOptions): Promise<PerfSettings> {
   perfSource = options.source;
   perfSink = options.sink ?? null;
-  telemetrySink = options.telemetrySink ?? null;
 
   // The watch goes in **before** the first read, and a change that lands during
   // that read wins over it. Installed afterwards, a write arriving mid-read was
@@ -133,6 +129,18 @@ export async function configurePerfRuntime(options: ConfigurePerfRuntimeOptions)
   return settings;
 }
 
+/**
+ * Whether an emitted perf entry can actually reach a sink right now.
+ *
+ * `emitPerfEntry` drops entries silently before the runtime is configured, so a
+ * producer that reports a *state* (a count, a mode) at startup would record it
+ * as reported when nothing received it. Asking first lets such a producer
+ * re-report once the sink exists.
+ */
+export function isPerfSinkReady(): boolean {
+  return debugMode && perfSink !== null;
+}
+
 export function isPerfDebugMode(): boolean {
   return debugMode;
 }
@@ -141,7 +149,6 @@ export function resetPerfFlags(): void {
   applyPerfSettings(DEFAULT_PERF_SETTINGS);
   perfSource = 'unknown';
   perfSink = null;
-  telemetrySink = null;
   storageWatchInstalled = false;
 }
 
@@ -153,9 +160,6 @@ function emitPerfEntry(scope: string, event: string, fields: Record<string, stri
     ts: Date.now(),
     fields,
   };
-  try {
-    if (telemetrySink) reducePerfEntryToTelemetry(entry, telemetrySink);
-  } catch {}
   if (!debugMode || !perfSink) return;
   try {
     void perfSink(entry);

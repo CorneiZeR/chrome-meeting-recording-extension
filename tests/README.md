@@ -9,8 +9,7 @@
 | **Unit** | `src/**/__tests__/*.test.ts` (+ `src/debug/renderers/tests/`) | jest | one module in isolation; lives beside its source for scoped context, including recording-history pagination and upload-job state/retry behavior |
 | **Integration** | `tests/background.test.ts` | jest | spans modules (the fence + watchdog across session + offscreen + wiring) — no single module home |
 | **e2e** | `tests/e2e/*.spec.ts` (+ `helpers/`, `fixtures/`) | Playwright | the built extension against a mock (or real) Meet page |
-| **Node build-level** | `tests/scripts/*.test.mjs` | `node --test` | manifest source/version/targets, telemetry endpoint permission, real-meet CLI/profile—release-build concerns |
-| **Worker service** | `telemetry-worker/test/*.test.ts` | vitest | strict public ingestion, CORS, idempotency, rate/D1 failure classification, scheduled retention |
+| **Node build-level** | `tests/scripts/*.test.mjs` | `node --test` | manifest source/version/targets, build configuration reading, the production guard, real-meet CLI/profile—release-build concerns |
 | **e2e-adjacent** | `tests/realMeetScenarios.test.ts` | jest | scenario logic that imports `e2e/helpers` (not a module unit) |
 
 `setup.ts` is the jest global setup; `fixtures/mock-meet.html` is the DOM the mock-Meet e2e drives. Jest sets `watchman: false` in its repository config (and the npm command repeats it) so local/CI runs do not depend on a Watchman service.
@@ -45,7 +44,7 @@ The perf tiers are tagged in the spec titles (`@perf-smoke`, `@perf-full`, `@per
 | `settings-matrix.spec.ts` | the settings → recorder parameter matrix |
 | `real-meet.spec.ts` | the real-Meet harness path |
 
-Production telemetry has two coordinated test homes. `src/shared/telemetry/__tests__/` covers client sanitization, reducer/storage bounds, delivery classification, and exactly-once recovery; `telemetry-worker/test/` mirrors the server allowlist and transport contract. Run the Worker checks from that directory with `npm test && npm run typecheck && npm run dry-run`.
+
 
 ## Related
 

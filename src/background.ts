@@ -44,7 +44,6 @@ import {
   type RecordingPhase,
 } from './shared/recording';
 import { TIMEOUTS } from './shared/timeouts';
-import { TelemetryRuntime } from './background/TelemetryRuntime';
 
 const L = makeLogger('background');
 const offscreen = new OffscreenManager();
@@ -57,15 +56,6 @@ const history = new RecordingHistoryService(
     return await offscreen.rpc({ type: 'OFFSCREEN_RENAME_DRIVE_RESOURCES', resources });
   },
 );
-const telemetry = new TelemetryRuntime();
-
-globalThis.addEventListener?.('error', (event: ErrorEvent) => {
-  telemetry.incident({ kind: 'application_error', stage: 'runtime', error: event.error });
-});
-globalThis.addEventListener?.('unhandledrejection', (event: PromiseRejectionEvent) => {
-  telemetry.incident({ kind: 'unhandled_rejection', stage: 'runtime', error: event.reason });
-});
-
 let sessionHydrated = false;
 // Tracks the prior phase so we can reset diagnostics at the START of a new
 // recording (not on idle) — see isFreshRecordingStart.
@@ -108,6 +98,14 @@ const session = new RecordingSession(
     // not mistaken for a fresh start.
     if (sessionHydrated && isFreshRecordingStart(previousPhase, snapshot.phase)) {
       perfDebugStore.clear();
+      // Clearing discards state a producer reports only when it changes — the
+      // caption observer count is reported on attach and then never again — so
+      // ask the recorded tab to re-state it. Fire-and-forget: a tab that has no
+      // content script yet simply has no captions to describe.
+      const tabId = snapshot.targetTabId;
+      if (typeof tabId === 'number') {
+        void chrome.tabs.sendMessage(tabId, { type: 'PERF_REPORT_STATE' }).catch(() => {});
+      }
     }
     previousPhase = snapshot.phase;
     perfDebugStore.setPhase(snapshot.phase);
@@ -133,36 +131,12 @@ offscreen.onStateChanged = (msg) => {
     return;
   }
   session.applyOffscreenPhase(msg);
-  if (msg.telemetrySnapshot) {
-    void telemetry.receive(msg.telemetrySnapshot, true).then(() => {
-      if (msg.phase === 'idle') {
-        const runId = msg.telemetrySnapshot!.runId;
-        telemetry.completeRecording(runId);
-        setTimeout(() => { void telemetry.flushRun(runId, 'recording_complete'); }, 250);
-      }
-      if (msg.phase === 'failed') {
-        const runId = msg.telemetrySnapshot!.runId;
-        setTimeout(() => { void telemetry.flushIncidentRun(runId); }, 0);
-      }
-    });
-  }
 };
 
 // ADR-0004: a background upload job changed — persist it on the session (keyed by
 // id, phase-independent) so the popup can render it and "busy" reflects it.
 let uploadStatePersistenceTail: Promise<void> = Promise.resolve();
-offscreen.onUploadJobChanged = (job, telemetryRunId, telemetrySnapshot) => {
-  if (telemetryRunId) telemetry.bindUploadJob(telemetryRunId, job.id);
-  const owningRunId = telemetryRunId ?? telemetry.runIdForUploadJob(job.id);
-  if (job.status !== 'uploading' && owningRunId) {
-    if (telemetrySnapshot) {
-      void telemetry.receive(telemetrySnapshot, true)
-        .then(() => telemetry.flushRun(owningRunId, 'upload_complete'))
-        .catch(() => {});
-    } else {
-      void telemetry.recordRecoveredUploadOutcome(owningRunId, job).catch(() => {});
-    }
-  }
+offscreen.onUploadJobChanged = (job) => {
   // Preserve the order emitted by the offscreen document. In particular, the
   // initial `uploading` row must reach both durable projections before a fast
   // terminal report is allowed to acknowledge and clear its replay outbox item.
@@ -224,10 +198,10 @@ const phaseWatchdog = createPhaseWatchdog({
 registerSaveHandler(offscreen, L, history);
 
 // The recording control plane: every start/stop trigger drives this one seam.
-const controller = new RecordingController({ L, offscreen, session, telemetry });
+const controller = new RecordingController({ L, offscreen, session });
 
 // Register all popup message handlers.
-registerMessageHandlers({ L, session, perfDebugStore, controller, cpuSampler: createChromeCpuSampler(), history, telemetry });
+registerMessageHandlers({ L, session, perfDebugStore, controller, cpuSampler: createChromeCpuSampler(), history });
 registerRecordingCommands({ L, controller });
 registerRecordingAutoStop({ session, controller });
 
@@ -273,14 +247,6 @@ const sessionHydration = (async () => {
     const settings = await configurePerfRuntime({
       source: 'background',
       sink: (entry) => perfDebugStore.record(entry),
-      telemetrySink: {
-        increment: (...args) => telemetry.sink()?.increment(...args),
-        measure: (...args) => telemetry.sink()?.measure(...args),
-        context: (...args) => telemetry.sink()?.context(...args),
-        incident: (...args) => telemetry.sink()?.incident(...args),
-        checkpoint: (...args) => telemetry.sink()?.checkpoint(...args),
-        flush: (...args) => telemetry.sink()?.flush(...args),
-      },
       onSettingsChanged: (nextSettings) => perfDebugStore.setSettings(nextSettings),
     });
 
@@ -295,15 +261,6 @@ const sessionHydration = (async () => {
     const snapshot = session.hydrate(
       res?.[RECORDING_SESSION_STORAGE_KEY] ?? hydrateLegacySession(res)
     );
-    try {
-      await telemetry.initialize(
-        isBusyPhase(snapshot.phase) && snapshot.epoch != null ? new Set([snapshot.epoch]) : new Set(),
-        new Set(snapshot.uploadJobs?.filter((job) => job.status === 'uploading').map((job) => job.id) ?? [])
-      );
-    } catch (error) {
-      L.warn('Anonymous telemetry initialization failed (non-fatal):', error);
-      telemetry.setEnabled(false);
-    }
     if (isBusyPhase(snapshot.phase) || hasUploadsInFlight(snapshot.uploadJobs)) {
       L.log('SW restarted while offscreen work was active — re-attaching offscreen');
       await offscreen.ensureReady();
