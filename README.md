@@ -90,7 +90,7 @@ npm install
 
 # 2. Build production with the deployed write-only telemetry endpoint
 TELEMETRY_ENDPOINT=https://recording-extension-telemetry.kstroevsky.workers.dev/api/telemetry/batches npm run build
-# outputs to ./dist; development builds may omit TELEMETRY_ENDPOINT
+# outputs to ./dist; TELEMETRY_ENDPOINT is optional in every mode
 
 # 3. Load into Chrome
 #    chrome://extensions → Developer mode ON → Load unpacked → select ./dist
@@ -250,7 +250,7 @@ Every settings field shows a tooltip (click the label) with a short operational 
 
 Legacy stored width/height values from previous extension versions are normalized to the nearest supported preset on settings load.
 
-Production builds require `TELEMETRY_ENDPOINT` to be the exact HTTPS `/api/telemetry/batches` route. Webpack injects that endpoint and only its origin into `host_permissions`; an invalid or missing production endpoint fails the build. The Worker, D1 schema, deployment sequence, tests, retention job, and read-only operational queries live in [`telemetry-worker/`](telemetry-worker/README.md).
+`TELEMETRY_ENDPOINT` is **optional**. When set it must be the exact HTTPS `/api/telemetry/batches` route: webpack injects that endpoint and only its origin into `host_permissions`, and a malformed one fails the build rather than degrading a typo into silence. Without it the build succeeds with a warning and ships diagnostics **inert** — counters are still kept locally, `TelemetryDelivery` refuses to send anything with no valid endpoint, and no telemetry host permission is requested. That is the configuration for anyone packaging this from a fork, who has no Worker of their own. The Worker, D1 schema, deployment sequence, tests, retention job, and read-only operational queries live in [`telemetry-worker/`](telemetry-worker/README.md).
 
 ---
 
@@ -395,7 +395,7 @@ To reproduce the published artifacts locally (or to upload to the Chrome Web Sto
 npm run release:artifacts   # every target: build + guards + release/<name>-v<version>-<target>.zip
 ```
 
-The release workflow needs three repository secrets (**Settings → Secrets and variables → Actions**): `TELEMETRY_ENDPOINT` (a production build refuses to run without it) and the `GOOGLE_WEB_OAUTH_CLIENT_ID` / `GOOGLE_WEB_OAUTH_CLIENT_SECRET` pair the non-Chrome targets sign in with. Chrome needs no secret — its client id is committed. Missing OAuth secrets do not fail the build; those bundles simply ship without a working Drive sign-in.
+The release workflow reads three optional repository secrets (**Settings → Secrets and variables → Actions**): `TELEMETRY_ENDPOINT`, and the `GOOGLE_WEB_OAUTH_CLIENT_ID` / `GOOGLE_WEB_OAUTH_CLIENT_SECRET` pair the non-Chrome targets sign in with. A release without the telemetry secret builds fine and ships with diagnostics inert. Chrome needs no secret — its client id is committed. Missing OAuth secrets do not fail the build; those bundles simply ship without a working Drive sign-in.
 
 `npm version` requires a clean working tree (commit or stash first) and runs the `preversion` gate — `typecheck` plus the unit suite — before it bumps and tags, so a release can't be cut over failing checks. It also keeps `package-lock.json` in sync automatically.
 
@@ -507,7 +507,7 @@ State persistence:  chrome.storage.session → RecordingSessionSnapshot + detach
 | `identity` | Authenticate the user silently to write to Google Drive (Drive mode only) |
 | `host: meet.google.com/*` | Scope the content script to Google Meet pages |
 | `host: googleapis.com/*` | Allow Drive API requests during post-stop upload (Drive mode only) |
-| `host: <telemetry Worker>/*` | Injected from the exact production `TELEMETRY_ENDPOINT`; allows bounded anonymous batch delivery to that one origin |
+| `host: <telemetry Worker>/*` | Injected from the exact `TELEMETRY_ENDPOINT` when one is configured; allows bounded anonymous batch delivery to that one origin. A build without the endpoint requests no such permission |
 | `system.cpu` | **Dev builds only** — system CPU% for the diagnostics dashboard; injected into the manifest only in development builds, never requested in production |
 
 ---
