@@ -2,37 +2,34 @@
  * @file popup/CameraPermissionService.ts
  *
  * Popup-side camera permission helper used when self-video capture is enabled.
+ *
+ * Bounded like the microphone's, and for a sharper reason: this ladder runs
+ * from `ensureReadyForRecording` *before* a recording starts, so a browser that
+ * neither prompts nor rejects would hang **Start Recording** itself rather than
+ * a button. See [`devicePermissions`](./devicePermissions.ts).
  */
 
 import { createRuntimeTab } from '../platform/chrome/tabs';
+import {
+  primeDeviceInline,
+  queryDevicePermissionState,
+  type DevicePermissionState,
+} from './devicePermissions';
 
 export class CameraPermissionService {
-  /** Opens the dedicated runtime page that can trigger Chrome's camera permission UI. */
+  /** Opens the dedicated runtime page that can trigger the browser's camera permission UI. */
   async openCameraSetupTab() {
     await createRuntimeTab('camsetup.html');
   }
 
-  /** Reads Chrome's current camera permission state for the extension origin. */
-  async queryCameraPermissionState(): Promise<'granted' | 'denied' | 'prompt' | 'unknown'> {
-    if (!('permissions' in navigator)) return 'unknown';
-
-    try {
-      const status = await navigator.permissions.query({ name: 'camera' as PermissionName });
-      return (status?.state as any) ?? 'unknown';
-    } catch {
-      return 'unknown';
-    }
+  /** Reads the browser's camera permission state for the extension origin. */
+  queryCameraPermissionState(): Promise<DevicePermissionState> {
+    return queryDevicePermissionState('camera', 'videoinput');
   }
 
-  /** Tries to grant camera access inline from the popup when Chrome allows it. */
-  async tryPrimeInline(): Promise<boolean> {
-    try {
-      const s = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-      s.getTracks().forEach((t) => t.stop());
-      return true;
-    } catch {
-      return false;
-    }
+  /** Tries to grant camera access inline from the popup. */
+  tryPrimeInline(): Promise<boolean> {
+    return primeDeviceInline({ video: true, audio: false });
   }
 
   /** Ensures camera permission is ready before a recording that includes self-video starts. */

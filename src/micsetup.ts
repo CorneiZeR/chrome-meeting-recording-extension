@@ -6,8 +6,10 @@
  *
  * Why a separate tab?
  *   In MV3, popups and offscreen documents cannot reliably trigger permission
- *   prompts for getUserMedia(). Opening a full tab with this page is the only
- *   consistent way to show the Chrome media permission dialog for an extension.
+ *   prompts for getUserMedia() — Edge does not show one from a popup at all, and
+ *   its request stays pending rather than failing. Opening a full tab with this
+ *   page is the only consistent way to show the browser's media permission
+ *   dialog for an extension.
  *   Once the user accepts, the permission is granted to the extension origin
  *   permanently, so the Offscreen document can later call getUserMedia({audio})
  *   without another prompt.
@@ -36,7 +38,7 @@ document.addEventListener('DOMContentLoaded', () => {
       s.getTracks().forEach((t) => t.stop());
       statusEl.textContent = 'Microphone enabled. You can close this tab.';
     } catch (e: any) {
-      statusEl.textContent = `Mic blocked: ${e?.name || e}. Check Chrome & OS settings.`;
+      statusEl.textContent = `Mic blocked: ${e?.name || e}. Check the browser's site permissions and your OS settings.`;
       console.error('[micsetup] getUserMedia error:', e);
     }
   });
