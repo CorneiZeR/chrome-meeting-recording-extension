@@ -14,7 +14,7 @@ This dedicated public write-only Worker accepts only bounded anonymous `Telemetr
 | Retention | 30 days, expired batches deleted daily at `03:17 UTC`; incident rows cascade with their batch |
 | Observability | enabled at 10% head sampling; Worker code emits no request-body, IP, or incident-context logs |
 
-Schema migration `0001_initial.sql` is applied in production. The client build uses the endpoint above via `TELEMETRY_ENDPOINT`; production guards require the exact HTTPS route and inject only its origin into `host_permissions`.
+Schema migration `0001_initial.sql` is applied in production. The client build uses the endpoint above via `TELEMETRY_ENDPOINT`; when one is configured the guards require the exact HTTPS route and inject only its origin into `host_permissions`. The variable is optional — a build without it ships with diagnostics inert and reaches this Worker not at all.
 
 ## Local verification
 

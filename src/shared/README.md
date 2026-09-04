@@ -196,7 +196,7 @@ Two carriers, by design: **commands** (`OFFSCREEN_START`/`STOP`/`DISCARD`, uploa
 | **Messaging substrate** | `rpc.ts` | the request/response framework over `chrome.runtime` ports |
 | | `protocol.ts`, `protocolMessageTypes.ts`, `messages.ts` | typed message envelopes + guards |
 | **Perf vocabulary** | `perf.ts`, `types/perfTypes.ts`, `constants/perfConstants.ts`, `utils/mathUtils.ts` | perf event types/names/helpers + math; the *vocabulary* only — the stores live in `background/`/`debug/` (see the instrumentation doc) |
-| **Production telemetry** | `telemetry/` | schema, allowlists, sanitization, reducer, accumulators, checkpoints/outbox, coordinator, and acknowledged delivery |
+| **Production telemetry** | `telemetry/` | schema, allowlists, sanitization, reducer, accumulators, checkpoints/outbox, coordinator, and acknowledged delivery. The delivery endpoint is build-injected and **optional**: with none configured, `TelemetryDelivery` neither sends nor queues, so a build without a Worker collects locally and reports nothing |
 | **Cross-cutting infra** | `timeouts.ts` | the single `TIMEOUTS` budget table (watchdogs, RPC, seal, caption/meeting-end) |
 | | `async.ts`, `format.ts`, `logger.ts`, `typeGuards.ts`, `build.ts`, `provider.ts` | `withTimeout`, display formatting, logging, `isRecord`, build flags, meeting-provider metadata |
 | | `recordingFormats.ts` | format-profile resolver and content-type/filename helpers; MP4/M4A are capability-gated, while WebM retains the existing codec preferences |

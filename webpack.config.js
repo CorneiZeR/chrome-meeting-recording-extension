@@ -11,8 +11,9 @@ const {
   usesWebAuthFlow,
   applyTargetToManifest,
 } = require('./scripts/lib/manifestTargets.cjs')
-const { telemetryHostPermission } = require('./scripts/lib/telemetryEndpoint.cjs')
+const { telemetryHostPermission, resolveTelemetryEndpoint } = require('./scripts/lib/telemetryEndpoint.cjs')
 const { distDirForTarget } = require('./scripts/lib/releaseArtifacts.cjs')
+const { readProjectEnvValue } = require('./scripts/lib/projectEnv.cjs')
 
 const GOOGLE_OAUTH_CLIENT_ID_ENV_KEY = 'GOOGLE_OAUTH_CLIENT_ID'
 const GOOGLE_WEB_OAUTH_CLIENT_ID_ENV_KEY = 'GOOGLE_WEB_OAUTH_CLIENT_ID'
@@ -29,50 +30,16 @@ const PUBLIC_DIR = 'public'
 const KNOWN_BROWSER_TARGETS = Object.keys(TARGET_PROFILES)
 const DEFAULT_BROWSER_TARGET = DEFAULT_TARGET
 
-function parseDotEnv(rawContent) {
-  const parsed = {}
-  for (const rawLine of rawContent.split(/\r?\n/)) {
-    const line = rawLine.trim()
-    if (!line || line.startsWith('#')) continue
-
-    const delimiterIndex = line.indexOf('=')
-    if (delimiterIndex <= 0) continue
-
-    const key = line.slice(0, delimiterIndex).trim()
-    let value = line.slice(delimiterIndex + 1).trim()
-    if (
-      (value.startsWith('"') && value.endsWith('"')) ||
-      (value.startsWith("'") && value.endsWith("'"))
-    ) {
-      value = value.slice(1, -1)
-    }
-    parsed[key] = value
-  }
-  return parsed
-}
-
-function loadProjectDotEnv(projectRoot) {
-  const envPath = path.resolve(projectRoot, '.env')
-  if (!fs.existsSync(envPath)) return {}
-  return parseDotEnv(fs.readFileSync(envPath, 'utf8'))
-}
-
 function resolveGoogleOauthClientId(projectRoot) {
-  const fileEnv = loadProjectDotEnv(projectRoot)
-  const value = process.env[GOOGLE_OAUTH_CLIENT_ID_ENV_KEY] || fileEnv[GOOGLE_OAUTH_CLIENT_ID_ENV_KEY] || ''
-  return value.trim()
+  return readProjectEnvValue(GOOGLE_OAUTH_CLIENT_ID_ENV_KEY, projectRoot)
 }
 
 function resolveWebOauthClientId(projectRoot) {
-  const fileEnv = loadProjectDotEnv(projectRoot)
-  const value = process.env[GOOGLE_WEB_OAUTH_CLIENT_ID_ENV_KEY] || fileEnv[GOOGLE_WEB_OAUTH_CLIENT_ID_ENV_KEY] || ''
-  return value.trim()
+  return readProjectEnvValue(GOOGLE_WEB_OAUTH_CLIENT_ID_ENV_KEY, projectRoot)
 }
 
 function resolveWebOauthClientSecret(projectRoot) {
-  const fileEnv = loadProjectDotEnv(projectRoot)
-  const value = process.env[GOOGLE_WEB_OAUTH_CLIENT_SECRET_ENV_KEY] || fileEnv[GOOGLE_WEB_OAUTH_CLIENT_SECRET_ENV_KEY] || ''
-  return value.trim()
+  return readProjectEnvValue(GOOGLE_WEB_OAUTH_CLIENT_SECRET_ENV_KEY, projectRoot)
 }
 
 function resolveBrowserTarget(rawTarget) {
@@ -135,12 +102,14 @@ module.exports = (_env, argv) => {
   const sourceManifestClientId = JSON.parse(
     fs.readFileSync(path.resolve(__dirname, 'static/manifest.json'), 'utf8')
   ).oauth2?.client_id
-  const fileEnv = loadProjectDotEnv(__dirname)
-  const telemetryEndpoint = String(process.env[TELEMETRY_ENDPOINT_ENV_KEY] || fileEnv[TELEMETRY_ENDPOINT_ENV_KEY] || '').trim()
-  if (!isDevBuild && !telemetryEndpoint) {
-    throw new Error(`${TELEMETRY_ENDPOINT_ENV_KEY} is required for production builds`)
-  }
-  telemetryHostPermission(telemetryEndpoint)
+  // An absent endpoint is allowed in every mode: the build ships with
+  // diagnostics inert rather than refusing to run. A malformed one still throws.
+  const telemetry = resolveTelemetryEndpoint(
+    readProjectEnvValue(TELEMETRY_ENDPOINT_ENV_KEY, __dirname),
+    { isDevBuild }
+  )
+  const telemetryEndpoint = telemetry.endpoint
+  if (telemetry.warning) console.warn(`[build] ${telemetry.warning}`)
 
   if (
     !isWebAuthFlowTarget
