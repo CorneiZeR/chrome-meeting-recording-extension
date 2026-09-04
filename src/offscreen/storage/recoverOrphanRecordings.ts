@@ -20,9 +20,9 @@
  */
 
 import { describeRuntimeError } from '../errors';
-import { isRecordingFilename } from '../drive/folderNaming';
 import type { PendingUploadStore } from '../drive/PendingUploadStore';
 import type { LocalSaveRequest } from '../RecordingFinalizer';
+import { isRecordingFilename } from '../../shared/recording';
 import type { RecordingStream } from '../../shared/recording';
 import { isWebmRecordingFilename } from '../../shared/recordingFormats';
 

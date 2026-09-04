@@ -36,30 +36,36 @@ describe('registerSaveHandler', () => {
   });
 
   it('downloads the file, broadcasts success, then cleans up OPFS once the download completes', async () => {
-    offscreen.onSaveRequested({ filename: 'tab.webm', blobUrl: 'blob:1', opfsFilename: 'tab.webm' });
+    offscreen.onSaveRequested({ filename: 'meet-abc-20260618T143045-recording.webm', blobUrl: 'blob:1', opfsFilename: 'meet-abc-20260618T143045-recording.webm' });
     await flushMicrotasks();
 
-    expect(downloadFile).toHaveBeenCalledWith({ url: 'blob:1', filename: 'tab.webm', saveAs: false });
-    expect(broadcastToPopup).toHaveBeenCalledWith({ type: 'RECORDING_SAVED', filename: 'tab.webm' });
+    // The download goes into this run's own folder under the shared root; the
+    // popup broadcast and the history row keep the bare filename.
+    expect(downloadFile).toHaveBeenCalledWith({
+      url: 'blob:1',
+      filename: 'Google Meet Records/meet-abc-20260618T143045/meet-abc-20260618T143045-recording.webm',
+      saveAs: false,
+    });
+    expect(broadcastToPopup).toHaveBeenCalledWith({ type: 'RECORDING_SAVED', filename: 'meet-abc-20260618T143045-recording.webm' });
     // Cleanup is gated on the real download completion, not a blind timer.
     expect(awaitDownloadSettled).toHaveBeenCalledWith(1);
-    expect(offscreen.revokeBlobUrl).toHaveBeenCalledWith('blob:1', 'tab.webm');
+    expect(offscreen.revokeBlobUrl).toHaveBeenCalledWith('blob:1', 'meet-abc-20260618T143045-recording.webm');
   });
 
   it('keeps the OPFS file (revokes URL only) when the download is interrupted', async () => {
     (awaitDownloadSettled as jest.Mock).mockResolvedValueOnce('interrupted');
 
-    offscreen.onSaveRequested({ filename: 'tab.webm', blobUrl: 'blob:1', opfsFilename: 'tab.webm' });
+    offscreen.onSaveRequested({ filename: 'meet-abc-20260618T143045-recording.webm', blobUrl: 'blob:1', opfsFilename: 'meet-abc-20260618T143045-recording.webm' });
     await flushMicrotasks();
 
     expect(offscreen.revokeBlobUrl).toHaveBeenCalledWith('blob:1');
-    expect(offscreen.revokeBlobUrl).not.toHaveBeenCalledWith('blob:1', 'tab.webm');
+    expect(offscreen.revokeBlobUrl).not.toHaveBeenCalledWith('blob:1', 'meet-abc-20260618T143045-recording.webm');
   });
 
   it('leaves the URL and OPFS file untouched when the download never settles', async () => {
     (awaitDownloadSettled as jest.Mock).mockResolvedValueOnce('timeout');
 
-    offscreen.onSaveRequested({ filename: 'tab.webm', blobUrl: 'blob:1', opfsFilename: 'tab.webm' });
+    offscreen.onSaveRequested({ filename: 'meet-abc-20260618T143045-recording.webm', blobUrl: 'blob:1', opfsFilename: 'meet-abc-20260618T143045-recording.webm' });
     await flushMicrotasks();
 
     expect(offscreen.revokeBlobUrl).not.toHaveBeenCalled();
@@ -68,13 +74,13 @@ describe('registerSaveHandler', () => {
   it('broadcasts a save error and keeps the OPFS file when the download never starts', async () => {
     (downloadFile as jest.Mock).mockRejectedValueOnce(new Error('Download blocked'));
 
-    offscreen.onSaveRequested({ filename: 'tab.webm', blobUrl: 'blob:1', opfsFilename: 'tab.webm' });
+    offscreen.onSaveRequested({ filename: 'meet-abc-20260618T143045-recording.webm', blobUrl: 'blob:1', opfsFilename: 'meet-abc-20260618T143045-recording.webm' });
     await flushMicrotasks();
 
     expect(L.warn).toHaveBeenCalledWith('downloads.download error:', 'Download blocked');
     expect(broadcastToPopup).toHaveBeenCalledWith({
       type: 'RECORDING_SAVE_ERROR',
-      filename: 'tab.webm',
+      filename: 'meet-abc-20260618T143045-recording.webm',
       error: 'Download blocked',
     });
     // No download to wait on; free the URL but preserve the OPFS source for recovery.
@@ -85,13 +91,13 @@ describe('registerSaveHandler', () => {
   it('stringifies a non-Error download rejection', async () => {
     (downloadFile as jest.Mock).mockRejectedValueOnce('plain failure');
 
-    offscreen.onSaveRequested({ filename: 'tab.webm', blobUrl: 'blob:1' });
+    offscreen.onSaveRequested({ filename: 'meet-abc-20260618T143045-recording.webm', blobUrl: 'blob:1' });
     await flushMicrotasks();
 
     expect(L.warn).toHaveBeenCalledWith('downloads.download error:', 'plain failure');
     expect(broadcastToPopup).toHaveBeenCalledWith({
       type: 'RECORDING_SAVE_ERROR',
-      filename: 'tab.webm',
+      filename: 'meet-abc-20260618T143045-recording.webm',
       error: 'plain failure',
     });
   });
@@ -101,11 +107,15 @@ describe('registerSaveHandler', () => {
     await flushMicrotasks();
 
     const downloadArg = (downloadFile as jest.Mock).mock.calls[0][0];
-    expect(downloadArg.filename).toMatch(/^google-meet-.*recording\.webm$/);
+    // The synthesized name is still filed under the shared root and a folder of
+    // its own, so a nameless save cannot land loose in Downloads either.
+    expect(downloadArg.filename).toMatch(
+      /^Google Meet Records\/google-meet-\d{8}T\d{4}\/google-meet-\d{8}T\d{4}-recording\.webm$/
+    );
   });
 
   it('does nothing when no blobUrl is present', async () => {
-    offscreen.onSaveRequested({ filename: 'tab.webm', blobUrl: '' });
+    offscreen.onSaveRequested({ filename: 'meet-abc-20260618T143045-recording.webm', blobUrl: '' });
     await flushMicrotasks();
 
     expect(downloadFile).not.toHaveBeenCalled();
@@ -119,11 +129,11 @@ describe('registerSaveHandler', () => {
     };
     registerSaveHandler(offscreen, L, history);
 
-    offscreen.onSaveRequested({ historyId: 'recording:1', stream: 'tab', filename: 'tab.webm', blobUrl: 'blob:1' });
+    offscreen.onSaveRequested({ historyId: 'recording:1', stream: 'tab', filename: 'meet-abc-20260618T143045-recording.webm', blobUrl: 'blob:1' });
     await Promise.resolve();
     expect(history.createPending).toHaveBeenCalledWith(
       'recording:1',
-      [{ id: 'recording:1:tab', stream: 'tab', filename: 'tab.webm' }],
+      [{ id: 'recording:1:tab', stream: 'tab', filename: 'meet-abc-20260618T143045-recording.webm' }],
       'local',
     );
     expect(downloadFile).not.toHaveBeenCalled();

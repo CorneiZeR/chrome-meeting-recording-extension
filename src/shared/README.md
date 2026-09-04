@@ -135,7 +135,7 @@ Sealed files carry a separate immutable `RecordingArtifactContext`: `historyId`,
 
 `recordingHistory.ts` defines the durable, user-facing history vocabulary. A `RecordingHistoryEntry` contains a stable id, name, timestamp, storage mode, aggregate status, and one normalized file record per stream. A file is `pending`, `available`, or `unavailable`, with a local download id or Drive link when available.
 
-The history API is cursor-paged with a `(createdAt, id)` cursor, so equal timestamps remain deterministic. Current Drive rows also persist folder ID/name/link plus per-file Drive IDs so a rename can target the actual remote resources. `recordingNames.ts` owns Unicode-safe title slugging and stream-specific renamed filenames while preserving the resolved extension. Its messages include `LIST_RECORDING_HISTORY`, `RENAME_RECORDING_HISTORY`, `SKIP_RECORDING_NAMING`, `REMOVE_RECORDING_HISTORY`, and `OPEN_RECORDING_HISTORY_FILE`. `deletedAt` is a soft-delete tombstone: consumers hide it, while delayed download/upload/recovery updates preserve it rather than recreating an entry the user removed.
+The history API is cursor-paged with a `(createdAt, id)` cursor, so equal timestamps remain deterministic. Current Drive rows also persist folder ID/name/link plus per-file Drive IDs so a rename can target the actual remote resources. `recordingNames.ts` owns Unicode-safe title slugging, stream-specific renamed filenames while preserving the resolved extension, and the **grouping of a run's artifacts**: parsing `<slug>-<stamp>-<stream>.<ext>` names, deriving the `<slug>-<stamp>` folder every artifact of one run shares, and building the local download path under `RECORDINGS_ROOT_FOLDER_NAME`. Drive and the local save read the same helpers, so a recording is filed the same way in either storage mode. Its messages include `LIST_RECORDING_HISTORY`, `RENAME_RECORDING_HISTORY`, `SKIP_RECORDING_NAMING`, `REMOVE_RECORDING_HISTORY`, and `OPEN_RECORDING_HISTORY_FILE`. `deletedAt` is a soft-delete tombstone: consumers hide it, while delayed download/upload/recovery updates preserve it rather than recreating an entry the user removed.
 
 ## Production telemetry contract
 
@@ -192,7 +192,7 @@ Two carriers, by design: **commands** (`OFFSCREEN_START`/`STOP`/`DISCARD`, uploa
 | | `recordingFactories.ts` | `createIdleSession` and **`toStatusView`** → the popup-facing `RecordingStatusView` (strips control-plane fields, preserves detached job views) |
 | | `recording.ts` | the public barrel re-export — import from here, not deep paths |
 | **History domain** | `recordingHistory.ts` | history entries/files, cursor page, normalization, labels, and history-message validation |
-| | `recordingNames.ts` | Unicode-safe title slug and stream filename derivation for coordinated history/Drive rename |
+| | `recordingNames.ts` | Unicode-safe title slug, stream filename derivation for coordinated history/Drive rename, and the per-run folder/download path shared by Drive and local saves |
 | **Messaging substrate** | `rpc.ts` | the request/response framework over `chrome.runtime` ports |
 | | `protocol.ts`, `protocolMessageTypes.ts`, `messages.ts` | typed message envelopes + guards |
 | **Perf vocabulary** | `perf.ts`, `types/perfTypes.ts`, `constants/perfConstants.ts`, `utils/mathUtils.ts` | perf event types/names/helpers + math; the *vocabulary* only — the stores live in `background/`/`debug/` (see the instrumentation doc) |
@@ -207,7 +207,7 @@ Two carriers, by design: **commands** (`OFFSCREEN_START`/`STOP`/`DISCARD`, uploa
 
 - `__tests__/recordingProjection.test.ts` is the spec: it asserts `projectPhase` over the **exhaustive 20-combination** input space (so the transition table above is *tested*, not aspirational) plus the `decomposeLegacyPhase` ⇄ `projectPhase` **round-trip** for all five capture phases.
 - `projectPhase`/`decomposeLegacyPhase` are pure — test them with values, no mocks. Resist adding a clock or I/O to them; their totality is the property under test.
-- Snapshot normalization edge cases (legacy `phase`, missing planes, phase-gating, detached upload jobs/naming state) live alongside in the shared tests. `recordingHistory.test.ts` covers history normalization, Drive folder metadata, stable cursor semantics, and tombstones; `recordingNames.test.ts` pins Unicode slug and extension-preserving filenames. `telemetry/__tests__` covers sanitization/bounds, compaction, queue policy, opt-out deletion, and exactly-once recovery incidents.
+- Snapshot normalization edge cases (legacy `phase`, missing planes, phase-gating, detached upload jobs/naming state) live alongside in the shared tests. `recordingHistory.test.ts` covers history normalization, Drive folder metadata, stable cursor semantics, and tombstones; `recordingNames.test.ts` pins Unicode slug, extension-preserving filenames, and the artifact grouping — that every artifact of one run derives the same folder, that a real artifact name is recognized (the filter orphan recovery keys off), and that the local download path sits under the shared root. `telemetry/__tests__` covers sanitization/bounds, compaction, queue policy, opt-out deletion, and exactly-once recovery incidents.
 
 ## Related
 

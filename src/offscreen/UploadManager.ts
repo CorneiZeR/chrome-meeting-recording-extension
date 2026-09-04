@@ -14,8 +14,8 @@
  */
 
 import type { CompletedRecordingArtifact } from './engine/RecorderEngineTypes';
+import { deriveRecordingFolderName } from '../shared/recording';
 import type { UploadJob, UploadJobFile, UploadJobStatus, UploadSummary } from '../shared/recording';
-import { inferDriveRecordingFolderName } from './drive/folderNaming';
 import { describeRuntimeError } from './errors';
 
 const MAX_RETRYABLE_BYTES = 128 * 1024 * 1024;
@@ -106,7 +106,7 @@ export class UploadManager {
     const job: UploadJob = {
       id,
       historyId,
-      label: inferDriveRecordingFolderName(artifacts[0]?.artifact.filename ?? id),
+      label: deriveRecordingFolderName(artifacts[0]?.artifact.filename ?? id),
       status: 'uploading',
       progress: 0,
       files: artifacts.map(({ stream, artifact }) => ({
